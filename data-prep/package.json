@@ -1,0 +1,18 @@
+{
+  "name": "@bb/data-prep",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "explore": "tsx src/explore-schema.ts",
+    "extract": "tsx src/extract-season.ts",
+    "stats": "tsx src/calculate-stats.ts"
+  },
+  "dependencies": {
+    "duckdb": "^1.1.3",
+    "@bb/model": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.9.3"
+  }
+}
