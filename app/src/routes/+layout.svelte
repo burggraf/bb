@@ -6,6 +6,9 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<title>Baseball Sim - Statistical Baseball Game</title>
 </svelte:head>
 
-{@render children()}
+<div class="min-h-screen">
+	{@render children()}
+</div>
