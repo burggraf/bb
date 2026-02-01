@@ -588,7 +588,10 @@
 			<div class="bg-slate-900 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 max-w-lg w-full mx-0 sm:mx-4 border border-slate-700 shadow-2xl">
 				<div class="text-center">
 					<div class="text-2xl sm:text-3xl lg:text-4xl font-bold mb-1 sm:mb-2">🎉 GAME OVER</div>
-					<div class="text-xs sm:text-sm lg:text-base text-slate-400 mb-3 sm:mb-4 lg:mb-6">1976 Season - Reds vs Astros</div>
+					<div class="text-xs sm:text-sm lg:text-base text-slate-400 mb-2 sm:mb-3 lg:mb-4">1976 Season - Reds vs Astros</div>
+					<div class="text-sm font-medium text-emerald-400 mb-3 sm:mb-4 lg:mb-6">
+						{inning} {inning === 1 ? 'inning' : 'innings'}
+					</div>
 
 					<!-- Final Score -->
 					<div class="flex items-center justify-center gap-4 sm:gap-6 lg:gap-8 mb-4 sm:mb-5 lg:mb-6">
