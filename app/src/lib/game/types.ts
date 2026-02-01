@@ -30,6 +30,7 @@ export interface BatterStats {
 	id: string;
 	name: string;
 	bats: 'L' | 'R' | 'S';
+	teamId: string;
 	rates: SplitRates;
 }
 
@@ -37,6 +38,7 @@ export interface PitcherStats {
 	id: string;
 	name: string;
 	throws: 'L' | 'R';
+	teamId: string;
 	rates: {
 		vsLHB: EventRates;
 		vsRHB: EventRates;
