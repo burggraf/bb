@@ -26,7 +26,7 @@ export const BaseConfigNames: Record<BaseConfig, string> = {
  * focused only on the aspects needed for state transitions.
  */
 export interface BaserunningState {
-	outs: 0 | 1 | 2;
+	outs: 0 | 1 | 2 | 3;  // 3 signals inning end (handled by engine)
 	bases: BaseConfig;
 	runners: {
 		first: string | null; // player ID
@@ -112,7 +112,7 @@ export function createBaserunningState(
 		third: bases[2],
 	};
 	return {
-		outs: outs as 0 | 1 | 2,
+		outs: Math.min(outs, 3) as 0 | 1 | 2 | 3,
 		bases: runnersToBaseConfig(runners),
 		runners,
 	};

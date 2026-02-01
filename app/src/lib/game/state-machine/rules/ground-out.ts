@@ -44,25 +44,8 @@ export function handleGroundOut(
 
 	const outsBefore = currentState.outs;
 
-	// With 2 outs, this is the 3rd out - inning ends, no advancement, no scoring
-	// Note: We leave outs at 3 (or cap at 2) to signal engine that inning should change
-	// The engine is responsible for resetting outs when the inning changes
-	if (outsBefore >= 2) {
-		// Clear all runners, no one scores
-		nextState.runners = { first: null, second: null, third: null };
-		nextState.bases = 0;
-		nextState.outs = 3; // Signal 3 outs (engine will handle inning change)
-
-		// Batter is out (no advancement event needed for batter)
-		return {
-			nextState,
-			runsScored: 0,
-			scorerIds: [],
-			advancement,
-		};
-	}
-
-	// With 0-1 outs: handle baserunning
+	// With 0-2 outs: handle baserunning
+	// Note: When outs would become 3 (inning ending), let engine handle inning change
 	// Process runners from 3B to 1B (home to first) to handle force scenarios
 
 	// Runner on 3B: holds with 0 outs (too risky), scores with 1 out (run matters)
@@ -118,7 +101,7 @@ export function handleGroundOut(
 	nextState.bases = runnersToBaseConfig(nextState.runners);
 
 	// Increment outs (will be handled by engine)
-	nextState.outs = outsBefore + 1 as 0 | 1 | 2;
+	nextState.outs = outsBefore + 1 as 0 | 1 | 2 | 3;
 
 	return {
 		nextState,
