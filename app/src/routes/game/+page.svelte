@@ -31,12 +31,18 @@
 
 	onMount(async () => {
 		try {
+			console.log('Loading 1976 season...');
 			const season = await loadSeason(1976);
+			console.log('Season loaded:', season);
+			console.log('Creating game engine...');
 			engine = new GameEngine(season, 'CIN', 'HOU'); // Reds vs Astros
+			console.log('Engine created:', engine);
 			updateFromEngine();
+			currentBatter = 'Ready to play!';
 		} catch (error) {
 			console.error('Failed to load season:', error);
-			currentBatter = 'Error loading data';
+			currentBatter = 'Error: ' + (error as Error).message;
+			currentPitcher = 'See console for details';
 		}
 	});
 
