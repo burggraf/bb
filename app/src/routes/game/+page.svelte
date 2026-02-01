@@ -586,7 +586,8 @@
 						{#each plays.slice(0, 10) as play, index}
 							{@const playNumber = plays.slice(0, index).filter(p => !p.isSummary).length + 1}
 							{@const runnerInfo = formatRunnerInfo(play)}
-							{@const scoreInfo = formatScoreLine(play, ...getScoreAtPlay(index, plays))}
+							{@const scoreAtPlay = getScoreAtPlay(index, plays)}
+							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border {play.isSummary
 								? 'bg-amber-900/30 border-amber-700/40'
 								: 'bg-slate-800/50 border-slate-700/30'}">
@@ -800,7 +801,8 @@
 							{@const reversedPlays = plays.slice().reverse()}
 							{@const playNumber = reversedPlays.slice(0, index).filter(p => !p.isSummary).length + 1}
 							{@const runnerInfo = formatRunnerInfo(play)}
-							{@const scoreInfo = formatScoreLine(play, ...getScoreAtPlay(reversedPlays.length - 1 - index, reversedPlays))}
+							{@const scoreAtPlay = getScoreAtPlay(reversedPlays.length - 1 - index, reversedPlays)}
+							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-3 sm:px-4 py-2 sm:py-3 border {play.isSummary
 								? 'bg-amber-900/30 border-amber-700/40'
 								: 'bg-slate-800/50 border-slate-700/30'}">
