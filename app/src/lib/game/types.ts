@@ -2,23 +2,53 @@
  * Types for the baseball game engine
  */
 
+/**
+ * The 17 detailed plate appearance outcomes.
+ */
 export type Outcome =
-	| 'out'
-	| 'single'
-	| 'double'
-	| 'triple'
-	| 'homeRun'
-	| 'walk'
-	| 'hitByPitch';
+  // Hits
+  | 'single'
+  | 'double'
+  | 'triple'
+  | 'homeRun'
+  // Walks
+  | 'walk'
+  | 'hitByPitch'
+  // Strikeout
+  | 'strikeout'
+  // Ball-in-play outs
+  | 'groundOut'
+  | 'flyOut'
+  | 'lineOut'
+  | 'popOut'
+  // Sacrifices
+  | 'sacrificeFly'
+  | 'sacrificeBunt'
+  // Other
+  | 'fieldersChoice'
+  | 'reachedOnError'
+  | 'catcherInterference';
 
+/**
+ * Probability rates for each of the 17 plate appearance outcomes.
+ */
 export interface EventRates {
-	out: number;
-	single: number;
-	double: number;
-	triple: number;
-	homeRun: number;
-	walk: number;
-	hitByPitch: number;
+  single: number;
+  double: number;
+  triple: number;
+  homeRun: number;
+  walk: number;
+  hitByPitch: number;
+  strikeout: number;
+  groundOut: number;
+  flyOut: number;
+  lineOut: number;
+  popOut: number;
+  sacrificeFly: number;
+  sacrificeBunt: number;
+  fieldersChoice: number;
+  reachedOnError: number;
+  catcherInterference: number;
 }
 
 export interface SplitRates {
