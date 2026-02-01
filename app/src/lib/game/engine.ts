@@ -396,6 +396,46 @@ export class GameEngine {
 		// Apply baserunning
 		const { runs, newBases, scorerIds, newOuts } = applyBaserunning(state, outcome, batterId);
 
+		// Check for walk-off situation and adjust if needed
+		// In a walk-off (bottom of 9th+, home team takes lead), the game ends immediately
+		// when the winning run scores. Non-home-run hits are reduced to singles.
+		let adjustedOutcome = outcome;
+		let adjustedRuns = runs;
+		let adjustedBases = newBases;
+		let adjustedScorerIds = scorerIds;
+
+		// Calculate current score before this play
+		let awayScoreBefore = 0;
+		let homeScoreBefore = 0;
+		for (const play of state.plays) {
+			if (play.isTopInning) {
+				awayScoreBefore += play.runsScored;
+			} else {
+				homeScoreBefore += play.runsScored;
+			}
+		}
+
+		const isBottomExtraInnings = state.inning >= 9 && !state.isTopInning;
+		const homeTeamTakesLead = homeScoreBefore + runs > awayScoreBefore;
+		const isWalkOffHit = isBottomExtraInnings && homeTeamTakesLead && runs > 0;
+		const isHit = ['single', 'double', 'triple'].includes(outcome);
+		const notHomeRun = outcome !== 'homeRun';
+
+		// Walk-off hit adjustment: game ends when winning run scores
+		if (isWalkOffHit && isHit && notHomeRun) {
+			// Only the winning run counts; all runners advance as far as possible
+			// but the batter only reaches 1st (play stops when winning run scores)
+			adjustedOutcome = 'single';
+			adjustedRuns = 1; // Only the winning run counts
+
+			// Adjust baserunning: batter stops at 1st, runners advance as forced
+			// This is a simplified approximation - real scoring is more complex
+			adjustedBases = [batterId, null, null] as [string | null, string | null, string | null];
+
+			// Only the first scorer counts
+			adjustedScorerIds = scorerIds.length > 0 ? [scorerIds[0]] : [];
+		}
+
 		// Check for inning change BEFORE updating state (so summary doesn't include this play)
 		// We need to check what the outs WOULD be, not what they currently are
 		const wouldBeThirdOut = newOuts >= 3;
@@ -426,15 +466,15 @@ export class GameEngine {
 		const play: PlayEvent = {
 			inning: playInning,
 			isTopInning: playIsTop,
-			outcome,
+			outcome: adjustedOutcome,
 			batterId,
 			batterName: formatName(batter.name),
 			pitcherId: pitcher.id,
 			pitcherName: formatName(pitcher.name),
-			description: describePlay(outcome, batter.name, pitcher.name, runs, outRunnerName, outBase),
-			runsScored: runs,
-			runnersAfter: newBases,
-			scorerIds,
+			description: describePlay(adjustedOutcome, batter.name, pitcher.name, adjustedRuns, outRunnerName, outBase),
+			runsScored: adjustedRuns,
+			runnersAfter: adjustedBases,
+			scorerIds: adjustedScorerIds,
 			runnersBefore,
 		};
 
@@ -443,7 +483,7 @@ export class GameEngine {
 		state.plays.unshift(play);
 
 		// Update state bases and outs
-		state.bases = newBases;
+		state.bases = adjustedBases;
 		state.outs = newOuts;
 
 		// Check for inning change AFTER updating state
