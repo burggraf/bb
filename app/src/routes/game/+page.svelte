@@ -16,6 +16,7 @@
 
 	let runners = $state([false, false, false]); // 1B, 2B, 3B
 	let plays = $state<string[]>([]);
+	let gameComplete = $state(false);
 
 	// Current matchup display
 	let currentBatter = $state('Loading...');
@@ -27,11 +28,16 @@
 	let autoPlayInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Engine
-	let engine: GameEngine | null = null;
+	let engine = $state<GameEngine | null>(null);
+	let season = $state<any>(null); // Store season for player lookups
+
+	// Lineup display
+	let awayLineupDisplay = $state<Array<{ name: string; isCurrent: boolean }>>([]);
+	let homeLineupDisplay = $state<Array<{ name: string; isCurrent: boolean }>>([]);
 
 	onMount(async () => {
 		try {
-			const season = await loadSeason(1976);
+			season = await loadSeason(1976);
 			engine = new GameEngine(season, 'CIN', 'HOU');
 			updateFromEngine();
 			currentBatter = 'Ready to play!';
@@ -77,6 +83,21 @@
 			currentBatter = lastPlay.batterName;
 			currentPitcher = lastPlay.pitcherName;
 		}
+
+		// Update lineup displays
+		awayLineupDisplay = state.awayLineup.players.map((slot, i) => ({
+			name: slot.playerId && season?.batters[slot.playerId]
+				? season.batters[slot.playerId].name
+				: 'Unknown',
+			isCurrent: i === state.awayLineup.currentBatterIndex
+		}));
+
+		homeLineupDisplay = state.homeLineup.players.map((slot, i) => ({
+			name: slot.playerId && season?.batters[slot.playerId]
+				? season.batters[slot.playerId].name
+				: 'Unknown',
+			isCurrent: i === state.homeLineup.currentBatterIndex
+		}));
 	}
 
 	function simulatePA() {
@@ -84,6 +105,7 @@
 		const play = engine.simulatePlateAppearance();
 		updateFromEngine();
 		if (engine.isComplete()) {
+			gameComplete = true;
 			stopAutoPlay();
 		}
 	}
@@ -118,6 +140,66 @@
 			engine.simulatePlateAppearance();
 		}
 		updateFromEngine();
+		gameComplete = true;
+	}
+
+	// Calculate game stats for summary
+	function getGameStats() {
+		if (!engine) return null;
+		const state = engine.getState();
+
+		let totalPlays = state.plays.length;
+		let hits = 0;
+		let homeHits = 0;
+		let awayHits = 0;
+		let homeAtBats = 0;
+		let awayAtBats = 0;
+		let homeRuns = 0;
+		let awayRuns = 0;
+
+		for (const play of state.plays) {
+			const isHit = ['single', 'double', 'triple', 'homeRun'].includes(play.outcome);
+			if (isHit) {
+				hits++;
+				if (play.isTopInning) {
+					awayHits++;
+				} else {
+					homeHits++;
+				}
+			}
+			// Approximate at-bats (each play is one at-bat)
+			if (play.isTopInning) {
+				awayAtBats++;
+			} else {
+				homeAtBats++;
+			}
+			homeRuns += play.runsScored;
+		}
+		awayRuns = awayScore;
+
+		return { totalPlays, hits, homeHits, awayHits, homeAtBats, awayAtBats, homeRuns, awayRuns };
+	}
+
+	function playAgain() {
+		gameComplete = false;
+		plays = [];
+		awayScore = 0;
+		homeScore = 0;
+		inning = 1;
+		isTopInning = true;
+		outs = 0;
+		balls = 0;
+		strikes = 0;
+		runners = [false, false, false];
+		currentBatter = 'Ready to play!';
+		currentPitcher = 'Loading...';
+
+		if (engine) {
+			const state = engine.getState();
+			// Reuse the same engine but reset would require creating a new one
+			// For now, let's just navigate to refresh
+		}
+		window.location.reload();
 	}
 
 	// Helper for count display
@@ -193,9 +275,9 @@
 	<!-- Main Content -->
 	<main class="flex-1 flex overflow-hidden">
 		<!-- Left Section: Field + Matchup -->
-		<div class="flex-1 flex flex-col p-6 gap-6 overflow-hidden">
+		<div class="flex-1 flex flex-col p-6 gap-6 overflow-y-auto">
 			<!-- Field Display -->
-			<div class="flex-1 flex items-center justify-center">
+			<div class="flex items-center justify-center" style="max-height: 50vh;">
 				<div class="relative w-full max-w-2xl aspect-square">
 					<!-- Field SVG -->
 					<svg viewBox="0 0 400 400" class="w-full h-full drop-shadow-2xl">
@@ -296,6 +378,49 @@
 					</div>
 				</div>
 			</div>
+
+			<!-- Lineups -->
+			<div class="flex-shrink-0 grid grid-cols-2 gap-4">
+				<!-- Away Lineup -->
+				<div class="bg-slate-950/50 rounded-xl p-4 backdrop-blur-sm border border-slate-700/30">
+					<div class="text-xs text-slate-400 uppercase tracking-wider mb-3">Away Lineup</div>
+					<div class="space-y-1">
+						{#each awayLineupDisplay as player, i}
+							<div class="flex items-center gap-2 py-1 px-2 rounded {player.isCurrent
+								? 'bg-blue-600/30 border border-blue-500/50'
+								: ''}">
+								<span class="text-xs w-4 text-slate-500">{i + 1}</span>
+								<span class="text-sm {player.isCurrent
+									? 'text-white font-medium'
+									: 'text-slate-300'}">{player.name}</span>
+								{#if player.isCurrent}
+									<span class="ml-auto text-xs text-blue-400"> batting</span>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				</div>
+
+				<!-- Home Lineup -->
+				<div class="bg-slate-950/50 rounded-xl p-4 backdrop-blur-sm border border-slate-700/30">
+					<div class="text-xs text-slate-400 uppercase tracking-wider mb-3">Home Lineup</div>
+					<div class="space-y-1">
+						{#each homeLineupDisplay as player, i}
+							<div class="flex items-center gap-2 py-1 px-2 rounded {player.isCurrent
+								? 'bg-blue-600/30 border border-blue-500/50'
+								: ''}">
+								<span class="text-xs w-4 text-slate-500">{i + 1}</span>
+								<span class="text-sm {player.isCurrent
+									? 'text-white font-medium'
+									: 'text-slate-300'}">{player.name}</span>
+								{#if player.isCurrent}
+									<span class="ml-auto text-xs text-blue-400"> batting</span>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				</div>
+			</div>
 		</div>
 
 		<!-- Right Section: Play-by-Play + Controls -->
@@ -384,4 +509,78 @@
 			</div>
 		</div>
 	</main>
+
+	<!-- Game Completion Overlay -->
+	{#if gameComplete}
+		<div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+			<div class="bg-slate-900 rounded-2xl p-8 max-w-lg w-full mx-4 border border-slate-700 shadow-2xl">
+				<div class="text-center">
+					<div class="text-4xl font-bold mb-2">🎉 GAME OVER</div>
+					<div class="text-slate-400 mb-6">1976 Season - Reds vs Astros</div>
+
+					<!-- Final Score -->
+					<div class="flex items-center justify-center gap-8 mb-6">
+						<div class="text-center">
+							<div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Away</div>
+							<div class="text-5xl font-bold">{awayScore}</div>
+						</div>
+						<div class="text-2xl text-slate-500">-</div>
+						<div class="text-center">
+							<div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Home</div>
+							<div class="text-5xl font-bold">{homeScore}</div>
+						</div>
+					</div>
+
+					<!-- Winner Text -->
+					<div class="text-xl mb-6">
+						{#if awayScore > homeScore}
+							<span class="text-slate-300">Away team wins by </span>
+							<span class="font-bold text-white">{awayScore - homeScore}</span>
+						{:else if homeScore > awayScore}
+							<span class="text-slate-300">Home team wins by </span>
+							<span class="font-bold text-white">{homeScore - awayScore}</span>
+						{:else}
+							<span class="text-yellow-400 font-semibold">It's a tie!</span>
+						{/if}
+					</div>
+
+					<!-- Stats -->
+					{#if getGameStats()}
+						{@const stats = getGameStats()}
+						<div class="bg-slate-800/50 rounded-lg p-4 mb-6 text-left">
+							<div class="grid grid-cols-2 gap-4 text-sm">
+								<div>
+									<div class="text-slate-400">Total Plays</div>
+									<div class="text-lg font-semibold">{stats.totalPlays}</div>
+								</div>
+								<div>
+									<div class="text-slate-400">Total Hits</div>
+									<div class="text-lg font-semibold">{stats.hits}</div>
+								</div>
+								<div>
+									<div class="text-slate-400">Away</div>
+									<div class="text-lg font-semibold">{stats.awayHits} for {stats.awayAtBats} AB</div>
+								</div>
+								<div>
+									<div class="text-slate-400">Home</div>
+									<div class="text-lg font-semibold">{stats.homeHits} for {stats.homeAtBats} AB</div>
+								</div>
+							</div>
+						</div>
+					{/if}
+
+					<!-- Play Again Button -->
+					<button
+						onclick={playAgain}
+						class="w-full px-6 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+					>
+						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 6m0 0H6m1.5 0h1.5m-7-1.5v.083a8.001 8.001 0 1114.915 0" />
+						</svg>
+						Play Again
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
