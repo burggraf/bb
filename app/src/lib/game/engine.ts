@@ -489,23 +489,19 @@ export class GameEngine {
 			}
 		}
 
-		// Top of 9th or later: game ends if home team is ahead (home team wins without batting)
-		if (this.state.inning >= 9 && this.state.isTopInning && homeScore > awayScore) {
-			return true;
-		}
-
-		// Bottom of 9th or later: game ends if home team is ahead (home team wins)
-		// If tied or trailing, game continues (tied = extra innings, trailing = away leads)
+		// Walk-off win: home team takes lead in bottom of 9th or later
 		if (this.state.inning >= 9 && !this.state.isTopInning && homeScore > awayScore) {
 			return true;
 		}
 
-		// Extra innings (10th+): if home team lost after their at-bat, game ends
-		// This triggers when inning incremented to 10+ and top is about to start with home team trailing
+		// Only end game after at least 9 innings (or extra innings where away team leads after top half)
+		// Do NOT end game in top of 9th just because home team is ahead
+		// The away team must get their final at-bat in the top of 9th
 		if (this.state.inning > 9 && this.state.isTopInning && awayScore > homeScore) {
 			return true;
 		}
 
+		// Continue playing until 9+ innings are complete or walk-off occurs
 		return false;
 	}
 
