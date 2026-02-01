@@ -42,6 +42,9 @@
 	// Toast state
 	let toast = $state<{ message: string; visible: boolean }>({ message: '', visible: false });
 
+	// Play-by-play modal state
+	let showPlayByPlay = $state(false);
+
 	// Show toast message
 	function showToast(message: string) {
 		toast = { message, visible: true };
@@ -644,6 +647,17 @@
 						</div>
 					{/if}
 
+					<!-- View Play-by-Play Button -->
+					<button
+						onclick={() => showPlayByPlay = true}
+						class="w-full px-4 py-3 sm:px-6 sm:py-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm sm:text-base mb-2 sm:mb-3"
+					>
+						<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+						</svg>
+						View Play-by-Play
+					</button>
+
 					<!-- Play Again Button -->
 					<button
 						onclick={playAgain}
@@ -653,6 +667,47 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 6m0 0H6m1.5 0h1.5m-7-1.5v.083a8.001 8.001 0 1114.915 0" />
 						</svg>
 						Play Again
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Play-by-Play Modal -->
+	{#if showPlayByPlay}
+		<div class="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+			<div class="bg-slate-900 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 max-w-2xl w-full mx-0 sm:mx-4 border border-slate-700 shadow-2xl max-h-[80vh] flex flex-col">
+				<div class="flex items-center justify-between mb-4">
+					<h2 class="text-xl sm:text-2xl font-bold">Play-by-Play</h2>
+					<button
+						onclick={() => showPlayByPlay = false}
+						class="text-slate-400 hover:text-white transition-colors p-1 hover:bg-slate-800 rounded"
+					>
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+
+				<div class="flex-1 overflow-y-auto space-y-2 pr-2">
+					{#each plays.slice().reverse() as play, index}
+						<div class="bg-slate-800/50 rounded-lg px-3 sm:px-4 py-2 sm:py-3 border border-slate-700/30">
+							<div class="flex items-start gap-2 sm:gap-3">
+								<span class="text-xs sm:text-sm text-slate-500 mt-0.5 font-mono">{plays.length - index}</span>
+								<p class="text-sm sm:text-base text-slate-300">{play}</p>
+							</div>
+						</div>
+					{:else}
+						<div class="text-sm sm:text-base text-slate-500 text-center py-8">No plays recorded</div>
+					{/each}
+				</div>
+
+				<div class="flex-1 sm:flex-none">
+					<button
+						onclick={() => showPlayByPlay = false}
+						class="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors text-sm sm:text-base"
+					>
+						Close
 					</button>
 				</div>
 			</div>
