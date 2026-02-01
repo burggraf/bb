@@ -1,9 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { MatchupModel } from '@bb/model';
 	import { loadSeason } from '$lib/game/season-loader.js';
 	import { GameEngine } from '$lib/game/engine.js';
 	import type { GameState, PlayEvent } from '$lib/game/types.js';
+
+	// Constants for localStorage
+	const STORAGE_KEY = 'baseball-game-state';
+	const PREFS_KEY = 'baseball-game-prefs';
 
 	// Game state
 	let awayScore = $state(0);
@@ -11,8 +16,6 @@
 	let inning = $state(1);
 	let isTopInning = $state(true);
 	let outs = $state(0);
-	let balls = $state(0);
-	let strikes = $state(0);
 
 	let runners = $state([false, false, false]); // 1B, 2B, 3B
 	let plays = $state<string[]>([]);
@@ -35,16 +38,135 @@
 	let awayLineupDisplay = $state<Array<{ name: string; isCurrent: boolean }>>([]);
 	let homeLineupDisplay = $state<Array<{ name: string; isCurrent: boolean }>>([]);
 
+	// Toast state
+	let toast = $state<{ message: string; visible: boolean }>({ message: '', visible: false });
+
+	// Show toast message
+	function showToast(message: string) {
+		toast = { message, visible: true };
+		setTimeout(() => {
+			toast.visible = false;
+		}, 3000);
+	}
+
+	// Load preferences from localStorage
+	function loadPrefs() {
+		if (!browser) return { simSpeed: 1000 };
+		try {
+			const stored = localStorage.getItem(PREFS_KEY);
+			if (stored) {
+				return JSON.parse(stored);
+			}
+		} catch {
+			// Ignore storage errors
+		}
+		return { simSpeed: 1000 };
+	}
+
+	// Save preferences to localStorage
+	function savePrefs() {
+		if (!browser) return;
+		try {
+			localStorage.setItem(PREFS_KEY, JSON.stringify({ simSpeed }));
+		} catch {
+			// Ignore storage errors
+		}
+	}
+
+	// Save game state to localStorage
+	function saveGameState() {
+		if (!browser || !engine) return;
+		try {
+			localStorage.setItem(STORAGE_KEY, engine.serialize());
+		} catch {
+			// Ignore storage errors
+		}
+	}
+
+	// Clear saved game state
+	function clearGameState() {
+		if (!browser) return;
+		try {
+			localStorage.removeItem(STORAGE_KEY);
+		} catch {
+			// Ignore storage errors
+		}
+	}
+
+	// Load game state from localStorage
+	async function loadGameState() {
+		if (!browser) return null;
+		try {
+			const stored = localStorage.getItem(STORAGE_KEY);
+			if (stored) {
+				return stored;
+			}
+		} catch {
+			// Ignore storage errors
+		}
+		return null;
+	}
+
 	onMount(async () => {
+		// Load preferences first
+		const prefs = loadPrefs();
+		simSpeed = prefs.simSpeed;
+
 		try {
 			season = await loadSeason(1976);
-			engine = new GameEngine(season, 'CIN', 'HOU');
+
+			// Try to restore from saved state
+			const savedState = await loadGameState();
+			if (savedState) {
+				// Restore the game engine from saved state
+				engine = GameEngine.restore(savedState, season);
+				showToast('Game restored!');
+			} else {
+				// Start a new game
+				engine = new GameEngine(season, 'CIN', 'HOU');
+			}
+
 			updateFromEngine();
-			currentBatter = 'Ready to play!';
+
+			// Save state on visibility change (user leaves/returns to tab)
+			if (browser) {
+				const handleVisibilityChange = () => {
+					if (document.hidden) {
+						// Save state when user leaves the tab
+						saveGameState();
+					}
+				};
+				document.addEventListener('visibilitychange', handleVisibilityChange);
+
+				// Save state before page unload
+				const handleBeforeUnload = () => {
+					saveGameState();
+				};
+				window.addEventListener('beforeunload', handleBeforeUnload);
+
+				// Cleanup listeners on unmount
+				return () => {
+					document.removeEventListener('visibilitychange', handleVisibilityChange);
+					window.removeEventListener('beforeunload', handleBeforeUnload);
+				};
+			}
 		} catch (error) {
 			currentBatter = 'Error: ' + (error as Error).message;
 			currentPitcher = 'See console for details';
 		}
+	});
+
+	// Auto-save game state whenever the engine state changes
+	$effect(() => {
+		if (engine) {
+			// Save state after any change
+			saveGameState();
+		}
+	});
+
+	// Auto-save preferences whenever simSpeed changes
+	$effect(() => {
+		savePrefs();
 	});
 
 	function updateFromEngine() {
@@ -67,8 +189,6 @@
 		inning = state.inning;
 		isTopInning = state.isTopInning;
 		outs = state.outs;
-		balls = state.balls;
-		strikes = state.strikes;
 
 		runners = [
 			state.bases[0] !== null,
@@ -181,6 +301,10 @@
 	}
 
 	function playAgain() {
+		// Clear the saved game state
+		clearGameState();
+
+		// Reset all state variables
 		gameComplete = false;
 		plays = [];
 		awayScore = 0;
@@ -188,26 +312,15 @@
 		inning = 1;
 		isTopInning = true;
 		outs = 0;
-		balls = 0;
-		strikes = 0;
 		runners = [false, false, false];
 		currentBatter = 'Ready to play!';
 		currentPitcher = 'Loading...';
 
-		if (engine) {
-			const state = engine.getState();
-			// Reuse the same engine but reset would require creating a new one
-			// For now, let's just navigate to refresh
+		// Create a new game engine
+		if (season) {
+			engine = new GameEngine(season, 'CIN', 'HOU');
+			updateFromEngine();
 		}
-		window.location.reload();
-	}
-
-	// Helper for count display
-	function countDisplay(balls: number, strikes: number) {
-		const dots = [];
-		for (let i = 0; i < 3; i++) dots.push({ type: 'ball', active: i < balls });
-		for (let i = 0; i < 2; i++) dots.push({ type: 'strike', active: i < strikes });
-		return dots;
 	}
 </script>
 
@@ -215,71 +328,35 @@
 	<title>Game - Baseball Sim</title>
 </svelte:head>
 
-<div class="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
-	<!-- Header / Scoreboard -->
+<div class="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+	<!-- Header -->
 	<header class="flex-shrink-0 bg-slate-950/50 border-b border-slate-700/50">
-		<div class="flex items-center justify-between px-6 py-3">
+		<div class="flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3 gap-2">
 			<!-- Back Link -->
-			<a href="/" class="text-slate-400 hover:text-white transition-colors flex items-center gap-2">
+			<a href="/" class="text-slate-400 hover:text-white transition-colors flex items-center gap-1 sm:gap-2">
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 				</svg>
-				<span class="text-sm font-medium">Home</span>
+				<span class="text-xs sm:text-sm font-medium hidden sm:inline">Home</span>
 			</a>
 
 			<!-- Game Info -->
-			<div class="flex items-center gap-6 text-sm text-slate-400">
+			<div class="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-slate-400">
 				<span>1976 Season</span>
 				<span class="text-slate-600">|</span>
 				<span>Reds vs Astros</span>
 			</div>
 		</div>
-
-		<!-- Main Scoreboard -->
-		<div class="px-6 pb-4">
-			<div class="bg-slate-950/70 rounded-xl p-4 backdrop-blur-sm border border-slate-700/30">
-				<div class="flex items-center justify-between">
-					<!-- Away Team -->
-					<div class="flex-1 text-center">
-						<div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Away</div>
-						<div class="text-4xl font-bold tabular-nums">{awayScore}</div>
-					</div>
-
-					<!-- Inning & Game State -->
-					<div class="flex-1 text-center">
-						<div class="inline-flex items-center gap-2 bg-slate-800/50 rounded-lg px-4 py-2">
-							<div class="text-center">
-								<div class="text-xs text-slate-400 uppercase tracking-wider">Inning</div>
-								<div class="text-xl font-semibold">
-									{isTopInning ? '▲' : '▼'} {inning}
-								</div>
-							</div>
-							<div class="w-px h-8 bg-slate-700"></div>
-							<div class="text-center">
-								<div class="text-xs text-slate-400 uppercase tracking-wider">Outs</div>
-								<div class="text-xl font-semibold">{outs}</div>
-							</div>
-						</div>
-					</div>
-
-					<!-- Home Team -->
-					<div class="flex-1 text-center">
-						<div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Home</div>
-						<div class="text-4xl font-bold tabular-nums">{homeScore}</div>
-					</div>
-				</div>
-			</div>
-		</div>
 	</header>
 
 	<!-- Main Content -->
-	<main class="flex-1 flex overflow-hidden">
+	<main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
 		<!-- Left Section: Field + Matchup -->
-		<div class="flex-1 flex flex-col p-6 gap-6 overflow-y-auto">
+		<div class="flex-1 flex flex-col p-3 sm:p-4 lg:p-6 gap-3 sm:gap-4 lg:gap-6 overflow-y-auto">
 			<!-- Field Display -->
-			<div class="flex items-center justify-center" style="max-height: 50vh;">
-				<div class="relative w-full max-w-2xl aspect-square">
-					<!-- Field SVG -->
+			<div class="flex items-center justify-center">
+				<div class="relative w-full max-w-xl aspect-square">
+					<!-- Field SVG with embedded scoreboard -->
 					<svg viewBox="0 0 400 400" class="w-full h-full drop-shadow-2xl">
 						<!-- Outfield grass -->
 						<rect x="0" y="0" width="400" height="400" fill="#1a472a" rx="20" />
@@ -330,71 +407,54 @@
 						<!-- Foul lines -->
 						<line x1="60" y1="200" x2="0" y2="140" stroke="rgba(255,255,255,0.15)" stroke-width="2" />
 						<line x1="340" y1="200" x2="400" y2="140" stroke="rgba(255,255,255,0.15)" stroke-width="2" />
+
+						<!-- === Scoreboard on Field === -->
+
+						<!-- Away Score (top left) -->
+						<text x="25" y="35" fill="white" font-size="28" font-weight="bold" text-anchor="start">{awayScore}</text>
+						<text x="25" y="50" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="start" font-weight="500">AWAY</text>
+
+						<!-- Home Score (top right) -->
+						<text x="375" y="35" fill="white" font-size="28" font-weight="bold" text-anchor="end">{homeScore}</text>
+						<text x="375" y="50" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="end" font-weight="500">HOME</text>
+
+						<!-- Pitcher Name (above mound) -->
+						<text x="200" y="165" fill="white" font-size="13" text-anchor="middle" font-weight="500">{currentPitcher}</text>
+
+						<!-- Batter Name (below home plate) -->
+						<text x="200" y="235" fill="white" font-size="13" text-anchor="middle" font-weight="500">{currentBatter}</text>
+
+						<!-- Inning (bottom left) -->
+						<text x="25" y="375" fill="white" font-size="18" font-weight="bold" text-anchor="start">{isTopInning ? '▲' : '▼'} {inning}</text>
+						<text x="25" y="388" fill="rgba(255,255,255,0.6)" font-size="10" text-anchor="start" font-weight="500">INNING</text>
+
+						<!-- Outs (bottom right) - using dot display -->
+						<g transform="translate(348, 368)">
+							<text x="27" y="-5" fill="rgba(255,255,255,0.6)" font-size="10" text-anchor="middle" font-weight="600">OUTS</text>
+							{#each [0,1,2] as i}
+								<circle cx="{i * 18}" cy="8" r="6" fill={i < outs ? '#f59e0b' : 'rgba(255,255,255,0.2)'} />
+							{/each}
+						</g>
 					</svg>
-
-					<!-- Count Overlay -->
-					<div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6">
-						<!-- Balls -->
-						<div class="flex items-center gap-2">
-							<span class="text-xs text-slate-300 uppercase tracking-wider font-medium">Balls</span>
-							<div class="flex gap-2">
-								{#each [0,1,2] as i}
-									<div class="w-4 h-4 rounded-full {i < balls
-										? 'bg-emerald-500 shadow-lg shadow-emerald-500/50'
-										: 'bg-slate-700 border-2 border-slate-500'}"></div>
-								{/each}
-							</div>
-						</div>
-
-						<!-- Strikes -->
-						<div class="flex items-center gap-2">
-							<span class="text-xs text-slate-300 uppercase tracking-wider font-medium">Strikes</span>
-							<div class="flex gap-2">
-								{#each [0,1] as i}
-									<div class="w-4 h-4 rounded-full {i < strikes
-										? 'bg-red-500 shadow-lg shadow-red-500/50'
-										: 'bg-slate-700 border-2 border-slate-500'}"></div>
-								{/each}
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<!-- Current Matchup -->
-			<div class="flex-shrink-0">
-				<div class="bg-slate-950/50 rounded-xl p-4 backdrop-blur-sm border border-slate-700/30">
-					<div class="text-xs text-slate-400 uppercase tracking-wider mb-3">Current Matchup</div>
-					<div class="flex items-center justify-between">
-						<div class="flex-1">
-							<div class="text-xs text-slate-500 mb-1">Batter</div>
-							<div class="font-medium text-lg">{currentBatter}</div>
-						</div>
-						<div class="text-2xl text-slate-600 mx-4">vs</div>
-						<div class="flex-1 text-right">
-							<div class="text-xs text-slate-500 mb-1">Pitcher</div>
-							<div class="font-medium text-lg">{currentPitcher}</div>
-						</div>
-					</div>
 				</div>
 			</div>
 
 			<!-- Lineups -->
-			<div class="flex-shrink-0 grid grid-cols-2 gap-4">
+			<div class="flex-shrink-0 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
 				<!-- Away Lineup -->
-				<div class="bg-slate-950/50 rounded-xl p-4 backdrop-blur-sm border border-slate-700/30">
-					<div class="text-xs text-slate-400 uppercase tracking-wider mb-3">Away Lineup</div>
+				<div class="bg-slate-950/50 rounded-xl p-3 sm:p-4 backdrop-blur-sm border border-slate-700/30">
+					<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3">Away Lineup</div>
 					<div class="space-y-1">
 						{#each awayLineupDisplay as player, i}
 							<div class="flex items-center gap-2 py-1 px-2 rounded {player.isCurrent
 								? 'bg-blue-600/30 border border-blue-500/50'
 								: ''}">
-								<span class="text-xs w-4 text-slate-500">{i + 1}</span>
-								<span class="text-sm {player.isCurrent
+								<span class="text-[10px] sm:text-xs w-4 text-slate-500">{i + 1}</span>
+								<span class="text-xs sm:text-sm {player.isCurrent
 									? 'text-white font-medium'
-									: 'text-slate-300'}">{player.name}</span>
+									: 'text-slate-300'} truncate">{player.name}</span>
 								{#if player.isCurrent}
-									<span class="ml-auto text-xs text-blue-400"> batting</span>
+									<span class="ml-auto text-[10px] sm:text-xs text-blue-400 hidden sm:inline"> batting</span>
 								{/if}
 							</div>
 						{/each}
@@ -402,19 +462,19 @@
 				</div>
 
 				<!-- Home Lineup -->
-				<div class="bg-slate-950/50 rounded-xl p-4 backdrop-blur-sm border border-slate-700/30">
-					<div class="text-xs text-slate-400 uppercase tracking-wider mb-3">Home Lineup</div>
+				<div class="bg-slate-950/50 rounded-xl p-3 sm:p-4 backdrop-blur-sm border border-slate-700/30">
+					<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3">Home Lineup</div>
 					<div class="space-y-1">
 						{#each homeLineupDisplay as player, i}
 							<div class="flex items-center gap-2 py-1 px-2 rounded {player.isCurrent
 								? 'bg-blue-600/30 border border-blue-500/50'
 								: ''}">
-								<span class="text-xs w-4 text-slate-500">{i + 1}</span>
-								<span class="text-sm {player.isCurrent
+								<span class="text-[10px] sm:text-xs w-4 text-slate-500">{i + 1}</span>
+								<span class="text-xs sm:text-sm {player.isCurrent
 									? 'text-white font-medium'
-									: 'text-slate-300'}">{player.name}</span>
+									: 'text-slate-300'} truncate">{player.name}</span>
 								{#if player.isCurrent}
-									<span class="ml-auto text-xs text-blue-400"> batting</span>
+									<span class="ml-auto text-[10px] sm:text-xs text-blue-400 hidden sm:inline"> batting</span>
 								{/if}
 							</div>
 						{/each}
@@ -424,78 +484,82 @@
 		</div>
 
 		<!-- Right Section: Play-by-Play + Controls -->
-		<div class="w-96 flex-shrink-0 flex flex-col p-6 gap-6 overflow-hidden bg-slate-950/30 border-l border-slate-700/30">
+		<div class="w-full lg:w-96 flex-shrink-0 flex flex-col p-3 sm:p-4 lg:p-6 gap-3 sm:gap-4 lg:gap-6 overflow-y-auto lg:overflow-hidden bg-slate-950/30 border-t lg:border-t-0 lg:border-l border-slate-700/30 max-h-[50vh] lg:max-h-none">
 			<!-- Play-by-Play Feed -->
 			<div class="flex-1 flex flex-col overflow-hidden">
-				<div class="text-xs text-slate-400 uppercase tracking-wider mb-3">Play-by-Play</div>
-				<div class="flex-1 overflow-y-auto space-y-2 pr-2">
-					{#each plays as play, index}
-						<div class="bg-slate-800/50 rounded-lg px-3 py-2 border border-slate-700/30">
-							<div class="flex items-start gap-2">
-								<span class="text-xs text-slate-500 mt-0.5">{plays.length - index}</span>
-								<p class="text-sm text-slate-300">{play}</p>
+				<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3">Play-by-Play</div>
+				<div class="flex-1 overflow-y-auto space-y-1.5 sm:space-y-2 pr-1 sm:pr-2" style="max-height: 200px; lg:max-height: none;">
+					{#each plays.slice(0, 10) as play, index}
+						<div class="bg-slate-800/50 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border border-slate-700/30">
+							<div class="flex items-start gap-1.5 sm:gap-2">
+								<span class="text-[10px] sm:text-xs text-slate-500 mt-0.5">{plays.length - index}</span>
+								<p class="text-xs sm:text-sm text-slate-300">{play}</p>
 							</div>
 						</div>
 					{:else}
-						<div class="text-sm text-slate-500 text-center py-8">Game starting...</div>
+						<div class="text-xs sm:text-sm text-slate-500 text-center py-4 sm:py-8">Game starting...</div>
 					{/each}
 				</div>
 			</div>
 
 			<!-- Controls -->
-			<div class="flex-shrink-0 space-y-3">
-				<div class="text-xs text-slate-400 uppercase tracking-wider">Controls</div>
+			<div class="flex-shrink-0 space-y-2 sm:space-y-3">
+				<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider">Controls</div>
 
 				<!-- Primary Buttons -->
 				<div class="grid grid-cols-2 gap-2">
 					<button
 						onclick={simulatePA}
-						class="px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+						class="px-3 py-2 sm:px-4 sm:py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-base"
 						disabled={!engine}
 					>
-						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
 						</svg>
-						Next PA
+						<span class="hidden sm:inline">Next PA</span>
+						<span class="sm:hidden">Next</span>
 					</button>
 					<button
 						onclick={toggleAutoPlay}
-						class="px-4 py-3 {autoPlay
+						class="px-3 py-2 sm:px-4 sm:py-3 {autoPlay
 							? 'bg-amber-600 hover:bg-amber-500'
-							: 'bg-emerald-600 hover:bg-emerald-500'} text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+							: 'bg-emerald-600 hover:bg-emerald-500'} text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-base"
 						disabled={!engine}
 					>
 						{#if autoPlay}
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							Pause
+							<span class="hidden sm:inline">Pause</span>
+							<span class="sm:hidden">||</span>
 						{:else}
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 							</svg>
-							Auto Play
+							<span class="hidden sm:inline">Auto</span>
+							<span class="sm:hidden">▶</span>
 						{/if}
 					</button>
 				</div>
 
 				<button
 					onclick={quickSim}
-					class="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+					class="w-full px-3 py-2 sm:px-4 sm:py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-base"
 					disabled={!engine}
 				>
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
 					</svg>
-					Quick Sim Full Game
+					<span class="hidden sm:inline">Quick Sim Full Game</span>
+					<span class="sm:hidden">Quick Sim</span>
 				</button>
 
 				<!-- Speed Control -->
-				<div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/30">
-					<div class="flex items-center justify-between mb-2">
-						<span class="text-xs text-slate-400">Sim Speed</span>
-						<span class="text-xs text-slate-500">{simSpeed}ms</span>
+				<div class="bg-slate-800/50 rounded-lg p-2 sm:p-3 border border-slate-700/30">
+					<div class="flex items-center justify-between mb-1.5 sm:mb-2">
+						<span class="text-[10px] sm:text-xs text-slate-400">Sim Speed</span>
+						<span class="text-[10px] sm:text-xs text-slate-500">{simSpeed}ms</span>
 					</div>
 					<input
 						type="range"
@@ -503,7 +567,7 @@
 						max="2000"
 						step="100"
 						bind:value={simSpeed}
-						class="w-full accent-blue-500"
+						class="w-full accent-blue-500 h-1.5 sm:h-2"
 					/>
 				</div>
 			</div>
@@ -512,27 +576,27 @@
 
 	<!-- Game Completion Overlay -->
 	{#if gameComplete}
-		<div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-			<div class="bg-slate-900 rounded-2xl p-8 max-w-lg w-full mx-4 border border-slate-700 shadow-2xl">
+		<div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+			<div class="bg-slate-900 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 max-w-lg w-full mx-0 sm:mx-4 border border-slate-700 shadow-2xl">
 				<div class="text-center">
-					<div class="text-4xl font-bold mb-2">🎉 GAME OVER</div>
-					<div class="text-slate-400 mb-6">1976 Season - Reds vs Astros</div>
+					<div class="text-2xl sm:text-3xl lg:text-4xl font-bold mb-1 sm:mb-2">🎉 GAME OVER</div>
+					<div class="text-xs sm:text-sm lg:text-base text-slate-400 mb-3 sm:mb-4 lg:mb-6">1976 Season - Reds vs Astros</div>
 
 					<!-- Final Score -->
-					<div class="flex items-center justify-center gap-8 mb-6">
+					<div class="flex items-center justify-center gap-4 sm:gap-6 lg:gap-8 mb-4 sm:mb-5 lg:mb-6">
 						<div class="text-center">
-							<div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Away</div>
-							<div class="text-5xl font-bold">{awayScore}</div>
+							<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-1">Away</div>
+							<div class="text-3xl sm:text-4xl lg:text-5xl font-bold">{awayScore}</div>
 						</div>
-						<div class="text-2xl text-slate-500">-</div>
+						<div class="text-xl sm:text-2xl text-slate-500">-</div>
 						<div class="text-center">
-							<div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Home</div>
-							<div class="text-5xl font-bold">{homeScore}</div>
+							<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-1">Home</div>
+							<div class="text-3xl sm:text-4xl lg:text-5xl font-bold">{homeScore}</div>
 						</div>
 					</div>
 
 					<!-- Winner Text -->
-					<div class="text-xl mb-6">
+					<div class="text-base sm:text-lg lg:text-xl mb-4 sm:mb-5 lg:mb-6">
 						{#if awayScore > homeScore}
 							<span class="text-slate-300">Away team wins by </span>
 							<span class="font-bold text-white">{awayScore - homeScore}</span>
@@ -547,23 +611,23 @@
 					<!-- Stats -->
 					{#if getGameStats()}
 						{@const stats = getGameStats()}
-						<div class="bg-slate-800/50 rounded-lg p-4 mb-6 text-left">
-							<div class="grid grid-cols-2 gap-4 text-sm">
+						<div class="bg-slate-800/50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-5 lg:mb-6 text-left">
+							<div class="grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4 text-xs sm:text-sm">
 								<div>
 									<div class="text-slate-400">Total Plays</div>
-									<div class="text-lg font-semibold">{stats.totalPlays}</div>
+									<div class="text-base sm:text-lg font-semibold">{stats.totalPlays}</div>
 								</div>
 								<div>
 									<div class="text-slate-400">Total Hits</div>
-									<div class="text-lg font-semibold">{stats.hits}</div>
+									<div class="text-base sm:text-lg font-semibold">{stats.hits}</div>
 								</div>
 								<div>
 									<div class="text-slate-400">Away</div>
-									<div class="text-lg font-semibold">{stats.awayHits} for {stats.awayAtBats} AB</div>
+									<div class="text-base sm:text-lg font-semibold">{stats.awayHits} for {stats.awayAtBats} AB</div>
 								</div>
 								<div>
 									<div class="text-slate-400">Home</div>
-									<div class="text-lg font-semibold">{stats.homeHits} for {stats.homeAtBats} AB</div>
+									<div class="text-base sm:text-lg font-semibold">{stats.homeHits} for {stats.homeAtBats} AB</div>
 								</div>
 							</div>
 						</div>
@@ -572,9 +636,9 @@
 					<!-- Play Again Button -->
 					<button
 						onclick={playAgain}
-						class="w-full px-6 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+						class="w-full px-4 py-3 sm:px-6 sm:py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
 					>
-						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 6m0 0H6m1.5 0h1.5m-7-1.5v.083a8.001 8.001 0 1114.915 0" />
 						</svg>
 						Play Again
@@ -583,4 +647,32 @@
 			</div>
 		</div>
 	{/if}
+
+	<!-- Toast Notification -->
+	{#if toast.visible}
+		<div class="fixed top-4 right-4 z-50 animate-slide-in">
+			<div class="bg-slate-800 text-white px-4 py-3 rounded-lg shadow-lg border border-slate-700 flex items-center gap-2">
+				<svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+				</svg>
+				<span class="text-sm font-medium">{toast.message}</span>
+			</div>
+		</div>
+	{/if}
 </div>
+
+<style>
+	@keyframes slide-in {
+		from {
+			transform: translateX(100%);
+			opacity: 0;
+		}
+		to {
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+	.animate-slide-in {
+		animation: slide-in 0.3s ease-out;
+	}
+</style>
