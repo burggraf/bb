@@ -254,20 +254,24 @@
 					<div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6">
 						<!-- Balls -->
 						<div class="flex items-center gap-2">
-							<span class="text-xs text-slate-400 uppercase tracking-wider">Balls</span>
-							<div class="flex gap-1">
+							<span class="text-xs text-slate-300 uppercase tracking-wider font-medium">Balls</span>
+							<div class="flex gap-2">
 								{#each [0,1,2] as i}
-									<div class="w-3 h-3 rounded-full {i < balls ? 'bg-emerald-500' : 'bg-slate-700'}"></div>
+									<div class="w-4 h-4 rounded-full {i < balls
+										? 'bg-emerald-500 shadow-lg shadow-emerald-500/50'
+										: 'bg-slate-700 border-2 border-slate-500'}"></div>
 								{/each}
 							</div>
 						</div>
 
 						<!-- Strikes -->
 						<div class="flex items-center gap-2">
-							<span class="text-xs text-slate-400 uppercase tracking-wider">Strikes</span>
-							<div class="flex gap-1">
+							<span class="text-xs text-slate-300 uppercase tracking-wider font-medium">Strikes</span>
+							<div class="flex gap-2">
 								{#each [0,1] as i}
-									<div class="w-3 h-3 rounded-full {i < strikes ? 'bg-red-500' : 'bg-slate-700'}"></div>
+									<div class="w-4 h-4 rounded-full {i < strikes
+										? 'bg-red-500 shadow-lg shadow-red-500/50'
+										: 'bg-slate-700 border-2 border-slate-500'}"></div>
 								{/each}
 							</div>
 						</div>
