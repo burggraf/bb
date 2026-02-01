@@ -105,8 +105,6 @@ export interface GameState {
 	bases: [string | null, string | null, string | null]; // 1B, 2B, 3B runner IDs
 	awayLineup: LineupState;
 	homeLineup: LineupState;
-	balls: number;
-	strikes: number;
 	plays: PlayEvent[];
 }
 

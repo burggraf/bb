@@ -174,8 +174,6 @@ export class GameEngine {
 			bases: [null, null, null],
 			awayLineup: generateLineup(season.batters, awayTeam),
 			homeLineup: generateLineup(season.batters, homeTeam),
-			balls: 0,
-			strikes: 0,
 			plays: [],
 		};
 	}
@@ -325,7 +323,13 @@ export class GameEngine {
 	static restore(serializedState: string, season: SeasonPackage): GameEngine {
 		const state = JSON.parse(serializedState) as GameState;
 		const engine = new GameEngine(season, state.meta.awayTeam, state.meta.homeTeam);
-		engine.state = state;
+		// Restore game state but regenerate lineups from season data
+		// This ensures lineups use correct team filtering even after data updates
+		engine.state = {
+			...state,
+			awayLineup: generateLineup(season.batters, state.meta.awayTeam),
+			homeLineup: generateLineup(season.batters, state.meta.homeTeam),
+		};
 		return engine;
 	}
 }
