@@ -474,11 +474,13 @@ export class GameEngine {
 		if (outcome === 'fieldersChoice' && smOutRunnerId) {
 			// Use the out runner ID from the state machine
 			outRunnerName = this.season.batters[smOutRunnerId]?.name;
-			// Find which base the runner was on by checking runnersBefore
+			// Find which base the runner was on, then report the NEXT base (where they're out)
+			// Runner on 1B → out at 2B, runner on 2B → out at 3B, runner on 3B → out at home
 			const baseNames = ['1B', '2B', '3B'] as const;
+			const outBaseNames = ['2B', '3B', 'home'];
 			for (let i = 0; i < 3; i++) {
 				if (runnersBefore[i] === smOutRunnerId) {
-					outBase = baseNames[i];
+					outBase = outBaseNames[i];
 					break;
 				}
 			}
