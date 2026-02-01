@@ -25,7 +25,7 @@ describe('State Machine Transitions', () => {
 			['r1', null, 'r3'], // 5: 1B&3B
 			[null, 'r2', 'r3'], // 6: 2B&3B
 			['r1', 'r2', 'r3'], // 7: loaded
-		] as const;
+		] as [string | null, string | null, string | null][];
 
 		describe.each(outsTests.flatMap((o) =>
 			baseConfigTests.map((b) => ({ outs: o, bases: b }))
@@ -91,7 +91,7 @@ describe('State Machine Transitions', () => {
 			['r1', null, 'r3'], // 1B&3B
 			[null, 'r2', 'r3'], // 2B&3B
 			['r1', 'r2', 'r3'], // loaded
-		] as const;
+		] as [string | null, string | null, string | null][];
 
 		describe.each(baseConfigTests.map((b) => ({ bases: b })))('walk with bases: $bases', ({ bases }) => {
 			it('handles walk correctly', () => {

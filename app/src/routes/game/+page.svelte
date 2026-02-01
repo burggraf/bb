@@ -118,20 +118,21 @@
 		return null;
 	}
 
-	onMount(async () => {
-		// Load preferences first
-		const prefs = loadPrefs();
-		simSpeed = prefs.simSpeed;
+	onMount(() => {
+		(async () => {
+			// Load preferences first
+			const prefs = loadPrefs();
+			simSpeed = prefs.simSpeed;
 
-		try {
-			season = await loadSeason(1976);
+			try {
+				season = await loadSeason(1976);
 
-			// Try to restore from saved state
-			const savedState = await loadGameState();
-			if (savedState) {
-				// Restore the game engine from saved state
-				engine = GameEngine.restore(savedState, season);
-				showToast('Game restored!');
+				// Try to restore from saved state
+				const savedState = await loadGameState();
+				if (savedState) {
+					// Restore the game engine from saved state
+					engine = GameEngine.restore(savedState, season);
+					showToast('Game restored!');
 			} else {
 				// Start a new game
 				engine = new GameEngine(season, 'CIN', 'HOU');
@@ -165,6 +166,7 @@
 			currentBatter = 'Error: ' + (error as Error).message;
 			currentPitcher = 'See console for details';
 		}
+		})();
 	});
 
 	// Auto-save game state whenever the engine state changes
@@ -770,7 +772,7 @@
 
 					<!-- Stats -->
 					{#if getGameStats()}
-						{@const stats = getGameStats()}
+						{@const stats = getGameStats()!}
 						<div class="bg-slate-800/50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-5 lg:mb-6 text-left">
 							<div class="grid grid-cols-2 gap-2 sm:gap-3 lg:gap-4 text-xs sm:text-sm">
 								<div>
@@ -828,6 +830,7 @@
 					<button
 						onclick={() => showPlayByPlay = false}
 						class="text-slate-400 hover:text-white transition-colors p-1 hover:bg-slate-800 rounded"
+						aria-label="Close play-by-play modal"
 					>
 						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
