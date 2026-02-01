@@ -550,9 +550,13 @@ export class GameEngine {
 			}
 		}
 
+		// Bottom of 9th or later: if home team is trailing or tied, game ends
+		// (They already had their chance in the top half and couldn't tie/win)
+		if (this.state.inning >= 9 && !this.state.isTopInning && homeScore <= awayScore) {
+			return true;
+		}
+
 		// Walk-off win: home team takes lead in bottom of 9th or later
-		// This also handles the case where home team is already leading after top of 9th
-		// (They don't need to bat in bottom 9th if they're already ahead)
 		if (this.state.inning >= 9 && !this.state.isTopInning && homeScore > awayScore) {
 			return true;
 		}
