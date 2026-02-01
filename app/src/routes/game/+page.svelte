@@ -366,12 +366,12 @@
 			}
 		}
 
-		// Add runners on base (excluding those who scored)
+		// Add runners on base (excluding those who scored and the current batter)
 		// Iterate in reverse order (3rd, 2nd, 1st) for highest base first
 		for (let i = 2; i >= 0; i--) {
 			const runnerId = play.runnersAfter[i];
-			// Skip if this runner scored
-			if (!runnerId || play.scorerIds?.includes(runnerId)) {
+			// Skip if this runner scored or is the current play's batter
+			if (!runnerId || play.scorerIds?.includes(runnerId) || runnerId === play.batterId) {
 				continue;
 			}
 			if (season?.batters[runnerId]) {
@@ -426,17 +426,31 @@
 		return `${name.slice(commaIndex + 1).trim()} ${name.slice(0, commaIndex).trim()}`;
 	}
 
-	// Calculate running score at a specific play index (from newest to oldest)
-	function getScoreAtPlay(playIndex: number, totalPlays: PlayEvent[]): { away: number; home: number } {
+	// Calculate running score at a specific play index
+	// If isReversed=true: assumes plays are in reverse order (newest first), calculates score from playIndex to end
+	// If isReversed=false: assumes plays are in chronological order (oldest first), calculates score from start to playIndex
+	function getScoreAtPlay(playIndex: number, totalPlays: PlayEvent[], isReversed = true): { away: number; home: number } {
 		let away = 0;
 		let home = 0;
-		// Plays are stored with newest first (unshift), so we iterate from playIndex to end
-		for (let i = playIndex; i < totalPlays.length; i++) {
-			const play = totalPlays[i];
-			if (play.isTopInning) {
-				away += play.runsScored;
-			} else {
-				home += play.runsScored;
+		if (isReversed) {
+			// Plays are in reverse order (newest first), iterate from playIndex to end
+			for (let i = playIndex; i < totalPlays.length; i++) {
+				const play = totalPlays[i];
+				if (play.isTopInning) {
+					away += play.runsScored;
+				} else {
+					home += play.runsScored;
+				}
+			}
+		} else {
+			// Plays are in chronological order (oldest first), iterate from start to playIndex
+			for (let i = 0; i <= playIndex; i++) {
+				const play = totalPlays[i];
+				if (play.isTopInning) {
+					away += play.runsScored;
+				} else {
+					home += play.runsScored;
+				}
 			}
 		}
 		return { away, home };
@@ -827,7 +841,7 @@
 							{@const reversedPlays = plays.slice().reverse()}
 							{@const playNumber = reversedPlays.slice(0, index).filter(p => !p.isSummary).length + 1}
 							{@const runnerInfo = formatRunnerInfo(play)}
-							{@const scoreAtPlay = getScoreAtPlay(reversedPlays.length - 1 - index, reversedPlays)}
+							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, false)}
 							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-3 sm:px-4 py-2 sm:py-3 border {play.isSummary
 								? 'bg-amber-900/30 border-amber-700/40'
