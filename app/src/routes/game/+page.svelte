@@ -1,9 +1,11 @@
 <script lang="ts">
-	import type { PageData } from './$types';
+	import { onMount } from 'svelte';
+	import { MatchupModel } from '@bb/model';
+	import { loadSeason } from '$lib/game/season-loader.js';
+	import { GameEngine } from '$lib/game/engine.js';
+	import type { GameState, PlayEvent } from '$lib/game/types.js';
 
-	export let data: PageData;
-
-	// TODO: Load from season data based on query params
+	// Game state
 	let awayScore = $state(0);
 	let homeScore = $state(0);
 	let inning = $state(1);
@@ -15,77 +17,114 @@
 	let runners = $state([false, false, false]); // 1B, 2B, 3B
 	let plays = $state<string[]>([]);
 
+	// Current matchup display
+	let currentBatter = $state('Loading...');
+	let currentPitcher = $state('Loading...');
+
+	// Auto-play state
 	let autoPlay = $state(false);
 	let simSpeed = $state(1000);
+	let autoPlayInterval: ReturnType<typeof setInterval> | null = null;
+
+	// Engine
+	let engine: GameEngine | null = null;
+
+	onMount(async () => {
+		try {
+			const season = await loadSeason(1976);
+			engine = new GameEngine(season, 'CIN', 'HOU'); // Reds vs Astros
+			updateFromEngine();
+		} catch (error) {
+			console.error('Failed to load season:', error);
+			currentBatter = 'Error loading data';
+		}
+	});
+
+	function updateFromEngine() {
+		if (!engine) return;
+
+		const state = engine.getState();
+
+		// Update score from plays
+		let away = 0;
+		let home = 0;
+		for (const play of state.plays) {
+			if (play.isTopInning) {
+				away += play.runsScored;
+			} else {
+				home += play.runsScored;
+			}
+		}
+		awayScore = away;
+		homeScore = home;
+
+		inning = state.inning;
+		isTopInning = state.isTopInning;
+		outs = state.outs;
+		balls = state.balls;
+		strikes = state.strikes;
+
+		// Update runners (visual)
+		runners = [
+			state.bases[0] !== null,
+			state.bases[1] !== null,
+			state.bases[2] !== null,
+		];
+
+		// Update play-by-play feed
+		plays = state.plays.map((p) => p.description);
+
+		// Update current matchup (from last play or predict next)
+		if (state.plays.length > 0) {
+			const lastPlay = state.plays[0];
+			currentBatter = lastPlay.batterName;
+			currentPitcher = lastPlay.pitcherName;
+		}
+	}
 
 	function simulatePA() {
-		// TODO: Use actual MatchupModel
-		const outcomes = ['out', 'single', 'double', 'triple', 'homeRun', 'walk', 'hitByPitch'];
-		const outcome = outcomes[Math.floor(Math.random() * outcomes.length)];
+		if (!engine) return;
 
-		let playText = '';
-		switch (outcome) {
-			case 'out':
-				outs = Math.min(outs + 1, 3);
-				playText = `Out recorded (${outs}/3)`;
-				break;
-			case 'single':
-				playText = 'Single!';
-				break;
-			case 'double':
-				playText = 'Double!';
-				break;
-			case 'triple':
-				playText = 'Triple!';
-				break;
-			case 'homeRun':
-				awayScore += isTopInning ? 1 : 0;
-				homeScore += !isTopInning ? 1 : 0;
-				playText = 'Home Run!';
-				break;
-			case 'walk':
-				playText = 'Walk';
-				break;
-			case 'hitByPitch':
-				playText = 'Hit by pitch';
-				break;
-		}
+		const play = engine.simulatePlateAppearance();
+		updateFromEngine();
 
-		plays = [playText, ...plays];
-		balls = 0;
-		strikes = 0;
-
-		// Inning logic
-		if (outs >= 3) {
-			outs = 0;
-			runners = [false, false, false];
-			if (isTopInning) {
-				isTopInning = false;
-			} else {
-				isTopInning = true;
-				inning++;
-			}
+		if (engine.isComplete()) {
+			stopAutoPlay();
 		}
 	}
 
 	function toggleAutoPlay() {
 		autoPlay = !autoPlay;
 		if (autoPlay) {
-			const interval = setInterval(() => {
-				if (!autoPlay) {
-					clearInterval(interval);
+			autoPlayInterval = setInterval(() => {
+				if (!engine || engine.isComplete()) {
+					stopAutoPlay();
 					return;
 				}
 				simulatePA();
 			}, simSpeed);
+		} else {
+			stopAutoPlay();
+		}
+	}
+
+	function stopAutoPlay() {
+		autoPlay = false;
+		if (autoPlayInterval) {
+			clearInterval(autoPlayInterval);
+			autoPlayInterval = null;
 		}
 	}
 
 	function quickSim() {
-		// TODO: Simulate full game
-		for (let i = 0; i < 50; i++) {
-			setTimeout(() => simulatePA(), i * 50);
+		stopAutoPlay();
+		if (!engine) return;
+
+		// Simulate remaining game quickly
+		while (!engine.isComplete()) {
+			engine.simulatePlateAppearance();
 		}
+		updateFromEngine();
 	}
 </script>
 
@@ -155,13 +194,19 @@
 						<rect x="95" y="95" width="10" height="10" fill="white" />
 
 						<!-- First base -->
-						<rect x="175" y="95" width="10" height="10" fill={runners[0] ? 'yellow' : 'white'} />
+						<rect
+							x="175"
+							y="95"
+							width="10"
+							height="10"
+							fill={runners[0] ? '#facc15' : 'white'}
+						/>
 
 						<!-- Second base -->
-						<rect x="95" y="15" width="10" height="10" fill={runners[1] ? 'yellow' : 'white'} />
+						<rect x="95" y="15" width="10" height="10" fill={runners[1] ? '#facc15' : 'white'} />
 
 						<!-- Third base -->
-						<rect x="15" y="95" width="10" height="10" fill={runners[2] ? 'yellow' : 'white'} />
+						<rect x="15" y="95" width="10" height="10" fill={runners[2] ? '#facc15' : 'white'} />
 
 						<!-- Pitcher's mound -->
 						<circle cx="100" cy="100" r="5" fill="#8B4513" />
@@ -188,7 +233,8 @@
 					<div class="space-y-3">
 						<button
 							onclick={simulatePA}
-							class="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+							class="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+							disabled={!engine}
 						>
 							Next Plate Appearance
 						</button>
@@ -197,12 +243,14 @@
 							class="w-full px-4 py-2 {autoPlay
 								? 'bg-red-600 hover:bg-red-700'
 								: 'bg-green-600 hover:bg-green-700'} text-white rounded"
+							disabled={!engine}
 						>
 							{autoPlay ? 'Pause' : 'Auto Play'}
 						</button>
 						<button
 							onclick={quickSim}
-							class="w-full px-4 py-2 bg-zinc-700 text-white rounded hover:bg-zinc-600"
+							class="w-full px-4 py-2 bg-zinc-700 text-white rounded hover:bg-zinc-600 disabled:opacity-50"
+							disabled={!engine}
 						>
 							Quick Sim (Full Game)
 						</button>
@@ -228,23 +276,21 @@
 					<div class="space-y-2 text-sm">
 						<div>
 							<p class="text-zinc-400">Batter:</p>
-							<p class="font-medium">Player Name (R)</p>
+							<p class="font-medium truncate">{currentBatter}</p>
 						</div>
 						<div>
 							<p class="text-zinc-400">Pitcher:</p>
-							<p class="font-medium">Player Name (R)</p>
+							<p class="font-medium truncate">{currentPitcher}</p>
 						</div>
 					</div>
-					<p class="text-xs text-zinc-500 mt-2 italic">
-						Real player stats coming soon
-					</p>
 				</div>
 
 				<!-- Game Info -->
 				<div class="bg-zinc-900 rounded-lg p-4">
 					<h3 class="text-lg font-semibold mb-2">Game Info</h3>
 					<p class="text-sm text-zinc-400">1976 Season</p>
-					<p class="text-sm text-zinc-400">Historical Lineups</p>
+					<p class="text-sm text-zinc-400">Real Player Stats</p>
+					<p class="text-sm text-zinc-400">Matchup Model Powered</p>
 				</div>
 			</div>
 		</div>
