@@ -416,6 +416,7 @@ SELECT
   fly_outs::FLOAT / pa as fly_out_rate,
   line_outs::FLOAT / pa as line_out_rate,
   pop_outs::FLOAT / pa as pop_out_rate,
+  unknown_outs::FLOAT / pa as unknown_out_rate,
   -- Sacrifice rates
   sacrifice_flies::FLOAT / pa as sacrifice_fly_rate,
   sacrifice_bunts::FLOAT / pa as sacrifice_bunt_rate,
@@ -712,6 +713,16 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   };
 
   for (const row of leagueRaw) {
+    // Apply trajectory imputation to league averages
+    const unknownRate = parseNumber(row.unknown_out_rate || 0);
+    const imputed = imputeUnknownOuts(
+      parseNumber(row.ground_out_rate),
+      parseNumber(row.fly_out_rate),
+      parseNumber(row.line_out_rate),
+      parseNumber(row.pop_out_rate),
+      unknownRate
+    );
+
     if (row.pitcher_throws === 'L') {
       league.vsLHP = {
         single: Math.round(parseNumber(row.single_rate) * 10000) / 10000,
@@ -721,10 +732,10 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
         walk: Math.round(parseNumber(row.walk_rate) * 10000) / 10000,
         hitByPitch: Math.round(parseNumber(row.hbp_rate) * 10000) / 10000,
         strikeout: Math.round(parseNumber(row.strikeout_rate) * 10000) / 10000,
-        groundOut: Math.round(parseNumber(row.ground_out_rate) * 10000) / 10000,
-        flyOut: Math.round(parseNumber(row.fly_out_rate) * 10000) / 10000,
-        lineOut: Math.round(parseNumber(row.line_out_rate) * 10000) / 10000,
-        popOut: Math.round(parseNumber(row.pop_out_rate) * 10000) / 10000,
+        groundOut: Math.round(imputed.groundOut * 10000) / 10000,
+        flyOut: Math.round(imputed.flyOut * 10000) / 10000,
+        lineOut: Math.round(imputed.lineOut * 10000) / 10000,
+        popOut: Math.round(imputed.popOut * 10000) / 10000,
         sacrificeFly: Math.round(parseNumber(row.sacrifice_fly_rate) * 10000) / 10000,
         sacrificeBunt: Math.round(parseNumber(row.sacrifice_bunt_rate) * 10000) / 10000,
         fieldersChoice: Math.round(parseNumber(row.fielders_choice_rate) * 10000) / 10000,
@@ -740,10 +751,10 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
         walk: Math.round(parseNumber(row.walk_rate) * 10000) / 10000,
         hitByPitch: Math.round(parseNumber(row.hbp_rate) * 10000) / 10000,
         strikeout: Math.round(parseNumber(row.strikeout_rate) * 10000) / 10000,
-        groundOut: Math.round(parseNumber(row.ground_out_rate) * 10000) / 10000,
-        flyOut: Math.round(parseNumber(row.fly_out_rate) * 10000) / 10000,
-        lineOut: Math.round(parseNumber(row.line_out_rate) * 10000) / 10000,
-        popOut: Math.round(parseNumber(row.pop_out_rate) * 10000) / 10000,
+        groundOut: Math.round(imputed.groundOut * 10000) / 10000,
+        flyOut: Math.round(imputed.flyOut * 10000) / 10000,
+        lineOut: Math.round(imputed.lineOut * 10000) / 10000,
+        popOut: Math.round(imputed.popOut * 10000) / 10000,
         sacrificeFly: Math.round(parseNumber(row.sacrifice_fly_rate) * 10000) / 10000,
         sacrificeBunt: Math.round(parseNumber(row.sacrifice_bunt_rate) * 10000) / 10000,
         fieldersChoice: Math.round(parseNumber(row.fielders_choice_rate) * 10000) / 10000,
