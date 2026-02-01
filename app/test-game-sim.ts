@@ -83,6 +83,20 @@ class GameValidator {
 		const warnings: string[] = [];
 		const outcomes: Record<string, number> = {};
 
+		// Calculate final game scores upfront (before iterating through plays)
+		// This is needed for walk-off detection, since summaries appear before their plays in the array
+		let finalAwayScore = 0;
+		let finalHomeScore = 0;
+		for (const play of state.plays) {
+			if (!play.isSummary) {
+				if (play.isTopInning) {
+					finalAwayScore += play.runsScored;
+				} else {
+					finalHomeScore += play.runsScored;
+				}
+			}
+		}
+
 		// Track state for validation
 		let awayScore = 0;
 		let homeScore = 0;
@@ -122,7 +136,7 @@ class GameValidator {
 			}
 
 			// === HALF-INNING TRACKING ===
-			const isOutEvent = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly'].includes(play.outcome);
+			const isOutEvent = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly', 'sacrificeBunt'].includes(play.outcome);
 
 			// Handle summaries first - they mark the end of a half-inning
 			if (play.isSummary) {
@@ -132,7 +146,7 @@ class GameValidator {
 				for (let j = 0; j < plays.length; j++) {
 					const otherPlay = plays[j];
 					if (!otherPlay.isSummary && otherPlay.inning === play.inning && otherPlay.isTopInning === play.isTopInning) {
-						const otherIsOut = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly'].includes(otherPlay.outcome);
+						const otherIsOut = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly', 'sacrificeBunt'].includes(otherPlay.outcome);
 						if (otherIsOut) {
 							outsInThisHalfInning++;
 						}
@@ -141,9 +155,10 @@ class GameValidator {
 
 				// Check if this is a walk-off win (home team took lead in bottom of 9th or later)
 				// For walk-off wins, fewer than 3 outs is acceptable
+				// NOTE: Use final scores, not incremental, because summaries appear before their plays
 				const isBottomInning = !play.isTopInning;
 				const isLateInning = play.inning >= 9;
-				const homeTeamWon = homeScore > awayScore;
+				const homeTeamWon = finalHomeScore > finalAwayScore;
 				const isWalkOff = isBottomInning && isLateInning && homeTeamWon;
 
 				if (outsInThisHalfInning !== 3 && !isWalkOff) {
@@ -270,7 +285,7 @@ class GameValidator {
 			// But it should still have 3 outs (unless home team won in bottom 9th)
 			const isWalkOff = !currentHalfInning.isTop &&
 				currentHalfInning.inning >= 9 &&
-				homeScore > awayScore;
+				finalHomeScore > finalAwayScore;
 
 			if (!isWalkOff && currentHalfInning.outs !== 3) {
 				errors.push(`Final half-inning (${currentHalfInning.isTop ? 'top' : 'bottom'} ${currentHalfInning.inning}) ended with ${currentHalfInning.outs} outs (expected 3)`);
@@ -295,15 +310,15 @@ class GameValidator {
 		// - Fewer than 9 full innings played AND NOT a walk-off win
 		// Walk-off win: home team won in bottom of 9th or later
 		const hasFull9Innings = fullInningsPlayed >= 9;
-		const homeWonWalkOff = !isTopOfNext && actualInning >= 9 && homeScore > awayScore;
+		const homeWonWalkOff = !isTopOfNext && actualInning >= 9 && finalHomeScore > finalAwayScore;
 
 		if (!hasFull9Innings && !homeWonWalkOff) {
-			errors.push(`Game ended after only ${fullInningsPlayed} full innings (state: inning=${actualInning}, isTop=${isTopOfNext}, home=${homeScore}, away=${awayScore}), expected at least 9`);
+			errors.push(`Game ended after only ${fullInningsPlayed} full innings (state: inning=${actualInning}, isTop=${isTopOfNext}, home=${finalHomeScore}, away=${finalAwayScore}), expected at least 9`);
 		}
 
 		// Check game ended properly
-		if (awayScore === homeScore && fullInningsPlayed < 9) {
-			errors.push(`Game ended in tie before 9th inning: ${awayScore}-${homeScore}`);
+		if (finalAwayScore === finalHomeScore && fullInningsPlayed < 9) {
+			errors.push(`Game ended in tie before 9th inning: ${finalAwayScore}-${finalHomeScore}`);
 		}
 
 		// Validate each half-inning had exactly 3 outs
