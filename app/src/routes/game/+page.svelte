@@ -209,7 +209,8 @@
 			state.bases[2] !== null,
 		];
 
-		plays = state.plays;
+		// Force reactivity by creating new array reference
+		plays = [...state.plays];
 
 		if (state.plays.length > 0) {
 			const lastPlay = state.plays[0];
@@ -277,8 +278,8 @@
 		if (!engine) return;
 		while (!engine.isComplete()) {
 			engine.simulatePlateAppearance();
+			updateFromEngine();
 		}
-		updateFromEngine();
 		gameComplete = true;
 	}
 
@@ -625,8 +626,9 @@
 				<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3">Play-by-Play</div>
 				{#if plays.length > 0}
 					<div class="flex-1 overflow-y-auto space-y-1.5 sm:space-y-2 pr-1 sm:pr-2" style="max-height: 200px; lg:max-height: none;">
-						{#each plays.slice(0, 10) as play, index}
-							{@const playNumber = plays.slice(0, index).filter(p => !p.isSummary).length + 1}
+						{#each plays.slice().reverse() as play, index}
+							{@const reversedPlays = plays.slice().reverse()}
+							{@const playNumber = reversedPlays.slice(0, index).filter(p => !p.isSummary).length + 1}
 							{@const runnerInfo = formatRunnerInfo(play)}
 							{@const scoreAtPlay = getScoreAtPlay(index, plays)}
 							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}

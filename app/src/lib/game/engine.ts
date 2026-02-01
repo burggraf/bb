@@ -393,6 +393,48 @@ export class GameEngine {
 		// We need to check what the outs WOULD be, not what they currently are
 		const wouldBeThirdOut = newOuts >= 3;
 
+		// Capture current inning state BEFORE any changes
+		// This ensures the play is recorded with the correct inning information
+		const playInning = state.inning;
+		const playIsTop = state.isTopInning;
+
+		let outRunnerName: string | undefined;
+		let outBase: string | undefined;
+		if (outcome === 'fieldersChoice') {
+			// Find which runner was removed (comparing runnersBefore to newBases)
+			// Check from furthest base to nearest (3B -> 2B -> 1B)
+			const bases = ['third', 'second', 'first'] as const;
+			const baseNames = ['3B', '2B', '1B'] as const;
+			for (let i = 0; i < 3; i++) {
+				if (runnersBefore[i] && !newBases[i]) {
+					// Runner was here before, now gone - they're the out
+					outRunnerName = this.season.batters[runnersBefore[i]!]?.name;
+					outBase = baseNames[i];
+					break;
+				}
+			}
+		}
+
+		// Create play event with CURRENT state (before inning changes)
+		const play: PlayEvent = {
+			inning: playInning,
+			isTopInning: playIsTop,
+			outcome,
+			batterId,
+			batterName: formatName(batter.name),
+			pitcherId: pitcher.id,
+			pitcherName: formatName(pitcher.name),
+			description: describePlay(outcome, batter.name, pitcher.name, runs, outRunnerName, outBase),
+			runsScored: runs,
+			runnersAfter: newBases,
+			scorerIds,
+			runnersBefore,
+		};
+
+		// Add the play BEFORE the summary when it's an inning-ending play
+		// This ensures the summary appears after the 3rd out in reverse chronological display
+		state.plays.unshift(play);
+
 		// Update state bases and outs
 		state.bases = newBases;
 		state.outs = newOuts;
@@ -416,42 +458,6 @@ export class GameEngine {
 
 		// Safety cap to prevent runaway outs (shouldn't happen with correct logic)
 		state.outs = Math.min(state.outs, 2) as 0 | 1 | 2;
-		let outRunnerName: string | undefined;
-		let outBase: string | undefined;
-		if (outcome === 'fieldersChoice') {
-			// Find which runner was removed (comparing runnersBefore to newBases)
-			// Check from furthest base to nearest (3B -> 2B -> 1B)
-			const bases = ['third', 'second', 'first'] as const;
-			const baseNames = ['3B', '2B', '1B'] as const;
-			for (let i = 0; i < 3; i++) {
-				if (runnersBefore[i] && !newBases[i]) {
-					// Runner was here before, now gone - they're the out
-					outRunnerName = this.season.batters[runnersBefore[i]!]?.name;
-					outBase = baseNames[i];
-					break;
-				}
-			}
-		}
-
-		// Create play event (store formatted names)
-		// Use current state (after any inning changes)
-		const play: PlayEvent = {
-			inning: state.inning,
-			isTopInning: state.isTopInning,
-			outcome,
-			batterId,
-			batterName: formatName(batter.name),
-			pitcherId: pitcher.id,
-			pitcherName: formatName(pitcher.name),
-			description: describePlay(outcome, batter.name, pitcher.name, runs, outRunnerName, outBase),
-			runsScored: runs,
-			runnersAfter: [...state.bases],
-			scorerIds,
-			runnersBefore,
-		};
-
-		// Update state
-		state.plays.unshift(play);
 
 		// Advance to next batter
 		advanceBatter(battingTeam);
