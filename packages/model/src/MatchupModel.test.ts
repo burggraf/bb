@@ -1,6 +1,38 @@
 import { describe, it, expect } from 'vitest';
 import { MatchupModel } from './MatchupModel.js';
-import type { Matchup } from './types.js';
+import type { Matchup, EventRates } from './types.js';
+
+/**
+ * Helper function to create valid 17-outcome EventRates
+ * Normalizes the rates to sum to 1.0
+ */
+function makeEventRates(overrides: Partial<EventRates> = {}): EventRates {
+  const base: EventRates = {
+    single: 0.163,
+    double: 0.041,
+    triple: 0.007,
+    homeRun: 0.021,
+    walk: 0.079,
+    hitByPitch: 0.007,
+    strikeout: 0.144,
+    groundOut: 0.121,
+    flyOut: 0.078,
+    lineOut: 0.033,
+    popOut: 0.034,
+    sacrificeFly: 0.007,
+    sacrificeBunt: 0.011,
+    fieldersChoice: 0.005,
+    reachedOnError: 0.013,
+    catcherInterference: 0.0001,
+  };
+  // Normalize to sum to 1.0
+  const merged = { ...base, ...overrides };
+  const sum = Object.values(merged).reduce((a, b) => a + b, 0);
+  for (const key of Object.keys(merged) as (keyof EventRates)[]) {
+    merged[key] = merged[key] / sum;
+  }
+  return merged;
+}
 
 describe('MatchupModel', () => {
   const model = new MatchupModel();
@@ -12,24 +44,8 @@ describe('MatchupModel', () => {
       name: 'Test Batter',
       handedness: 'R',
       rates: {
-        vsLeft: {
-          out: 0.65,
-          single: 0.18,
-          double: 0.05,
-          triple: 0.005,
-          homeRun: 0.04,
-          walk: 0.07,
-          hitByPitch: 0.005,
-        },
-        vsRight: {
-          out: 0.68,
-          single: 0.16,
-          double: 0.045,
-          triple: 0.004,
-          homeRun: 0.035,
-          walk: 0.07,
-          hitByPitch: 0.006,
-        },
+        vsLeft: makeEventRates({ homeRun: 0.05 }), // power vs LHP
+        vsRight: makeEventRates({ homeRun: 0.02 }), // normal vs RHP
       },
     },
     pitcher: {
@@ -37,47 +53,15 @@ describe('MatchupModel', () => {
       name: 'Test Pitcher',
       handedness: 'R',
       rates: {
-        vsLeft: {
-          out: 0.70,
-          single: 0.14,
-          double: 0.04,
-          triple: 0.004,
-          homeRun: 0.025,
-          walk: 0.085,
-          hitByPitch: 0.006,
-        },
-        vsRight: {
-          out: 0.72,
-          single: 0.13,
-          double: 0.035,
-          triple: 0.003,
-          homeRun: 0.022,
-          walk: 0.085,
-          hitByPitch: 0.005,
-        },
+        vsLeft: makeEventRates({ strikeout: 0.18, groundOut: 0.15 }), // high K vs LHB
+        vsRight: makeEventRates({ strikeout: 0.16, flyOut: 0.10 }), // moderate vs RHB
       },
     },
     league: {
       year: 2023,
       rates: {
-        vsLeft: {
-          out: 0.68,
-          single: 0.155,
-          double: 0.045,
-          triple: 0.005,
-          homeRun: 0.03,
-          walk: 0.08,
-          hitByPitch: 0.005,
-        },
-        vsRight: {
-          out: 0.68,
-          single: 0.155,
-          double: 0.045,
-          triple: 0.005,
-          homeRun: 0.03,
-          walk: 0.08,
-          hitByPitch: 0.005,
-        },
+        vsLeft: makeEventRates(),
+        vsRight: makeEventRates(),
       },
     },
   });
@@ -88,27 +72,31 @@ describe('MatchupModel', () => {
       const distribution = model.predict(matchup);
 
       expect(distribution).toBeDefined();
-      expect(distribution.out).toBeGreaterThan(0);
+      // Check a representative sample of the 17 outcomes
       expect(distribution.single).toBeGreaterThan(0);
       expect(distribution.double).toBeGreaterThan(0);
       expect(distribution.triple).toBeGreaterThan(0);
       expect(distribution.homeRun).toBeGreaterThan(0);
       expect(distribution.walk).toBeGreaterThan(0);
       expect(distribution.hitByPitch).toBeGreaterThan(0);
+      expect(distribution.strikeout).toBeGreaterThan(0);
+      expect(distribution.groundOut).toBeGreaterThan(0);
+      expect(distribution.flyOut).toBeGreaterThan(0);
+      expect(distribution.lineOut).toBeGreaterThan(0);
+      expect(distribution.popOut).toBeGreaterThan(0);
+      expect(distribution.sacrificeFly).toBeGreaterThan(0);
+      expect(distribution.sacrificeBunt).toBeGreaterThan(0);
+      expect(distribution.fieldersChoice).toBeGreaterThan(0);
+      expect(distribution.reachedOnError).toBeGreaterThan(0);
+      expect(distribution.catcherInterference).toBeGreaterThan(0);
     });
 
     it('should have probabilities that sum to 1', () => {
       const matchup = createTestMatchup();
       const distribution = model.predict(matchup);
 
-      const sum =
-        distribution.out +
-        distribution.single +
-        distribution.double +
-        distribution.triple +
-        distribution.homeRun +
-        distribution.walk +
-        distribution.hitByPitch;
+      // Sum all 17 outcomes
+      const sum = Object.values(distribution).reduce((a, b) => a + b, 0);
 
       expect(sum).toBeCloseTo(1.0, 5);
     });
@@ -129,7 +117,8 @@ describe('MatchupModel', () => {
 
     it('should throw error for invalid rates', () => {
       const invalidMatchup = createTestMatchup();
-      invalidMatchup.batter.rates.vsRight.out = 2.0; // Invalid rate
+      // Use strikeout instead of the old 'out' outcome
+      invalidMatchup.batter.rates.vsRight.strikeout = 2.0; // Invalid rate
 
       expect(() => model.predict(invalidMatchup)).toThrow();
     });
@@ -142,9 +131,27 @@ describe('MatchupModel', () => {
 
       const outcome = model.sample(distribution);
 
-      expect(['out', 'single', 'double', 'triple', 'homeRun', 'walk', 'hitByPitch']).toContain(
-        outcome
-      );
+      // All 17 valid outcomes
+      const validOutcomes = [
+        'single',
+        'double',
+        'triple',
+        'homeRun',
+        'walk',
+        'hitByPitch',
+        'strikeout',
+        'groundOut',
+        'flyOut',
+        'lineOut',
+        'popOut',
+        'sacrificeFly',
+        'sacrificeBunt',
+        'fieldersChoice',
+        'reachedOnError',
+        'catcherInterference',
+      ] as const;
+
+      expect(validOutcomes).toContain(outcome as any);
     });
 
     it('should sample according to distribution', () => {
@@ -153,13 +160,22 @@ describe('MatchupModel', () => {
 
       const samples = 1000;
       const counts: Record<string, number> = {
-        out: 0,
         single: 0,
         double: 0,
         triple: 0,
         homeRun: 0,
         walk: 0,
         hitByPitch: 0,
+        strikeout: 0,
+        groundOut: 0,
+        flyOut: 0,
+        lineOut: 0,
+        popOut: 0,
+        sacrificeFly: 0,
+        sacrificeBunt: 0,
+        fieldersChoice: 0,
+        reachedOnError: 0,
+        catcherInterference: 0,
       };
 
       for (let i = 0; i < samples; i++) {
@@ -180,9 +196,27 @@ describe('MatchupModel', () => {
       const matchup = createTestMatchup();
       const outcome = model.simulate(matchup);
 
-      expect(['out', 'single', 'double', 'triple', 'homeRun', 'walk', 'hitByPitch']).toContain(
-        outcome
-      );
+      // All 17 valid outcomes
+      const validOutcomes = [
+        'single',
+        'double',
+        'triple',
+        'homeRun',
+        'walk',
+        'hitByPitch',
+        'strikeout',
+        'groundOut',
+        'flyOut',
+        'lineOut',
+        'popOut',
+        'sacrificeFly',
+        'sacrificeBunt',
+        'fieldersChoice',
+        'reachedOnError',
+        'catcherInterference',
+      ] as const;
+
+      expect(validOutcomes).toContain(outcome as any);
     });
   });
 

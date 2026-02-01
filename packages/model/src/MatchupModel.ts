@@ -18,9 +18,7 @@ import type {
   EventRates,
   ModelConfig,
 } from './types.js';
-
-// Event rate keys for iteration - must match EventRates interface
-const EVENT_RATE_KEYS: (keyof EventRates)[] = ['out', 'single', 'double', 'triple', 'homeRun', 'walk', 'hitByPitch'];
+import { EVENT_RATE_KEYS } from './types.js';
 
 /**
  * Validate that rates sum to approximately 1.0
@@ -166,7 +164,7 @@ export class MatchupModel {
     }
 
     // Fallback (shouldn't happen with proper normalization)
-    return 'out';
+    return 'groundOut';
   }
 
   /**

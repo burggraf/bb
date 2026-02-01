@@ -11,26 +11,56 @@ export function calculateRates(counts: Record<string, number>): EventRates {
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
   if (total === 0) {
-    // Return league average rates if no data
+    // Return league average rates if no data (approximate 2024 MLB averages)
     return {
-      out: 0.68,
-      single: 0.155,
-      double: 0.045,
-      triple: 0.005,
-      homeRun: 0.03,
-      walk: 0.08,
-      hitByPitch: 0.005,
+      // Hits
+      single: 0.163,
+      double: 0.041,
+      triple: 0.007,
+      homeRun: 0.021,
+      // Walks
+      walk: 0.079,
+      hitByPitch: 0.007,
+      // Strikeout
+      strikeout: 0.144,
+      // Ball-in-play outs
+      groundOut: 0.121,
+      flyOut: 0.078,
+      lineOut: 0.033,
+      popOut: 0.034,
+      // Sacrifices
+      sacrificeFly: 0.007,
+      sacrificeBunt: 0.011,
+      // Other
+      fieldersChoice: 0.005,
+      reachedOnError: 0.013,
+      catcherInterference: 0.0001,
     };
   }
 
   return {
-    out: (counts.out || 0) / total,
+    // Hits
     single: (counts.single || 0) / total,
     double: (counts.double || 0) / total,
     triple: (counts.triple || 0) / total,
     homeRun: (counts.homeRun || 0) / total,
+    // Walks
     walk: (counts.walk || 0) / total,
     hitByPitch: (counts.hitByPitch || 0) / total,
+    // Strikeout
+    strikeout: (counts.strikeout || 0) / total,
+    // Ball-in-play outs
+    groundOut: (counts.groundOut || 0) / total,
+    flyOut: (counts.flyOut || 0) / total,
+    lineOut: (counts.lineOut || 0) / total,
+    popOut: (counts.popOut || 0) / total,
+    // Sacrifices
+    sacrificeFly: (counts.sacrificeFly || 0) / total,
+    sacrificeBunt: (counts.sacrificeBunt || 0) / total,
+    // Other
+    fieldersChoice: (counts.fieldersChoice || 0) / total,
+    reachedOnError: (counts.reachedOnError || 0) / total,
+    catcherInterference: (counts.catcherInterference || 0) / total,
   };
 }
 
