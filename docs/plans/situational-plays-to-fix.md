@@ -23,25 +23,20 @@ Top 9th: 0 R, 2 H, 0 E, 2 LOB — Houston Astros 3, Kansas City Royals 0
 
 ---
 
-### 2. Fielder's Choice Description Missing Runner Information ✅ MOSTLY FIXED
+### 2. Fielder's Choice Description Missing Runner Information ✅ FIXED
 
 **Examples:**
 - Game 18: Play 84: "Enzo Hernandez reaches on fielder's choice"
 - Game 26: Play 12: "Chris Speier reaches on fielder's choice"
 
-**Issue:** When a fielder's choice occurs, the play description should specify which runner was out on the play. The logic was checking from nearest to furthest base (1B -> 2B -> 3B) instead of furthest to nearest (3B -> 2B -> 1B), causing incorrect runner identification when multiple runners were on base.
+**Issue:** When a fielder's choice occurs, the play description should specify which runner was out on the play. The engine was trying to infer which runner was out by comparing bases before/after, which was unreliable and missed edge cases.
 
 **Fix Applied:**
-1. Reversed the loop to check from 3B -> 2B -> 1B (furthest to nearest)
-2. Added logic to exclude runners who scored (they're "gone" but not out)
-3. Updated the comparison logic in `app/src/lib/game/engine.ts`
+1. Added `outRunnerId` to the state machine's `TransitionResult` type
+2. Modified `handleFieldersChoice` in `app/src/lib/game/state-machine/rules/fielders-choice.ts` to explicitly track and return the ID of the runner who was put out
+3. Updated `app/src/lib/game/engine.ts` to use the state machine's `outRunnerId` instead of inferring it
 
-**Status:** ✅ Mostly Fixed - Warnings reduced from ~16% to ~4% of fielder's choice plays. Remaining edge cases occur when:
-- All runners reached safely (no actual out recorded)
-- State machine handles the play as a single/error situation
-- Other rare edge cases in baserunning logic
-
-The fallback description "X reaches on fielder's choice" is still accurate for these edge cases.
+**Status:** ✅ Fixed - All 50 games pass with no fielder's choice warnings. The state machine now explicitly tracks which runner was out, eliminating edge cases.
 
 ---
 
