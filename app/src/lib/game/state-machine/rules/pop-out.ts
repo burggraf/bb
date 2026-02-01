@@ -38,10 +38,12 @@ export function handlePopOut(
 	const outsBefore = currentState.outs;
 
 	// With 2 outs, this is the 3rd out - inning ends
+	// Note: We leave outs at 3 (or cap at 2) to signal engine that inning should change
+	// The engine is responsible for resetting outs when the inning changes
 	if (outsBefore >= 2) {
 		nextState.runners = { first: null, second: null, third: null };
 		nextState.bases = 0;
-		nextState.outs = 0;
+		nextState.outs = 3; // Signal 3 outs (engine will handle inning change)
 
 		return {
 			nextState,

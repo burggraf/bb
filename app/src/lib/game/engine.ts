@@ -13,7 +13,7 @@ import type {
 	PitcherStats,
 } from './types.js';
 import { transition, createBaserunningState } from './state-machine/index.js';
-import { isHit, isOut } from './state-machine/outcome-types.js';
+import { isHit } from './state-machine/outcome-types.js';
 
 // Generate lineup from batters on the specified team
 function generateLineup(
@@ -235,6 +235,7 @@ function applyBaserunning(
 	runs: number;
 	newBases: [string | null, string | null, string | null];
 	scorerIds: string[];
+	newOuts: 0 | 1 | 2;
 } {
 	// Create baserunning state from game state
 	const brState = createBaserunningState(state.outs, state.bases);
@@ -253,6 +254,7 @@ function applyBaserunning(
 		runs: result.runsScored,
 		newBases,
 		scorerIds: result.scorerIds,
+		newOuts: result.nextState.outs,
 	};
 }
 
@@ -383,15 +385,29 @@ export class GameEngine {
 		const runnersBefore: [string | null, string | null, string | null] = [...state.bases];
 
 		// Apply baserunning
-		const { runs, newBases, scorerIds } = applyBaserunning(state, outcome, batterId);
+		const { runs, newBases, scorerIds, newOuts } = applyBaserunning(state, outcome, batterId);
 
-		// Update state bases and outs
+		// Update state bases and outs (use outs from state machine)
 		state.bases = newBases;
-		if (isOut(outcome)) {
-			state.outs++;
-		}
+		// Cap outs at 2 to prevent runaway (handles rare edge cases)
+		// The inning change check below should normally reset outs before this cap is hit
+		state.outs = Math.min(newOuts, 2) as 0 | 1 | 2;
 
-		// For fielder's choice, determine which runner was out
+		// Check for inning change (do this BEFORE capping outs for next play)
+		if (state.outs >= 3) {
+			// Add half-inning summary before changing
+			addHalfInningSummary(state, this.season);
+
+			state.outs = 0;
+			state.bases = [null, null, null];
+
+			if (state.isTopInning) {
+				state.isTopInning = false;
+			} else {
+				state.isTopInning = true;
+				state.inning++;
+			}
+		}
 		let outRunnerName: string | undefined;
 		let outBase: string | undefined;
 		if (outcome === 'fieldersChoice') {
@@ -409,15 +425,15 @@ export class GameEngine {
 			}
 		}
 
-		// Create play event
+		// Create play event (store formatted names)
 		const play: PlayEvent = {
 			inning: state.inning,
 			isTopInning: state.isTopInning,
 			outcome,
 			batterId,
-			batterName: batter.name,
+			batterName: formatName(batter.name),
 			pitcherId: pitcher.id,
-			pitcherName: pitcher.name,
+			pitcherName: formatName(pitcher.name),
 			description: describePlay(outcome, batter.name, pitcher.name, runs, outRunnerName, outBase),
 			runsScored: runs,
 			runnersAfter: [...state.bases],
@@ -430,22 +446,6 @@ export class GameEngine {
 
 		// Advance to next batter
 		advanceBatter(battingTeam);
-
-		// Check for inning change
-		if (state.outs >= 3) {
-			// Add half-inning summary before changing
-			addHalfInningSummary(state, this.season);
-
-			state.outs = 0;
-			state.bases = [null, null, null];
-
-			if (state.isTopInning) {
-				state.isTopInning = false;
-			} else {
-				state.isTopInning = true;
-				state.inning++;
-			}
-		}
 
 		return play;
 	}
@@ -524,19 +524,20 @@ export class GameEngine {
 		const runnersBefore: [string | null, string | null, string | null] = [...this.state.bases];
 
 		// Use walk mechanics for baserunning
-		const { runs, newBases, scorerIds } = applyBaserunning(this.state, 'walk', batter.id);
+		const { runs, newBases, scorerIds, newOuts } = applyBaserunning(this.state, 'walk', batter.id);
 
-		// Update state bases
+		// Update state bases and outs (use outs from state machine, capped at 2 for 3 outs)
 		this.state.bases = newBases;
+		this.state.outs = Math.min(newOuts, 2) as 0 | 1 | 2;
 
 		const play: PlayEvent = {
 			inning: this.state.inning,
 			isTopInning: this.state.isTopInning,
 			outcome: 'walk',
 			batterId: batter.id,
-			batterName: batter.name,
+			batterName: formatName(batter.name),
 			pitcherId: pitcher.id,
-			pitcherName: pitcher.name,
+			pitcherName: formatName(pitcher.name),
 			description: `${formatName(batter.name)} intentionally walked`,
 			runsScored: runs,
 			runnersAfter: [...this.state.bases],
