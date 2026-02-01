@@ -13,6 +13,7 @@ import type {
 	PitcherStats,
 } from './types.js';
 import { transition, createBaserunningState } from './state-machine/index.js';
+import { isHit, isOut } from './state-machine/outcome-types.js';
 
 // Generate lineup from batters on the specified team
 function generateLineup(
@@ -75,27 +76,61 @@ function formatName(name: string): string {
 function describePlay(
 	outcome: Outcome,
 	batterName: string,
-	pitcherName: string
+	pitcherName: string,
+	runsScored: number
 ): string {
 	const batter = formatName(batterName);
 	const pitcher = formatName(pitcherName);
+	const runsText = runsScored > 0 ? ` (${runsScored} run${runsScored > 1 ? 's' : ''} scored)` : '';
+
 	switch (outcome) {
-		case 'out':
-			return `${batter} grounded out to ${pitcher}.`;
+		// Hits
 		case 'single':
-			return `${batter} singled to center.`;
+			return `${batter} singles off ${pitcherName}${runsText}`;
 		case 'double':
-			return `${batter} doubled to left-center.`;
+			return `${batter} doubles off ${pitcherName}${runsText}`;
 		case 'triple':
-			return `${batter} tripled to the gap.`;
+			return `${batter} triples off ${pitcherName}${runsText}`;
 		case 'homeRun':
-			return `${batter} homered to deep center!`;
+			return `${batter} homers off ${pitcherName}${runsText}`;
+
+		// Walks
 		case 'walk':
-			return `${batter} drew a walk.`;
+			return `${batter} walks${runsText}`;
 		case 'hitByPitch':
-			return `${batter} hit by pitch.`;
+			return `${batter} hit by pitch from ${pitcherName}${runsText}`;
+
+		// Strikeout
+		case 'strikeout':
+			return `${batter} strikes out against ${pitcherName}`;
+
+		// Ball-in-play outs
+		case 'groundOut':
+			return `${batter} grounds out${runsText}`;
+		case 'flyOut':
+			return `${batter} flies out${runsText}`;
+		case 'lineOut':
+			return `${batter} lines out`;
+		case 'popOut':
+			return `${batter} pops out`;
+
+		// Sacrifices
+		case 'sacrificeFly':
+			return `${batter} hits a sacrifice fly${runsText}`;
+		case 'sacrificeBunt':
+			return `${batter} lays down a sacrifice bunt${runsText}`;
+
+		// Other
+		case 'fieldersChoice':
+			return `${batter} reaches on fielder's choice${runsText}`;
+		case 'reachedOnError':
+			return `${batter} reaches on an error${runsText}`;
+		case 'catcherInterference':
+			return `${batter} reaches on catcher's interference`;
+
 		default:
-			return `${batter} vs ${pitcher}.`;
+			const _exhaustive: never = outcome;
+			return `${batter} - ${outcome}`;
 	}
 }
 
@@ -114,8 +149,7 @@ function addHalfInningSummary(state: GameState, season: SeasonPackage): void {
 		if (play.inning === inning && play.isTopInning === isTop) {
 			runs += play.runsScored;
 			atBats++;
-			const isHit = ['single', 'double', 'triple', 'homeRun'].includes(play.outcome);
-			if (isHit) hits++;
+			if (isHit(play.outcome)) hits++;
 		}
 	}
 
@@ -304,7 +338,7 @@ export class GameEngine {
 
 		// Update state bases and outs
 		state.bases = newBases;
-		if (outcome === 'out') {
+		if (isOut(outcome)) {
 			state.outs++;
 		}
 
@@ -317,7 +351,7 @@ export class GameEngine {
 			batterName: batter.name,
 			pitcherId: pitcher.id,
 			pitcherName: pitcher.name,
-			description: describePlay(outcome, batter.name, pitcher.name),
+			description: describePlay(outcome, batter.name, pitcher.name, runs),
 			runsScored: runs,
 			runnersAfter: [...state.bases],
 			scorerIds,
@@ -373,6 +407,68 @@ export class GameEngine {
 		}
 
 		return false;
+	}
+
+	private getCurrentBatter(): BatterStats {
+		const battingTeam = this.state.isTopInning ? this.state.awayLineup : this.state.homeLineup;
+		const batterId = getNextBatter(battingTeam, this.season);
+		const batter = this.season.batters[batterId];
+		if (!batter) {
+			throw new Error('Missing batter data');
+		}
+		return batter;
+	}
+
+	private getCurrentPitcher(): PitcherStats {
+		// Use a random pitcher (same as simulatePlateAppearance)
+		const pitchers = Object.values(this.season.pitchers);
+		const pitcher = pitchers[Math.floor(Math.random() * pitchers.length)];
+		if (!pitcher) {
+			throw new Error('Missing pitcher data');
+		}
+		return pitcher;
+	}
+
+	private advanceBatter(): void {
+		const battingTeam = this.state.isTopInning ? this.state.awayLineup : this.state.homeLineup;
+		advanceBatter(battingTeam);
+	}
+
+	/**
+	 * Execute an intentional walk (manager decision, not simulated).
+	 */
+	intentionalWalk(): PlayEvent {
+		const batter = this.getCurrentBatter();
+		const pitcher = this.getCurrentPitcher();
+
+		// Capture runners before the play
+		const runnersBefore: [string | null, string | null, string | null] = [...this.state.bases];
+
+		// Use walk mechanics for baserunning
+		const { runs, newBases, scorerIds } = applyBaserunning(this.state, 'walk', batter.id);
+
+		// Update state bases
+		this.state.bases = newBases;
+
+		const play: PlayEvent = {
+			inning: this.state.inning,
+			isTopInning: this.state.isTopInning,
+			outcome: 'walk',
+			batterId: batter.id,
+			batterName: batter.name,
+			pitcherId: pitcher.id,
+			pitcherName: pitcher.name,
+			description: `${formatName(batter.name)} intentionally walked`,
+			runsScored: runs,
+			runnersAfter: [...this.state.bases],
+			scorerIds,
+			runnersBefore,
+		};
+
+		this.state.plays.unshift(play);
+		this.advanceBatter();
+
+		return play;
 	}
 
 	// Serialize the current game state for persistence
