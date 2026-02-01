@@ -468,9 +468,6 @@ export class GameEngine {
 			addHalfInningSummaryWithInning(state, this.season, playInning, playIsTop);
 		}
 
-		// Safety cap to prevent runaway outs (shouldn't happen with correct logic)
-		state.outs = Math.min(state.outs, 2) as 0 | 1 | 2;
-
 		// Advance to next batter
 		advanceBatter(battingTeam);
 
@@ -551,7 +548,7 @@ export class GameEngine {
 
 		// Update state bases and outs (use outs from state machine)
 		this.state.bases = newBases;
-		this.state.outs = Math.min(newOuts, 2) as 0 | 1 | 2; // Cap at 2 after engine checks for inning end
+		this.state.outs = newOuts;
 
 		const play: PlayEvent = {
 			inning: this.state.inning,
