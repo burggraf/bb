@@ -3,30 +3,60 @@
  */
 
 /**
- * All possible plate appearance outcomes
+ * The 17 detailed plate appearance outcomes.
+ * Grouped by category for readability.
  */
 export type Outcome =
-  | 'out'        // Any out (strikeout, fly out, ground out, etc.)
-  | 'single'     // Single (1B)
-  | 'double'     // Double (2B)
-  | 'triple'     // Triple (3B)
-  | 'homeRun'    // Home Run (HR)
-  | 'walk'       // Walk (BB)
-  | 'hitByPitch' // Hit By Pitch (HBP)
-  | 'sacrifice'; // Sacrifice bunt/fly (SH, SF) - optional for V1
+  // Hits
+  | 'single'
+  | 'double'
+  | 'triple'
+  | 'homeRun'
+  // Walks
+  | 'walk'
+  | 'hitByPitch'
+  // Strikeout
+  | 'strikeout'
+  // Ball-in-play outs
+  | 'groundOut'
+  | 'flyOut'
+  | 'lineOut'
+  | 'popOut'
+  // Sacrifices
+  | 'sacrificeFly'
+  | 'sacrificeBunt'
+  // Other
+  | 'fieldersChoice'
+  | 'reachedOnError'
+  | 'catcherInterference';
 
 /**
- * Event rates for a player (batter or pitcher)
- * Each rate represents the proportion of plate appearances ending in that outcome
+ * Probability rates for each of the 17 plate appearance outcomes.
+ * Rates should sum to 1.0 within a split (vsLeft or vsRight).
  */
 export interface EventRates {
-  out: number;        // Out rate
-  single: number;     // Single rate
-  double: number;     // Double rate
-  triple: number;     // Triple rate
-  homeRun: number;    // Home run rate
-  walk: number;       // Walk rate
-  hitByPitch: number; // HBP rate
+  // Hits
+  single: number;
+  double: number;
+  triple: number;
+  homeRun: number;
+  // Walks
+  walk: number;
+  hitByPitch: number;
+  // Strikeout
+  strikeout: number;
+  // Ball-in-play outs
+  groundOut: number;
+  flyOut: number;
+  lineOut: number;
+  popOut: number;
+  // Sacrifices
+  sacrificeFly: number;
+  sacrificeBunt: number;
+  // Other
+  fieldersChoice: number;
+  reachedOnError: number;
+  catcherInterference: number;
 }
 
 /**
@@ -79,15 +109,53 @@ export interface Matchup {
  * All probabilities should sum to 1.0
  */
 export interface ProbabilityDistribution {
-  out: number;
+  // Hits
   single: number;
   double: number;
   triple: number;
   homeRun: number;
+  // Walks
   walk: number;
   hitByPitch: number;
-  // sacrifice: number; // Optional for V1
+  // Strikeout
+  strikeout: number;
+  // Ball-in-play outs
+  groundOut: number;
+  flyOut: number;
+  lineOut: number;
+  popOut: number;
+  // Sacrifices
+  sacrificeFly: number;
+  sacrificeBunt: number;
+  // Other
+  fieldersChoice: number;
+  reachedOnError: number;
+  catcherInterference: number;
 }
+
+/**
+ * All outcome keys in consistent order for iteration.
+ * Order prioritizes common ball-in-play outs first, then other outcomes
+ * grouped by type and approximate frequency for intuitive display.
+ */
+export const EVENT_RATE_KEYS: (keyof EventRates)[] = [
+  'groundOut',      // 12.1%
+  'single',         // 16.3%
+  'strikeout',      // 14.4%
+  'flyOut',         // 7.8%
+  'walk',           // 7.9%
+  'popOut',         // 3.4%
+  'lineOut',        // 3.3%
+  'double',         // 4.1%
+  'homeRun',        // 2.1%
+  'reachedOnError', // 1.3%
+  'sacrificeBunt',  // 1.1%
+  'triple',         // 0.7%
+  'hitByPitch',     // 0.7%
+  'sacrificeFly',   // 0.7%
+  'fieldersChoice', // 0.5%
+  'catcherInterference', // 0.01%
+];
 
 /**
  * Result of a plate appearance
