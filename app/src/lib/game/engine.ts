@@ -351,21 +351,23 @@ export class GameEngine {
 		// Get outcome from model, handling game state constraints
 		let outcome: Outcome;
 		if (areBasesEmpty(state.bases)) {
-			// Fielder's choice is impossible with empty bases
-			// Get the distribution, exclude fieldersChoice, re-normalize, then sample
+			// Fielder's choice, sacrifice fly, and sacrifice bunt are impossible with empty bases
+			// Get the distribution, exclude impossible outcomes, re-normalize, then sample
 			const distribution = this.model.predict(matchup);
 			const fcProb = distribution.fieldersChoice || 0;
+			const sfProb = distribution.sacrificeFly || 0;
+			const sbProb = distribution.sacrificeBunt || 0;
+			const excludedProb = fcProb + sfProb + sbProb;
 
-			if (fcProb > 0) {
-				// Create adjusted distribution without fieldersChoice
-				// We need to use Partial to exclude the required field
-				const { fieldersChoice: _fc, ...remaining } = distribution;
+			if (excludedProb > 0) {
+				// Create adjusted distribution excluding impossible outcomes
+				const { fieldersChoice: _fc, sacrificeFly: _sf, sacrificeBunt: _sb, ...remaining } = distribution;
 				const adjusted = remaining as Partial<ProbabilityDistribution>;
 
 				// Re-normalize the remaining probabilities
-				const totalProb = 1 - fcProb;
+				const totalProb = 1 - excludedProb;
 				for (const key of Object.keys(adjusted) as (keyof ProbabilityDistribution)[]) {
-					if (key !== 'fieldersChoice' && adjusted[key] !== undefined) {
+					if (key !== 'fieldersChoice' && key !== 'sacrificeFly' && key !== 'sacrificeBunt' && adjusted[key] !== undefined) {
 						adjusted[key] = adjusted[key]! / totalProb;
 					}
 				}
@@ -373,7 +375,7 @@ export class GameEngine {
 				// Sample from adjusted distribution (cast to full type since we know it's valid)
 				outcome = this.model.sample(adjusted as ProbabilityDistribution) as Outcome;
 			} else {
-				// No fieldersChoice probability, just sample normally
+				// No impossible outcomes, just sample normally
 				outcome = this.model.simulate(matchup) as Outcome;
 			}
 		} else {
