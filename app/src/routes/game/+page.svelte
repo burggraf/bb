@@ -31,16 +31,11 @@
 
 	onMount(async () => {
 		try {
-			console.log('Loading 1976 season...');
 			const season = await loadSeason(1976);
-			console.log('Season loaded:', season);
-			console.log('Creating game engine...');
-			engine = new GameEngine(season, 'CIN', 'HOU'); // Reds vs Astros
-			console.log('Engine created:', engine);
+			engine = new GameEngine(season, 'CIN', 'HOU');
 			updateFromEngine();
 			currentBatter = 'Ready to play!';
 		} catch (error) {
-			console.error('Failed to load season:', error);
 			currentBatter = 'Error: ' + (error as Error).message;
 			currentPitcher = 'See console for details';
 		}
@@ -51,7 +46,6 @@
 
 		const state = engine.getState();
 
-		// Update score from plays
 		let away = 0;
 		let home = 0;
 		for (const play of state.plays) {
@@ -70,17 +64,14 @@
 		balls = state.balls;
 		strikes = state.strikes;
 
-		// Update runners (visual)
 		runners = [
 			state.bases[0] !== null,
 			state.bases[1] !== null,
 			state.bases[2] !== null,
 		];
 
-		// Update play-by-play feed
 		plays = state.plays.map((p) => p.description);
 
-		// Update current matchup (from last play or predict next)
 		if (state.plays.length > 0) {
 			const lastPlay = state.plays[0];
 			currentBatter = lastPlay.batterName;
@@ -90,10 +81,8 @@
 
 	function simulatePA() {
 		if (!engine) return;
-
 		const play = engine.simulatePlateAppearance();
 		updateFromEngine();
-
 		if (engine.isComplete()) {
 			stopAutoPlay();
 		}
@@ -125,12 +114,18 @@
 	function quickSim() {
 		stopAutoPlay();
 		if (!engine) return;
-
-		// Simulate remaining game quickly
 		while (!engine.isComplete()) {
 			engine.simulatePlateAppearance();
 		}
 		updateFromEngine();
+	}
+
+	// Helper for count display
+	function countDisplay(balls: number, strikes: number) {
+		const dots = [];
+		for (let i = 0; i < 3; i++) dots.push({ type: 'ball', active: i < balls });
+		for (let i = 0; i < 2; i++) dots.push({ type: 'strike', active: i < strikes });
+		return dots;
 	}
 </script>
 
@@ -138,149 +133,249 @@
 	<title>Game - Baseball Sim</title>
 </svelte:head>
 
-<div class="h-screen flex flex-col bg-zinc-950 overflow-hidden">
-	<!-- Header -->
-	<header class="flex-shrink-0 bg-zinc-900 border-b border-zinc-800 py-2 px-4">
-		<div class="flex items-center justify-between">
-			<a href="/" class="text-zinc-400 hover:text-white text-sm">← Home</a>
-			<div class="flex gap-4 text-xs text-zinc-500">
+<div class="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+	<!-- Header / Scoreboard -->
+	<header class="flex-shrink-0 bg-slate-950/50 border-b border-slate-700/50">
+		<div class="flex items-center justify-between px-6 py-3">
+			<!-- Back Link -->
+			<a href="/" class="text-slate-400 hover:text-white transition-colors flex items-center gap-2">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+				</svg>
+				<span class="text-sm font-medium">Home</span>
+			</a>
+
+			<!-- Game Info -->
+			<div class="flex items-center gap-6 text-sm text-slate-400">
 				<span>1976 Season</span>
+				<span class="text-slate-600">|</span>
 				<span>Reds vs Astros</span>
+			</div>
+		</div>
+
+		<!-- Main Scoreboard -->
+		<div class="px-6 pb-4">
+			<div class="bg-slate-950/70 rounded-xl p-4 backdrop-blur-sm border border-slate-700/30">
+				<div class="flex items-center justify-between">
+					<!-- Away Team -->
+					<div class="flex-1 text-center">
+						<div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Away</div>
+						<div class="text-4xl font-bold tabular-nums">{awayScore}</div>
+					</div>
+
+					<!-- Inning & Game State -->
+					<div class="flex-1 text-center">
+						<div class="inline-flex items-center gap-2 bg-slate-800/50 rounded-lg px-4 py-2">
+							<div class="text-center">
+								<div class="text-xs text-slate-400 uppercase tracking-wider">Inning</div>
+								<div class="text-xl font-semibold">
+									{isTopInning ? '▲' : '▼'} {inning}
+								</div>
+							</div>
+							<div class="w-px h-8 bg-slate-700"></div>
+							<div class="text-center">
+								<div class="text-xs text-slate-400 uppercase tracking-wider">Outs</div>
+								<div class="text-xl font-semibold">{outs}</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Home Team -->
+					<div class="flex-1 text-center">
+						<div class="text-xs text-slate-400 uppercase tracking-wider mb-1">Home</div>
+						<div class="text-4xl font-bold tabular-nums">{homeScore}</div>
+					</div>
+				</div>
 			</div>
 		</div>
 	</header>
 
-	<!-- Scoreboard -->
-	<div class="flex-shrink-0 bg-zinc-900 border-b border-zinc-800 py-2 px-4">
-		<div class="flex items-center justify-center gap-8">
-			<div class="text-center w-16">
-				<p class="text-xs text-zinc-400">Away</p>
-				<p class="text-2xl font-bold">{awayScore}</p>
-			</div>
-			<div class="text-center">
-				<p class="text-sm">{isTopInning ? 'Top' : 'Bot'} {inning}</p>
-				<p class="text-xs text-zinc-400">{outs} Out</p>
-			</div>
-			<div class="text-center w-16">
-				<p class="text-xs text-zinc-400">Home</p>
-				<p class="text-2xl font-bold">{homeScore}</p>
-			</div>
-			<div class="text-xs text-zinc-400">
-				B: {balls} · S: {strikes}
-			</div>
-		</div>
-	</div>
-
 	<!-- Main Content -->
 	<main class="flex-1 flex overflow-hidden">
-		<!-- Left: Field and Controls -->
-		<div class="flex-1 flex flex-col p-3 gap-3 overflow-hidden">
-			<!-- Field View -->
-			<div class="flex-shrink-0 bg-zinc-900 rounded-lg p-3">
-				<svg viewBox="0 0 200 200" class="w-full h-auto" style="max-height: 280px;">
-					<!-- Grass (outfield) -->
-					<rect x="0" y="0" width="200" height="200" fill="#228B22" fill-opacity="0.3" />
+		<!-- Left Section: Field + Matchup -->
+		<div class="flex-1 flex flex-col p-6 gap-6 overflow-hidden">
+			<!-- Field Display -->
+			<div class="flex-1 flex items-center justify-center">
+				<div class="relative w-full max-w-2xl aspect-square">
+					<!-- Field SVG -->
+					<svg viewBox="0 0 400 400" class="w-full h-full drop-shadow-2xl">
+						<!-- Outfield grass -->
+						<rect x="0" y="0" width="400" height="400" fill="#1a472a" rx="20" />
 
-					<!-- Infield dirt -->
-					<polygon
-						points="100,20 180,100 100,180 20,100"
-						fill="#8B4513"
-						opacity="0.5"
-					/>
+						<!-- Infield grass (lighter) -->
+						<circle cx="200" cy="200" r="140" fill="#1e5a33" opacity="0.5" />
 
-					<!-- Bases (diamond) -->
-					<polygon
-						points="100,20 180,100 100,180 20,100"
-						fill="none"
-						stroke="white"
-						stroke-width="2"
-					/>
+						<!-- Infield dirt -->
+						<polygon
+							points="200,60 340,200 200,340 60,200"
+							fill="#8B4513"
+							opacity="0.6"
+						/>
 
-					<!-- Home plate -->
-					<rect x="95" y="95" width="10" height="10" fill="white" />
+						<!-- Base paths -->
+						<polygon
+							points="200,60 340,200 200,340 60,200"
+							fill="none"
+							stroke="rgba(255,255,255,0.2)"
+							stroke-width="3"
+						/>
 
-					<!-- First base -->
-					<rect x="175" y="95" width="10" height="10" fill={runners[0] ? '#facc15' : 'white'} />
+						<!-- Pitcher's mound -->
+						<circle cx="200" cy="200" r="15" fill="#8B4513" opacity="0.8" />
+						<circle cx="200" cy="200" r="8" fill="#654321" />
 
-					<!-- Second base -->
-					<rect x="95" y="15" width="10" height="10" fill={runners[1] ? '#facc15' : 'white'} />
+						<!-- Home plate -->
+						<polygon points="200,185 208,192 208,200 200,208 192,200 192,192" fill="white" />
 
-					<!-- Third base -->
-					<rect x="15" y="95" width="10" height="10" fill={runners[2] ? '#facc15' : 'white'} />
+						<!-- First base -->
+						<rect x="330" y="192" width="20" height="20" fill={runners[0] ? '#fbbf24' : 'white'} rx="2" />
+						{#if runners[0]}
+							<circle cx="340" cy="182" r="12" fill="#fbbf24" opacity="0.8" />
+						{/if}
 
-					<!-- Pitcher's mound -->
-					<circle cx="100" cy="100" r="5" fill="#8B4513" />
-				</svg>
+						<!-- Second base -->
+						<rect x="190" y="50" width="20" height="20" fill={runners[1] ? '#fbbf24' : 'white'} rx="2" />
+						{#if runners[1]}
+							<circle cx="200" cy="40" r="12" fill="#fbbf24" opacity="0.8" />
+						{/if}
+
+						<!-- Third base -->
+						<rect x="50" y="192" width="20" height="20" fill={runners[2] ? '#fbbf24' : 'white'} rx="2" />
+						{#if runners[2]}
+							<circle cx="60" cy="182" r="12" fill="#fbbf24" opacity="0.8" />
+						{/if}
+
+						<!-- Foul lines -->
+						<line x1="60" y1="200" x2="0" y2="140" stroke="rgba(255,255,255,0.15)" stroke-width="2" />
+						<line x1="340" y1="200" x2="400" y2="140" stroke="rgba(255,255,255,0.15)" stroke-width="2" />
+					</svg>
+
+					<!-- Count Overlay -->
+					<div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6">
+						<!-- Balls -->
+						<div class="flex items-center gap-2">
+							<span class="text-xs text-slate-400 uppercase tracking-wider">Balls</span>
+							<div class="flex gap-1">
+								{#each [0,1,2] as i}
+									<div class="w-3 h-3 rounded-full {i < balls ? 'bg-emerald-500' : 'bg-slate-700'}"></div>
+								{/each}
+							</div>
+						</div>
+
+						<!-- Strikes -->
+						<div class="flex items-center gap-2">
+							<span class="text-xs text-slate-400 uppercase tracking-wider">Strikes</span>
+							<div class="flex gap-1">
+								{#each [0,1] as i}
+									<div class="w-3 h-3 rounded-full {i < strikes ? 'bg-red-500' : 'bg-slate-700'}"></div>
+								{/each}
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Current Matchup -->
+			<div class="flex-shrink-0">
+				<div class="bg-slate-950/50 rounded-xl p-4 backdrop-blur-sm border border-slate-700/30">
+					<div class="text-xs text-slate-400 uppercase tracking-wider mb-3">Current Matchup</div>
+					<div class="flex items-center justify-between">
+						<div class="flex-1">
+							<div class="text-xs text-slate-500 mb-1">Batter</div>
+							<div class="font-medium text-lg">{currentBatter}</div>
+						</div>
+						<div class="text-2xl text-slate-600 mx-4">vs</div>
+						<div class="flex-1 text-right">
+							<div class="text-xs text-slate-500 mb-1">Pitcher</div>
+							<div class="font-medium text-lg">{currentPitcher}</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Right Section: Play-by-Play + Controls -->
+		<div class="w-96 flex-shrink-0 flex flex-col p-6 gap-6 overflow-hidden bg-slate-950/30 border-l border-slate-700/30">
+			<!-- Play-by-Play Feed -->
+			<div class="flex-1 flex flex-col overflow-hidden">
+				<div class="text-xs text-slate-400 uppercase tracking-wider mb-3">Play-by-Play</div>
+				<div class="flex-1 overflow-y-auto space-y-2 pr-2">
+					{#each plays as play, index}
+						<div class="bg-slate-800/50 rounded-lg px-3 py-2 border border-slate-700/30">
+							<div class="flex items-start gap-2">
+								<span class="text-xs text-slate-500 mt-0.5">{plays.length - index}</span>
+								<p class="text-sm text-slate-300">{play}</p>
+							</div>
+						</div>
+					{:else}
+						<div class="text-sm text-slate-500 text-center py-8">Game starting...</div>
+					{/each}
+				</div>
 			</div>
 
 			<!-- Controls -->
-			<div class="flex-shrink-0 bg-zinc-900 rounded-lg p-3">
-				<div class="flex gap-2">
+			<div class="flex-shrink-0 space-y-3">
+				<div class="text-xs text-slate-400 uppercase tracking-wider">Controls</div>
+
+				<!-- Primary Buttons -->
+				<div class="grid grid-cols-2 gap-2">
 					<button
 						onclick={simulatePA}
-						class="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+						class="px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
 						disabled={!engine}
 					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+						</svg>
 						Next PA
 					</button>
 					<button
 						onclick={toggleAutoPlay}
-						class="flex-1 px-3 py-2 {autoPlay
-							? 'bg-red-600 hover:bg-red-700'
-							: 'bg-green-600 hover:bg-green-700'} text-white text-sm rounded"
+						class="px-4 py-3 {autoPlay
+							? 'bg-amber-600 hover:bg-amber-500'
+							: 'bg-emerald-600 hover:bg-emerald-500'} text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
 						disabled={!engine}
 					>
-						{autoPlay ? 'Pause' : 'Auto'}
-					</button>
-					<button
-						onclick={quickSim}
-						class="flex-1 px-3 py-2 bg-zinc-700 text-white text-sm rounded hover:bg-zinc-600 disabled:opacity-50"
-						disabled={!engine}
-					>
-						Quick Sim
+						{#if autoPlay}
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							Pause
+						{:else}
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							Auto Play
+						{/if}
 					</button>
 				</div>
-				<div class="mt-2 flex items-center gap-2">
-					<span class="text-xs text-zinc-400">Speed:</span>
+
+				<button
+					onclick={quickSim}
+					class="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+					disabled={!engine}
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+					</svg>
+					Quick Sim Full Game
+				</button>
+
+				<!-- Speed Control -->
+				<div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700/30">
+					<div class="flex items-center justify-between mb-2">
+						<span class="text-xs text-slate-400">Sim Speed</span>
+						<span class="text-xs text-slate-500">{simSpeed}ms</span>
+					</div>
 					<input
 						type="range"
 						min="200"
 						max="2000"
 						step="100"
 						bind:value={simSpeed}
-						class="flex-1"
+						class="w-full accent-blue-500"
 					/>
-					<span class="text-xs text-zinc-500 w-10">{simSpeed}ms</span>
-				</div>
-			</div>
-		</div>
-
-		<!-- Right: Play-by-Play and Matchup -->
-		<div class="w-80 flex-shrink-0 flex flex-col p-3 gap-3 overflow-hidden">
-			<!-- Current Matchup -->
-			<div class="flex-shrink-0 bg-zinc-900 rounded-lg p-3">
-				<h3 class="text-xs font-semibold text-zinc-400 mb-2">MATCHUP</h3>
-				<div class="space-y-1 text-sm">
-					<div class="flex items-center gap-2">
-						<span class="text-zinc-500 w-12 text-xs">BAT</span>
-						<span class="font-medium truncate">{currentBatter}</span>
-					</div>
-					<div class="flex items-center gap-2">
-						<span class="text-zinc-500 w-12 text-xs">PIT</span>
-						<span class="font-medium truncate">{currentPitcher}</span>
-					</div>
-				</div>
-			</div>
-
-			<!-- Play-by-Play Feed -->
-			<div class="flex-1 bg-zinc-900 rounded-lg p-3 overflow-hidden flex flex-col">
-				<h3 class="text-xs font-semibold text-zinc-400 mb-2">PLAY-BY-PLAY</h3>
-				<div class="flex-1 overflow-y-auto space-y-1">
-					{#each plays as play}
-						<p class="text-xs text-zinc-300">{play}</p>
-					{:else}
-						<p class="text-xs text-zinc-500 italic">Game starting...</p>
-					{/each}
 				</div>
 			</div>
 		</div>
