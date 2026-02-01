@@ -12,6 +12,7 @@ import type {
 	BatterStats,
 	PitcherStats,
 } from './types.js';
+import { transition, createBaserunningState } from './state-machine/index.js';
 
 // Generate lineup from batters on the specified team
 function generateLineup(
@@ -175,7 +176,7 @@ function getInningSuffix(n: number): string {
 	return 'th';
 }
 
-// Apply baserunning (V1: static rules)
+// Apply baserunning using state machine
 function applyBaserunning(
 	state: GameState,
 	outcome: Outcome,
@@ -185,130 +186,24 @@ function applyBaserunning(
 	newBases: [string | null, string | null, string | null];
 	scorerIds: string[];
 } {
-	let runs = 0;
-	let scorerIds: string[] = [];
-	let newBases: [string | null, string | null, string | null] = [null, null, null];
+	// Create baserunning state from game state
+	const brState = createBaserunningState(state.outs, state.bases);
 
-	// V1: Static baserunning advancement
-	switch (outcome) {
-		case 'out':
-			// Ground out: runners advance depending on outs
-			const outsBefore = state.outs;
+	// Use state machine transition
+	const result = transition(brState, outcome, batterId);
 
-			if (outsBefore >= 2) {
-				// With 2 outs, runners run with pitch
-				// Runner on 3B scores
-				if (state.bases[2]) {
-					runs++;
-					scorerIds.push(state.bases[2]!);
-				}
-				// Runner on 2B advances to 3B
-				newBases[2] = state.bases[1];
-				// Runner on 1B advances to 2B
-				newBases[1] = state.bases[0];
-				// Batter out, nobody reaches
-				newBases[0] = null;
-			} else {
-				// With 0-1 outs: runners aggressively advance
-				// Runner on 3B: scores with 1 out, stays with 0 outs
-				if (state.bases[2]) {
-					if (outsBefore === 1) {
-						runs++;
-						scorerIds.push(state.bases[2]!);
-					}
-					// With 0 outs, runner stays at 3B
-					else {
-						newBases[2] = state.bases[2];
-					}
-				}
-				// Runner on 2B: advances to 3B ONLY IF 3B is empty
-				if (state.bases[1] && !newBases[2]) {
-					newBases[2] = state.bases[1];
-				}
-				// Runner on 1B: advances to 2B
-				if (state.bases[0]) {
-					newBases[1] = state.bases[0];
-				}
-				// Batter out
-				newBases[0] = null;
-			}
-			break;
-		case 'walk':
-		case 'hitByPitch':
-			// Runners advance only if forced
-			if (state.bases[0]) {
-				// Runners on 1B and 2B advance
-				newBases[1] = state.bases[0];
-				newBases[2] = state.bases[1];
-			}
-			// If bases loaded, runner from 2B scores
-			if (state.bases[2] && state.bases[1] && state.bases[0]) {
-				runs++;
-				scorerIds.push(state.bases[2]!);
-			}
-			newBases[0] = batterId;
-			break;
-		case 'single':
-			// Runners advance 1 base, score from 2B
-			if (state.bases[2]) {
-				runs++;
-				scorerIds.push(state.bases[2]!);
-			}
-			newBases[0] = batterId;
-			newBases[1] = state.bases[0];
-			newBases[2] = null;
-			break;
-		case 'double':
-			// Runners advance 2 bases, score from 1B and 2B
-			if (state.bases[0]) {
-				runs++;
-				scorerIds.push(state.bases[0]!);
-			}
-			if (state.bases[1]) {
-				runs++;
-				scorerIds.push(state.bases[1]!);
-			}
-			newBases[0] = null;
-			newBases[1] = batterId;
-			newBases[2] = state.bases[0];
-			break;
-		case 'triple':
-			// All runners score
-			if (state.bases[0]) {
-				runs++;
-				scorerIds.push(state.bases[0]!);
-			}
-			if (state.bases[1]) {
-				runs++;
-				scorerIds.push(state.bases[1]!);
-			}
-			if (state.bases[2]) {
-				runs++;
-				scorerIds.push(state.bases[2]!);
-			}
-			newBases = [null, null, batterId];
-			break;
-		case 'homeRun':
-			// Everyone scores (including batter)
-			if (state.bases[0]) {
-				runs++;
-				scorerIds.push(state.bases[0]!);
-			}
-			if (state.bases[1]) {
-				runs++;
-				scorerIds.push(state.bases[1]!);
-			}
-			if (state.bases[2]) {
-				runs++;
-				scorerIds.push(state.bases[2]!);
-			}
-			runs++;
-			scorerIds.push(batterId);
-			newBases = [null, null, null];
-			break;
-	}
+	// Convert back to game state format
+	const newBases: [string | null, string | null, string | null] = [
+		result.nextState.runners.first,
+		result.nextState.runners.second,
+		result.nextState.runners.third,
+	];
 
-	return { runs, newBases, scorerIds };
+	return {
+		runs: result.runsScored,
+		newBases,
+		scorerIds: result.scorerIds,
+	};
 }
 
 export class GameEngine {
