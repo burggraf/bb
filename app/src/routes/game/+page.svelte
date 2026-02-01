@@ -267,6 +267,12 @@
 	function quickSim() {
 		stopAutoPlay();
 		if (!engine) return;
+
+		// Start a fresh game first
+		playAgain();
+
+		// Now simulate the full game
+		if (!engine) return;
 		while (!engine.isComplete()) {
 			engine.simulatePlateAppearance();
 		}
@@ -336,6 +342,7 @@
 
 	// Format runner info for play-by-play display
 	// Shows runners who advanced or just reached base, plus scorers
+	// Order: scorers first, then highest base first (3rd, 2nd, 1st)
 	function formatRunnerInfo(play: PlayEvent): string | null {
 		// Only show runner info if there are scorers OR runners who moved/reached
 		if (!play.runnersAfter) {
@@ -345,55 +352,7 @@
 		const parts: string[] = [];
 		const bases = ['1st', '2nd', '3rd'];
 
-		// Add runners on base (excluding those who scored, and those who didn't move)
-		if (play.runnersAfter) {
-			for (let i = 0; i < 3; i++) {
-				const runnerId = play.runnersAfter[i];
-				// Skip if this runner scored
-				if (runnerId && play.scorerIds?.includes(runnerId)) {
-					continue;
-				}
-				if (runnerId && season?.batters[runnerId]) {
-					const name = season.batters[runnerId].name;
-					const formattedName = formatName(name);
-
-					// Check if this runner was on base before (didn't just reach)
-					let wasOnBaseBefore = false;
-					if (play.runnersBefore) {
-						for (let j = 0; j < 3; j++) {
-							if (play.runnersBefore[j] === runnerId) {
-								wasOnBaseBefore = true;
-								break;
-							}
-						}
-					}
-
-					// Only show if: (1) just reached base (wasn't on before), OR (2) advanced
-					if (!wasOnBaseBefore) {
-						// Just reached base
-						parts.push(`${formattedName} on ${bases[i]}`);
-					} else {
-						// Was on base before - check if advanced
-						let advancedFrom = -1;
-						if (play.runnersBefore) {
-							for (let j = 0; j < 3; j++) {
-								if (play.runnersBefore[j] === runnerId && j !== i) {
-									advancedFrom = j;
-									break;
-								}
-							}
-						}
-						// Only show if actually advanced to a different base
-						if (advancedFrom !== -1 && advancedFrom !== i) {
-							parts.push(`${formattedName} to ${bases[i]}`);
-						}
-						// If stayed in same place, don't show at all
-					}
-				}
-			}
-		}
-
-		// Add scorers
+		// Add scorers FIRST
 		if (play.scorerIds && play.scorerIds.length > 0) {
 			const scorerNames = play.scorerIds
 				.map((id) => season?.batters[id]?.name)
@@ -404,6 +363,41 @@
 				parts.push(`${scorerNames[0]} scores`);
 			} else {
 				parts.push(`${scorerNames.join(', ')} score`);
+			}
+		}
+
+		// Add runners on base (excluding those who scored)
+		// Iterate in reverse order (3rd, 2nd, 1st) for highest base first
+		for (let i = 2; i >= 0; i--) {
+			const runnerId = play.runnersAfter[i];
+			// Skip if this runner scored
+			if (!runnerId || play.scorerIds?.includes(runnerId)) {
+				continue;
+			}
+			if (season?.batters[runnerId]) {
+				const name = season.batters[runnerId].name;
+				const formattedName = formatName(name);
+
+				// Find where this runner was before (if at all)
+				let fromIndex = -1;
+				if (play.runnersBefore) {
+					for (let j = 0; j < 3; j++) {
+						if (play.runnersBefore[j] === runnerId) {
+							fromIndex = j;
+							break;
+						}
+					}
+				}
+
+				// If not on base before, just reached base
+				if (fromIndex === -1) {
+					parts.push(`${formattedName} on ${bases[i]}`);
+				}
+				// If moved to a different base, show advancement
+				else if (fromIndex !== i) {
+					parts.push(`${formattedName} to ${bases[i]}`);
+				}
+				// If stayed in same place, don't show
 			}
 		}
 
