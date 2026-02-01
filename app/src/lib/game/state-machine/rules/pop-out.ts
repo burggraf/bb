@@ -1,29 +1,27 @@
 /**
- * Fly out baserunning rules
+ * Pop out baserunning rules
  *
  * Rules:
  * - Batter is out
- * - No runner advancement (V1: conservative - runners don't tag up)
+ * - No runner advancement (pop up is usually caught infield, runners hold)
  * - With 2 outs: inning ends, no scoring
- *
- * Note: V1 uses conservative rules. V2 may add tag-up advancement.
  */
 
 import type { BaserunningState, BaserunningEvent } from '../state.js';
 import { runnersToBaseConfig } from '../state.js';
 
-interface FlyOutResult {
+interface PopOutResult {
 	nextState: BaserunningState;
 	runsScored: number;
 	scorerIds: string[];
 	advancement: BaserunningEvent[];
 }
 
-export function handleFlyOut(
+export function handlePopOut(
 	currentState: BaserunningState,
 	batterId: string,
 	advancement: BaserunningEvent[]
-): FlyOutResult {
+): PopOutResult {
 	const scorerIds: string[] = [];
 
 	// Clone state for mutation
@@ -53,7 +51,7 @@ export function handleFlyOut(
 		};
 	}
 
-	// With 0-1 outs: All runners hold (no advancement on fly out in V1)
+	// With 0-1 outs: All runners hold (no advancement on pop out)
 	if (currentState.runners.third) {
 		nextState.runners.third = currentState.runners.third;
 	}

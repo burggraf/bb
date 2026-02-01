@@ -1,29 +1,29 @@
 /**
- * Fly out baserunning rules
+ * Sacrifice fly baserunning rules
  *
  * Rules:
  * - Batter is out
- * - No runner advancement (V1: conservative - runners don't tag up)
- * - With 2 outs: inning ends, no scoring
- *
- * Note: V1 uses conservative rules. V2 may add tag-up advancement.
+ * - If <2 outs and runner on 3B, runner tags and scores
+ * - Other runners advance at their own risk (V1: conservative - they hold)
+ * - With 2 outs: no advancement, no scoring (inning ends)
  */
 
 import type { BaserunningState, BaserunningEvent } from '../state.js';
+import { scoreRunner } from '../transitions.js';
 import { runnersToBaseConfig } from '../state.js';
 
-interface FlyOutResult {
+interface SacrificeFlyResult {
 	nextState: BaserunningState;
 	runsScored: number;
 	scorerIds: string[];
 	advancement: BaserunningEvent[];
 }
 
-export function handleFlyOut(
+export function handleSacrificeFly(
 	currentState: BaserunningState,
 	batterId: string,
 	advancement: BaserunningEvent[]
-): FlyOutResult {
+): SacrificeFlyResult {
 	const scorerIds: string[] = [];
 
 	// Clone state for mutation
@@ -53,10 +53,12 @@ export function handleFlyOut(
 		};
 	}
 
-	// With 0-1 outs: All runners hold (no advancement on fly out in V1)
+	// With 0-1 outs: Runner on 3B tags and scores
 	if (currentState.runners.third) {
-		nextState.runners.third = currentState.runners.third;
+		scoreRunner(nextState, advancement, scorerIds, currentState.runners.third, 'third');
 	}
+
+	// Other runners hold (V1: conservative - no advancement on sacrifice fly)
 	if (currentState.runners.second) {
 		nextState.runners.second = currentState.runners.second;
 	}

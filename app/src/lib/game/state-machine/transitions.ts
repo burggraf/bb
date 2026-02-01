@@ -14,6 +14,13 @@ import { handleWalkOrHBP } from './rules/walk.js';
 import { handleHit } from './rules/hit.js';
 import { handleStrikeout } from './rules/strikeout.js';
 import { handleFlyOut } from './rules/fly-out.js';
+import { handleSacrificeFly } from './rules/sacrifice-fly.js';
+import { handleSacrificeBunt } from './rules/sacrifice-bunt.js';
+import { handleFieldersChoice } from './rules/fielders-choice.js';
+import { handleReachedOnError } from './rules/reached-on-error.js';
+import { handleCatcherInterference } from './rules/interference.js';
+import { handlePopOut } from './rules/pop-out.js';
+import { handleLineOut } from './rules/line-out.js';
 
 /**
  * Result of a state transition
@@ -53,31 +60,49 @@ export function transition(
 	const advancement: BaserunningEvent[] = [];
 
 	switch (outcome) {
-		case 'out':
-			// Current implementation uses ground out logic for all outs
-			// In V2, this will branch to different handlers based on out type
-			return handleGroundOut(currentState, batterId, advancement);
-
-		case 'walk':
-		case 'hitByPitch':
-			return handleWalkOrHBP(currentState, outcome, batterId, advancement);
-
+		// Hits
 		case 'single':
 		case 'double':
 		case 'triple':
 		case 'homeRun':
 			return handleHit(currentState, outcome, batterId, advancement);
 
+		// Walks and HBP
+		case 'walk':
+		case 'hitByPitch':
+			return handleWalkOrHBP(currentState, outcome, batterId, advancement);
+
+		// Strikeout
 		case 'strikeout':
-			// Will be added as a new outcome type in V2
 			return handleStrikeout(currentState, batterId, advancement);
 
+		// Ball-in-play outs
+		case 'groundOut':
+			return handleGroundOut(currentState, batterId, advancement);
 		case 'flyOut':
-			// Will be added as a new outcome type in V2
 			return handleFlyOut(currentState, batterId, advancement);
+		case 'lineOut':
+			return handleLineOut(currentState, batterId, advancement);
+		case 'popOut':
+			return handlePopOut(currentState, batterId, advancement);
+
+		// Sacrifices
+		case 'sacrificeFly':
+			return handleSacrificeFly(currentState, batterId, advancement);
+		case 'sacrificeBunt':
+			return handleSacrificeBunt(currentState, batterId, advancement);
+
+		// Other reach-base outcomes
+		case 'fieldersChoice':
+			return handleFieldersChoice(currentState, batterId, advancement);
+		case 'reachedOnError':
+			return handleReachedOnError(currentState, batterId, advancement);
+		case 'catcherInterference':
+			return handleCatcherInterference(currentState, batterId, advancement);
 
 		default:
 			// Fallback for any unknown outcomes
+			const _exhaustive: never = outcome;
 			return {
 				nextState,
 				runsScored: 0,

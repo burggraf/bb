@@ -2,7 +2,9 @@
  * Strikeout baserunning rules
  *
  * Rules:
- * - No baserunning advancement
+ * - Batter is out
+ * - No runner advancement
+ * - With 2 outs: inning ends, no scoring
  * - Possible wild pitch/passed ball scenarios (V2)
  */
 
@@ -25,7 +27,7 @@ export function handleStrikeout(
 
 	// Clone state for mutation
 	const nextState: BaserunningState = {
-		outs: currentState.outs + 1,
+		outs: currentState.outs,
 		bases: currentState.bases,
 		runners: {
 			first: currentState.runners.first,
@@ -34,16 +36,43 @@ export function handleStrikeout(
 		},
 	};
 
-	// No baserunning advancement on strikeout
-	// All runners hold their positions
+	const outsBefore = currentState.outs;
 
-	// Batter strikes out (no advancement event needed for batter)
-	// Batter doesn't reach base
+	// With 2 outs, this is the 3rd out - inning ends
+	if (outsBefore >= 2) {
+		nextState.runners = { first: null, second: null, third: null };
+		nextState.bases = 0;
+		nextState.outs = 0;
+
+		return {
+			nextState,
+			runsScored: 0,
+			scorerIds,
+			advancement,
+		};
+	}
+
+	// With 0-1 outs: All runners hold (no advancement on strikeout)
+	if (currentState.runners.third) {
+		nextState.runners.third = currentState.runners.third;
+	}
+	if (currentState.runners.second) {
+		nextState.runners.second = currentState.runners.second;
+	}
+	if (currentState.runners.first) {
+		nextState.runners.first = currentState.runners.first;
+	}
+
+	// Update bases bitmap
+	nextState.bases = runnersToBaseConfig(nextState.runners);
+
+	// Increment outs (batter is out)
+	nextState.outs = outsBefore + 1 as 0 | 1 | 2;
 
 	return {
 		nextState,
 		runsScored: 0,
-		scorerIds: [],
+		scorerIds,
 		advancement,
 	};
 }
