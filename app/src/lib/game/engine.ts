@@ -209,26 +209,28 @@ function applyBaserunning(
 				// Batter out, nobody reaches
 				newBases[0] = null;
 			} else {
-				// With 0-1 outs, more limited advancement
-				// Runner on 3B: scores with 1 out, holds with 0 outs
+				// With 0-1 outs: runners aggressively advance
+				// Runner on 3B: scores with 1 out, stays with 0 outs
 				if (state.bases[2]) {
 					if (outsBefore === 1) {
 						runs++;
 						scorerIds.push(state.bases[2]!);
-					} else {
+					}
+					// With 0 outs, runner stays at 3B
+					else {
 						newBases[2] = state.bases[2];
 					}
 				}
-				// Runner on 2B: may advance to 3B or hold
-				if (state.bases[1]) {
-					// Usually holds on ground out, could advance
+				// Runner on 2B: advances to 3B ONLY IF 3B is empty
+				if (state.bases[1] && !newBases[2]) {
 					newBases[2] = state.bases[1];
 				}
-				// Runner on 1B: forced out or advances to 2B (fielder's choice)
+				// Runner on 1B: advances to 2B
 				if (state.bases[0]) {
 					newBases[1] = state.bases[0];
 				}
-				newBases[0] = null; // Batter out
+				// Batter out
+				newBases[0] = null;
 			}
 			break;
 		case 'walk':
