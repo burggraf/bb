@@ -279,7 +279,7 @@ class GameValidator {
 		}
 
 		// Check that action descriptions are clear
-		const actionWords = ['singles', 'doubles', 'triples', 'homers', 'walks', 'strikes out', 'grounds out', 'flies out', 'lines out', 'pops out', 'reaches', 'hits'];
+		const actionWords = ['singles', 'doubles', 'triples', 'homers', 'walks', 'strikes out', 'grounds out', 'flies out', 'lines out', 'pops out', 'reaches', 'hits', 'hit by pitch', 'intentionally walked', 'lays down a sacrifice', 'hits a sacrifice', 'reaches on'];
 		const hasAction = actionWords.some(word => desc.includes(word));
 		if (!hasAction && !play.isSummary) {
 			warnings.push(`Play ${index}: Unclear action in description: "${play.description}"`);
