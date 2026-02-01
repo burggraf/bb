@@ -150,10 +150,17 @@ function describePlay(
 	}
 }
 
-// Add half-inning summary to plays
+// Add half-inning summary to plays (uses current state values - may be wrong after inning change)
 function addHalfInningSummary(state: GameState, season: SeasonPackage): void {
 	const isTop = state.isTopInning;
 	const inning = state.inning;
+	addHalfInningSummaryWithInning(state, season, inning, isTop);
+}
+
+// Add half-inning summary with explicit inning values (correct even after state changes)
+function addHalfInningSummaryWithInning(state: GameState, season: SeasonPackage, summaryInning: number, summaryIsTop: boolean): void {
+	const isTop = summaryIsTop;
+	const inning = summaryInning;
 
 	// Calculate runs for this half-inning
 	let runs = 0;
@@ -441,8 +448,9 @@ export class GameEngine {
 
 		// Check for inning change AFTER updating state
 		if (wouldBeThirdOut) {
-			// Add half-inning summary (based on current state BEFORE resetting)
-			addHalfInningSummary(state, this.season);
+			// Add half-inning summary with the CORRECT inning values (before state change)
+			// The play we just added has the correct inning information
+			addHalfInningSummaryWithInning(state, this.season, playInning, playIsTop);
 
 			// Now reset for the new inning
 			state.bases = [null, null, null];
@@ -456,8 +464,8 @@ export class GameEngine {
 			}
 		} else if (!wouldBeThirdOut && this.isComplete()) {
 			// Game ended without 3 outs (walk-off win)
-			// Add a summary for the final half-inning
-			addHalfInningSummary(state, this.season);
+			// Add a summary for the final half-inning with correct inning values
+			addHalfInningSummaryWithInning(state, this.season, playInning, playIsTop);
 		}
 
 		// Safety cap to prevent runaway outs (shouldn't happen with correct logic)
