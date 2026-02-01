@@ -308,7 +308,7 @@ class GameValidator {
 		// Check if game ended properly
 		// Game is INVALID if:
 		// - Fewer than 9 full innings played AND NOT a walk-off win
-		// Walk-off win: home team won in bottom of 9th or later
+		// Walk-off win: home team won in bottom of 9th or later (or home team leading after top of 9th, doesn't need to bat)
 		const hasFull9Innings = fullInningsPlayed >= 9;
 		const homeWonWalkOff = !isTopOfNext && actualInning >= 9 && finalHomeScore > finalAwayScore;
 

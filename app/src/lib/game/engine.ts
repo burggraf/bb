@@ -287,6 +287,7 @@ export class GameEngine {
 			awayLineup: generateLineup(season.batters, season.pitchers, awayTeam),
 			homeLineup: generateLineup(season.batters, season.pitchers, homeTeam),
 			plays: [],
+			homeTeamHasBattedInInning: false,
 		};
 	}
 
@@ -296,6 +297,12 @@ export class GameEngine {
 
 	simulatePlateAppearance(): PlayEvent {
 		const { state, season } = this;
+
+		// Reset flag at the start of a top half (after isComplete() has checked it)
+		// This ensures the flag only represents whether home team batted in PREVIOUS inning
+		if (state.isTopInning && state.inning > 9) {
+			state.homeTeamHasBattedInInning = false;
+		}
 		const battingTeam = state.isTopInning ? state.awayLineup : state.homeLineup;
 		const pitchingTeam = state.isTopInning ? state.homeLineup : state.awayLineup;
 
@@ -482,6 +489,11 @@ export class GameEngine {
 		// This ensures the summary appears after the 3rd out in reverse chronological display
 		state.plays.unshift(play);
 
+		// Mark that home team has batted in this inning (if bottom half)
+		if (!state.isTopInning) {
+			state.homeTeamHasBattedInInning = true;
+		}
+
 		// Update state bases and outs
 		state.bases = adjustedBases;
 		state.outs = newOuts;
@@ -499,11 +511,15 @@ export class GameEngine {
 			if (state.isTopInning) {
 				state.isTopInning = false;
 			} else {
+				// Mark that home team just batted (for extra innings ending logic)
+				state.homeTeamHasBattedInInning = true;
 				state.isTopInning = true;
 				state.inning++;
 			}
 		} else if (!wouldBeThirdOut && this.isComplete()) {
 			// Game ended without 3 outs (walk-off win)
+			// Mark that home team has batted (walk-off happens in bottom half)
+			state.homeTeamHasBattedInInning = true;
 			// Add a summary for the final half-inning with correct inning values
 			addHalfInningSummaryWithInning(state, this.season, playInning, playIsTop);
 		}
@@ -531,9 +547,9 @@ export class GameEngine {
 			return true;
 		}
 
-		// Extra innings: if away team leads after top of an inning, game ends
+		// Extra innings: if away team leads after top of an inning AND home team has already batted, game ends
 		// (Home team had their chance and couldn't tie/win)
-		if (this.state.inning > 9 && this.state.isTopInning && awayScore > homeScore) {
+		if (this.state.inning > 9 && this.state.isTopInning && awayScore > homeScore && this.state.homeTeamHasBattedInInning) {
 			return true;
 		}
 
@@ -625,6 +641,8 @@ export class GameEngine {
 			...state,
 			awayLineup: generateLineup(season.batters, season.pitchers, state.meta.awayTeam),
 			homeLineup: generateLineup(season.batters, season.pitchers, state.meta.homeTeam),
+			// Ensure flag exists for backward compatibility
+			homeTeamHasBattedInInning: state.homeTeamHasBattedInInning ?? false,
 		};
 		return engine;
 	}
