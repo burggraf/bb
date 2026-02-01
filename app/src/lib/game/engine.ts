@@ -391,14 +391,18 @@ export class GameEngine {
 
 		// Check for inning change BEFORE updating state (so summary doesn't include this play)
 		// We need to check what the outs WOULD be, not what they currently are
-		const currentOuts = state.outs;
 		const wouldBeThirdOut = newOuts >= 3;
 
+		// Update state bases and outs
+		state.bases = newBases;
+		state.outs = newOuts;
+
+		// Check for inning change AFTER updating state
 		if (wouldBeThirdOut) {
-			// Add half-inning summary BEFORE updating state (summary based on current inning state)
+			// Add half-inning summary (based on current state BEFORE resetting)
 			addHalfInningSummary(state, this.season);
 
-			// Now update state for the new inning
+			// Now reset for the new inning
 			state.bases = [null, null, null];
 			state.outs = 0;
 
@@ -408,12 +412,6 @@ export class GameEngine {
 				state.isTopInning = true;
 				state.inning++;
 			}
-		}
-
-		// Update state bases and outs (only if not already handled above)
-		if (!wouldBeThirdOut) {
-			state.bases = newBases;
-			state.outs = newOuts;
 		}
 
 		// Safety cap to prevent runaway outs (shouldn't happen with correct logic)
@@ -436,6 +434,7 @@ export class GameEngine {
 		}
 
 		// Create play event (store formatted names)
+		// Use current state (after any inning changes)
 		const play: PlayEvent = {
 			inning: state.inning,
 			isTopInning: state.isTopInning,
