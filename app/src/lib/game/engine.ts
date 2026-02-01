@@ -364,36 +364,51 @@ export class GameEngine {
 
 		// Get outcome from model, handling game state constraints
 		let outcome: Outcome;
+
+		// Collect impossible outcomes based on game state
+		const impossibleOutcomes: (keyof ProbabilityDistribution)[] = [];
+
+		// Fielder's choice, sacrifice fly, and sacrifice bunt are impossible with empty bases
 		if (areBasesEmpty(state.bases)) {
-			// Fielder's choice, sacrifice fly, and sacrifice bunt are impossible with empty bases
+			impossibleOutcomes.push('fieldersChoice', 'sacrificeFly', 'sacrificeBunt');
+		}
+
+		// Sacrifice bunt is impossible with 2 outs (can't advance runner with 2 outs)
+		if (state.outs === 2) {
+			impossibleOutcomes.push('sacrificeBunt');
+		}
+
+		if (impossibleOutcomes.length > 0) {
 			// Get the distribution, exclude impossible outcomes, re-normalize, then sample
 			const distribution = this.model.predict(matchup);
-			const fcProb = distribution.fieldersChoice || 0;
-			const sfProb = distribution.sacrificeFly || 0;
-			const sbProb = distribution.sacrificeBunt || 0;
-			const excludedProb = fcProb + sfProb + sbProb;
+			let excludedProb = 0;
+			for (const key of impossibleOutcomes) {
+				excludedProb += distribution[key] || 0;
+			}
 
 			if (excludedProb > 0) {
 				// Create adjusted distribution excluding impossible outcomes
-				const { fieldersChoice: _fc, sacrificeFly: _sf, sacrificeBunt: _sb, ...remaining } = distribution;
-				const adjusted = remaining as Partial<ProbabilityDistribution>;
+				const adjusted = { ...distribution };
+				for (const key of impossibleOutcomes) {
+					delete (adjusted as any)[key];
+				}
 
 				// Re-normalize the remaining probabilities
 				const totalProb = 1 - excludedProb;
 				for (const key of Object.keys(adjusted) as (keyof ProbabilityDistribution)[]) {
-					if (key !== 'fieldersChoice' && key !== 'sacrificeFly' && key !== 'sacrificeBunt' && adjusted[key] !== undefined) {
+					if (adjusted[key] !== undefined) {
 						adjusted[key] = adjusted[key]! / totalProb;
 					}
 				}
 
-				// Sample from adjusted distribution (cast to full type since we know it's valid)
-				outcome = this.model.sample(adjusted as ProbabilityDistribution) as Outcome;
+				// Sample from adjusted distribution
+				outcome = this.model.sample(adjusted) as Outcome;
 			} else {
 				// No impossible outcomes, just sample normally
 				outcome = this.model.simulate(matchup) as Outcome;
 			}
 		} else {
-			// Normal sampling with runners on base
+			// Normal sampling
 			outcome = this.model.simulate(matchup) as Outcome;
 		}
 
@@ -457,11 +472,12 @@ export class GameEngine {
 		if (outcome === 'fieldersChoice') {
 			// Find which runner was removed (comparing runnersBefore to newBases)
 			// Check from furthest base to nearest (3B -> 2B -> 1B)
-			const bases = ['third', 'second', 'first'] as const;
+			// In a fielder's choice, the lead runner (furthest base) is the one who's out
+			// Skip runners who scored (they're gone but not out)
 			const baseNames = ['3B', '2B', '1B'] as const;
-			for (let i = 0; i < 3; i++) {
-				if (runnersBefore[i] && !newBases[i]) {
-					// Runner was here before, now gone - they're the out
+			for (let i = 2; i >= 0; i--) {
+				if (runnersBefore[i] && !newBases[i] && !scorerIds.includes(runnersBefore[i]!)) {
+					// Runner was here before, now gone, and didn't score - they're the out
 					outRunnerName = this.season.batters[runnersBefore[i]!]?.name;
 					outBase = baseNames[i];
 					break;
