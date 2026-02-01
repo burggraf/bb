@@ -98,7 +98,7 @@ function applyBaserunning(
 	batterId: string
 ): { runs: number; newBases: [string | null, string | null, string | null] } {
 	let runs = 0;
-	const newBases: [string | null, string | null, string | null] = [null, null, null];
+	let newBases: [string | null, string | null, string | null] = [null, null, null];
 
 	// V1: Static baserunning advancement
 	switch (outcome) {
@@ -274,11 +274,13 @@ export class GameEngine {
 			state.bases = newBases;
 		}
 
+		// Advance to next batter
+		advanceBatter(battingTeam);
+
 		// Check for inning change
 		if (state.outs >= 3) {
 			state.outs = 0;
 			state.bases = [null, null, null];
-			advanceBatter(battingTeam);
 
 			if (state.isTopInning) {
 				state.isTopInning = false;
