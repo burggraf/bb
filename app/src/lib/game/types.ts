@@ -136,6 +136,7 @@ export interface GameState {
 	awayLineup: LineupState;
 	homeLineup: LineupState;
 	plays: PlayEvent[];
+	homeTeamHasBattedInInning: boolean; // Track if home team has batted in current extra inning
 }
 
 export interface PlayEvent {
