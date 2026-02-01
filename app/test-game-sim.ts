@@ -385,7 +385,29 @@ class GameValidator {
 	}
 }
 
-async function runGameTests(numGames: number = 10): Promise<void> {
+function printGamePlayByPlay(engine: GameEngine, gameNum: number, awayTeam: string, homeTeam: string, teams: Record<string, { city: string; nickname: string }>): void {
+	const state = engine.getState();
+	const plays = [...state.plays].reverse();
+
+	const awayName = teams[awayTeam] ? `${teams[awayTeam].city} ${teams[awayTeam].nickname}` : awayTeam;
+	const homeName = teams[homeTeam] ? `${teams[homeTeam].city} ${teams[homeTeam].nickname}` : homeTeam;
+
+	console.log(`\n${'='.repeat(60)}`);
+	console.log(`Game ${gameNum}: ${awayName} @ ${homeName}`);
+	console.log('='.repeat(60));
+
+	plays.forEach((play, i) => {
+		if (play.isSummary) {
+			console.log(`\n  ${play.description}`);
+		} else {
+			const playNum = plays.slice(0, i).filter(p => !p.isSummary).length + 1;
+			console.log(`  ${playNum}. ${play.description}`);
+		}
+	});
+	console.log('');
+}
+
+async function runGameTests(numGames: number = 10, verbose: boolean = false): Promise<void> {
 	console.log(`\n🏟️  Running ${numGames} game simulation tests...\n`);
 
 	const season = await loadSeason(1976);
@@ -394,6 +416,7 @@ async function runGameTests(numGames: number = 10): Promise<void> {
 	const allErrors: string[] = [];
 	const allWarnings: string[] = [];
 	const results: ValidationResult[] = [];
+	const gameTeams: { away: string; home: string }[] = []; // Track teams for verbose output
 
 	for (let i = 0; i < numGames; i++) {
 		process.stdout.write(`\r  Game ${i + 1}/${numGames}...`);
@@ -412,6 +435,9 @@ async function runGameTests(numGames: number = 10): Promise<void> {
 			homeTeam = validTeams[Math.floor(Math.random() * validTeams.length)];
 		}
 
+		// Track teams for verbose output
+		gameTeams.push({ away: awayTeam, home: homeTeam });
+
 		const engine = new GameEngine(season, awayTeam, homeTeam);
 
 		// Simulate full game
@@ -427,6 +453,11 @@ async function runGameTests(numGames: number = 10): Promise<void> {
 		}
 		if (result.warnings.length > 0) {
 			allWarnings.push(...result.warnings.map(w => `Game ${i + 1}: ${w}`));
+		}
+
+		// Print full play-by-play for each game if verbose
+		if (verbose) {
+			printGamePlayByPlay(engine, i + 1, awayTeam, homeTeam, season.teams);
 		}
 	}
 
@@ -501,49 +532,40 @@ async function runGameTests(numGames: number = 10): Promise<void> {
 	console.log(`  Half-innings with 3 outs: ${halfInningsWith3Outs}`);
 	console.log(`  Half-innings with wrong outs: ${totalHalfInnings - halfInningsWith3Outs}`);
 
-	// Sample play-by-play from first game
-	console.log(`\n📝 Sample Play-by-Play (Game 1):`);
-	console.log('─'.repeat(60));
-	const firstEngine = new GameEngine(season, 'CIN', 'HOU');
-	while (!firstEngine.isComplete()) {
-		firstEngine.simulatePlateAppearance();
-	}
-	const state = firstEngine.getState();
-	const plays = [...state.plays].reverse().filter(p => !p.isSummary);
-	plays.slice(0, 10).forEach((play, i) => {
-		console.log(`  ${i + 1}. ${play.description}`);
-	});
-	if (plays.length > 10) {
-		console.log(`  ... (${plays.length - 10} more plays)`);
-	}
+	// Sample play-by-play from first game (skip if verbose, since we already showed all games)
+	if (!verbose) {
+		console.log(`\n📝 Sample Play-by-Play (Game 1):`);
+		console.log('─'.repeat(60));
+		const firstEngine = new GameEngine(season, 'CIN', 'HOU');
+		while (!firstEngine.isComplete()) {
+			firstEngine.simulatePlateAppearance();
+		}
+		const state = firstEngine.getState();
+		const plays = [...state.plays].reverse().filter(p => !p.isSummary);
+		plays.slice(0, 10).forEach((play, i) => {
+			console.log(`  ${i + 1}. ${play.description}`);
+		});
+		if (plays.length > 10) {
+			console.log(`  ... (${plays.length - 10} more plays)`);
+		}
 
-	// Print one full game if there were errors
-	if (allErrors.length > 0 && results.length > 0) {
-		const errorGameIndex = results.findIndex(r => !r.isValid);
-		if (errorGameIndex >= 0) {
-			console.log(`\n🔍 Full Play-by-Play for Game ${errorGameIndex + 1} (had errors):`);
-			console.log('='.repeat(60));
+		// Print one full game if there were errors
+		if (allErrors.length > 0 && results.length > 0) {
+			const errorGameIndex = results.findIndex(r => !r.isValid);
+			if (errorGameIndex >= 0) {
+				console.log(`\n🔍 Full Play-by-Play for Game ${errorGameIndex + 1} (had errors):`);
+				console.log('='.repeat(60));
 
-			// Re-simulate the same game
-			const validTeams = Object.keys(season.teams).filter(teamId => {
-				const hasBatters = Object.values(season.batters).some(b => b.teamId === teamId);
-				const hasPitchers = Object.values(season.pitchers).some(p => p.teamId === teamId);
-				return hasBatters && hasPitchers;
-			});
-			const errorEngine = new GameEngine(season, validTeams[0], validTeams[1]);
-			while (!errorEngine.isComplete()) {
-				errorEngine.simulatePlateAppearance();
-			}
-			const errorState = errorEngine.getState();
-			const errorPlays = [...errorState.plays].reverse();
-			errorPlays.forEach((play, i) => {
-				if (play.isSummary) {
-					console.log(`\n  ${play.description}`);
-				} else {
-					const playNum = errorPlays.slice(0, i).filter(p => !p.isSummary).length + 1;
-					console.log(`  ${playNum}. ${play.description}`);
+				// Use the tracked teams for this game
+				const teams = gameTeams[errorGameIndex];
+				if (teams) {
+					const errorEngine = new GameEngine(season, teams.away, teams.home);
+					while (!errorEngine.isComplete()) {
+						errorEngine.simulatePlateAppearance();
+					}
+					printGamePlayByPlay(errorEngine, errorGameIndex + 1, teams.away, teams.home, season.teams);
 				}
-			});
+			}
 		}
 	}
 
@@ -555,10 +577,21 @@ async function runGameTests(numGames: number = 10): Promise<void> {
 	}
 }
 
-// Get number of games from command line
-const numGames = parseInt(process.argv[2]) || 10;
+// Parse command line arguments
+// Supports: test-game-sim.ts [num_games] [--verbose|-v]
+// Or: test-game-sim.ts --verbose|-v [num_games]
+let numGames = 10;
+let verbose = false;
 
-runGameTests(numGames).catch(err => {
+for (const arg of process.argv.slice(2)) {
+	if (arg === '--verbose' || arg === '-v') {
+		verbose = true;
+	} else if (!isNaN(parseInt(arg))) {
+		numGames = parseInt(arg);
+	}
+}
+
+runGameTests(numGames, verbose).catch(err => {
 	console.error('Error running tests:', err);
 	process.exit(1);
 });
