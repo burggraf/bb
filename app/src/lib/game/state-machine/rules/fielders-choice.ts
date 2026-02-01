@@ -129,7 +129,7 @@ export function handleFieldersChoice(
 	nextState.bases = runnersToBaseConfig(nextState.runners);
 
 	// Increment outs (lead runner retired)
-	nextState.outs = Math.min(outsBefore + 1, 2) as 0 | 1 | 2;
+	nextState.outs = Math.min(outsBefore + 1, 3) as 0 | 1 | 2 | 3;
 
 	return {
 		nextState,

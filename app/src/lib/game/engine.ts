@@ -235,7 +235,7 @@ function applyBaserunning(
 	runs: number;
 	newBases: [string | null, string | null, string | null];
 	scorerIds: string[];
-	newOuts: 0 | 1 | 2;
+	newOuts: 0 | 1 | 2 | 3;
 } {
 	// Create baserunning state from game state
 	const brState = createBaserunningState(state.outs, state.bases);
@@ -389,11 +389,9 @@ export class GameEngine {
 
 		// Update state bases and outs (use outs from state machine)
 		state.bases = newBases;
-		// Cap outs at 2 to prevent runaway (handles rare edge cases)
-		// The inning change check below should normally reset outs before this cap is hit
-		state.outs = Math.min(newOuts, 2) as 0 | 1 | 2;
+		state.outs = newOuts;
 
-		// Check for inning change (do this BEFORE capping outs for next play)
+		// Check for inning change (do this BEFORE any capping)
 		if (state.outs >= 3) {
 			// Add half-inning summary before changing
 			addHalfInningSummary(state, this.season);
@@ -408,6 +406,9 @@ export class GameEngine {
 				state.inning++;
 			}
 		}
+
+		// Safety cap to prevent runaway outs (shouldn't happen with correct logic)
+		state.outs = Math.min(state.outs, 2) as 0 | 1 | 2;
 		let outRunnerName: string | undefined;
 		let outBase: string | undefined;
 		if (outcome === 'fieldersChoice') {
@@ -526,9 +527,9 @@ export class GameEngine {
 		// Use walk mechanics for baserunning
 		const { runs, newBases, scorerIds, newOuts } = applyBaserunning(this.state, 'walk', batter.id);
 
-		// Update state bases and outs (use outs from state machine, capped at 2 for 3 outs)
+		// Update state bases and outs (use outs from state machine)
 		this.state.bases = newBases;
-		this.state.outs = Math.min(newOuts, 2) as 0 | 1 | 2;
+		this.state.outs = Math.min(newOuts, 2) as 0 | 1 | 2; // Cap at 2 after engine checks for inning end
 
 		const play: PlayEvent = {
 			inning: this.state.inning,
