@@ -26,13 +26,22 @@ bb/
 
 **Key point:** The `@bb/model` package is framework-agnostic TypeScript - it runs in Node (data-prep) and browser (app) without any dependencies on Svelte/Vite. This is intentional for model validation and testing.
 
-### Development Workflow
+### Development Commands
 
-1. **Start dev server:** `pnpm -C app dev` (runs on http://localhost:5173)
-2. **Build model package:** `pnpm -C packages/model build` (uses tsup)
-3. **Watch model for changes:** `pnpm -C packages/model dev`
-4. **Run model tests:** `pnpm -C packages/model test` (Vitest)
-5. **Export season data:** `cd data-prep && pnpm exec tsx src/export-season.ts 1976`
+```bash
+# App development
+pnpm -C app dev           # Start dev server (http://localhost:5173)
+pnpm -C app build         # Production build
+pnpm -C app check         # Run svelte-check for type errors
+
+# Model package
+pnpm -C packages/model build   # Build with tsup
+pnpm -C packages/model dev     # Watch mode
+pnpm -C packages/model test    # Run Vitest tests
+
+# Data preparation
+cd data-prep && pnpm exec tsx src/export-season.ts 1976  # Export a season
+```
 
 ### Data & Database
 
@@ -50,7 +59,7 @@ bb/
 ### The MatchupModel (`packages/model/`)
 
 Core types to understand:
-- `EventRates`: `{ out, single, double, triple, homeRun, walk, hitByPitch }`
+- `EventRates`: Currently 7 outcomes `{ out, single, double, triple, homeRun, walk, hitByPitch }`. Will expand to 17 outcomes (see detailed-outcomes-design.md).
 - `SplitRates`: `{ vsLeft, vsRight }` - key for platoon splits
 - `Matchup`: `{ batter, pitcher, league }` - all have `rates: SplitRates`
 
@@ -59,23 +68,35 @@ Core types to understand:
 - `sample(distribution): Outcome` - samples from distribution
 - `simulate(matchup): Outcome` - predict + sample in one call
 
-**Important:** The model uses `vsLeft`/`vsRight` keys (not vsLHP/vsRHP). This maps as:
-- For batters: `vsLeft` = vs LHP, `vsRight` = vs RHP
-- For pitchers: `vsLeft` = vs LHB, `vsRight` = vs RHB
+**Type naming difference between packages:**
+- **Model package** uses generic `vsLeft`/`vsRight` keys
+- **App/data-prep** uses explicit `vsLHP`/`vsRHP` (batters) and `vsLHB`/`vsRHB` (pitchers)
+- The engine (`app/src/lib/game/engine.ts`) translates between them when creating Matchup objects
 
 ### Game Engine (`app/src/lib/game/engine.ts`)
 
 The `GameEngine` class orchestrates the simulation:
-- Loads season data via `loadSeason(year)`
-- Generates lineups from available batters
-- For each PA: creates Matchup, samples outcome, applies baserunning
+- Generates lineups from team batters (filtered by `teamId`)
+- For each PA: creates Matchup, samples outcome, applies baserunning via state machine
 - State tracks: inning, outs, bases, current batter/pitcher, plays
 
 **Current limitations (V1):**
-- Lineups are auto-generated from all batters (not team-specific)
 - Pitchers are random (will be rotation-specific in V2)
-- Baserunning uses static rules (full model in V2)
 - No substitutions yet
+
+### Baserunning State Machine (`app/src/lib/game/state-machine/`)
+
+Models all 24 game states (0/1/2 outs × 8 base configurations) using a 3-bit bitmap:
+- `BaseConfig`: 0-7 where bit 0=1B, bit 1=2B, bit 2=3B
+- `transition(state, outcome, batterId)`: Returns `{ nextState, runsScored, scorerIds }`
+
+Rules are split into separate files in `rules/`:
+- `ground-out.ts`: Force plays, double play logic
+- `walk.ts`: Walk/HBP runner advancement
+- `hit.ts`: Single/double/triple/HR advancement
+- `strikeout.ts`, `fly-out.ts`: Out handling
+
+Tests are in `transitions.test.ts` - run with `pnpm -C app test` (requires Vitest setup in app).
 
 ### Svelte 5 Specifics
 
@@ -96,9 +117,9 @@ The app uses Svelte 5 runes (`$state`, `$derived`, etc.). Key patterns:
 
 ### Common Issues
 
-- **TypeScript errors in engine.ts:** Usually related to const/let reassignment - `newBases` was const, needed to be let
-- **Browser console errors during fetch:** SSR-related - check if data loads in Network tab
 - **Model package not found:** Run `pnpm install` from root to link workspace packages
+- **Type mismatches between packages:** Remember the vsLeft/vsRight vs vsLHP/vsRHP naming difference
+- **State not updating in Svelte:** Ensure variables are declared with `$state()` rune
 
 ### Architecture Decision Records
 
@@ -106,6 +127,12 @@ See `docs/plans/2025-01-31-baseball-sim-design.md` for:
 - Phase 1: Generalized log5 with fixed coefficients (current)
 - Phase 2: Learned coefficients from historical fitting
 - Phase 3: Full Bayesian hierarchical with partial pooling
+
+See `docs/plans/2025-02-01-detailed-outcomes-design.md` for:
+- Expanding from 7 to 17 outcome types (splitting "out" into groundOut, flyOut, etc.)
+- Conditional DP probability modeling (48% league avg, player-specific rates)
+- Probabilistic runner advancement tables from historical data
+- Trajectory imputation for pre-1990 data
 
 ### Data Model Notes
 
