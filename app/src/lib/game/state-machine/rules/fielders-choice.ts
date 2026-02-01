@@ -18,6 +18,7 @@ interface FieldersChoiceResult {
 	runsScored: number;
 	scorerIds: string[];
 	advancement: BaserunningEvent[];
+	outRunnerId?: string; // ID of the runner who was put out
 }
 
 export function handleFieldersChoice(
@@ -26,6 +27,7 @@ export function handleFieldersChoice(
 	advancement: BaserunningEvent[]
 ): FieldersChoiceResult {
 	const scorerIds: string[] = [];
+	let outRunnerId: string | undefined;
 
 	// Clone state for mutation
 	const nextState: BaserunningState = {
@@ -52,15 +54,24 @@ export function handleFieldersChoice(
 			runsScored: 0,
 			scorerIds,
 			advancement,
+			outRunnerId: undefined,
 		};
 	}
 
 	// With runners on base: lead runner is retired, others advance if forced
 	// Find the lead runner (furthest base)
 	let leadRunnerBase: 'first' | 'second' | 'third' | null = null;
-	if (currentState.runners.third) leadRunnerBase = 'third';
-	else if (currentState.runners.second) leadRunnerBase = 'second';
-	else if (currentState.runners.first) leadRunnerBase = 'first';
+	let leadRunnerId: string | undefined;
+	if (currentState.runners.third) {
+		leadRunnerBase = 'third';
+		leadRunnerId = currentState.runners.third;
+	} else if (currentState.runners.second) {
+		leadRunnerBase = 'second';
+		leadRunnerId = currentState.runners.second;
+	} else if (currentState.runners.first) {
+		leadRunnerBase = 'first';
+		leadRunnerId = currentState.runners.first;
+	}
 
 	// Process baserunning from 3B to 1B
 	// Runner on 3B: Out if lead runner, otherwise holds
@@ -68,6 +79,7 @@ export function handleFieldersChoice(
 		if (leadRunnerBase === 'third') {
 			// Lead runner is out
 			// No advancement event for the out (runner retired at 3B)
+			outRunnerId = currentState.runners.third;
 			nextState.runners.third = null;
 		} else {
 			// Not the lead runner, holds (no force)
@@ -79,6 +91,7 @@ export function handleFieldersChoice(
 	if (currentState.runners.second) {
 		if (leadRunnerBase === 'second') {
 			// Lead runner is out at 2B
+			outRunnerId = currentState.runners.second;
 			nextState.runners.second = null;
 		} else if (currentState.runners.first) {
 			// Forced to advance by batter taking 1B
@@ -103,6 +116,7 @@ export function handleFieldersChoice(
 	if (currentState.runners.first) {
 		if (leadRunnerBase === 'first') {
 			// Lead runner is out at 1B
+			outRunnerId = currentState.runners.first;
 			nextState.runners.first = null;
 		} else {
 			// Not the lead runner, forced to advance to 2B by batter
@@ -136,5 +150,6 @@ export function handleFieldersChoice(
 		runsScored: scorerIds.length,
 		scorerIds,
 		advancement,
+		outRunnerId,
 	};
 }

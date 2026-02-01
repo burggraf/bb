@@ -243,6 +243,7 @@ function applyBaserunning(
 	newBases: [string | null, string | null, string | null];
 	scorerIds: string[];
 	newOuts: 0 | 1 | 2 | 3;
+	outRunnerId?: string;
 } {
 	// Create baserunning state from game state
 	const brState = createBaserunningState(state.outs, state.bases);
@@ -262,6 +263,7 @@ function applyBaserunning(
 		newBases,
 		scorerIds: result.scorerIds,
 		newOuts: result.nextState.outs,
+		outRunnerId: result.outRunnerId,
 	};
 }
 
@@ -416,7 +418,7 @@ export class GameEngine {
 		const runnersBefore: [string | null, string | null, string | null] = [...state.bases];
 
 		// Apply baserunning
-		const { runs, newBases, scorerIds, newOuts } = applyBaserunning(state, outcome, batterId);
+		const { runs, newBases, scorerIds, newOuts, outRunnerId: smOutRunnerId } = applyBaserunning(state, outcome, batterId);
 
 		// Check for walk-off situation and adjust if needed
 		// In a walk-off (bottom of 9th+, home team takes lead), the game ends immediately
@@ -469,16 +471,13 @@ export class GameEngine {
 
 		let outRunnerName: string | undefined;
 		let outBase: string | undefined;
-		if (outcome === 'fieldersChoice') {
-			// Find which runner was removed (comparing runnersBefore to newBases)
-			// Check from furthest base to nearest (3B -> 2B -> 1B)
-			// In a fielder's choice, the lead runner (furthest base) is the one who's out
-			// Skip runners who scored (they're gone but not out)
-			const baseNames = ['3B', '2B', '1B'] as const;
-			for (let i = 2; i >= 0; i--) {
-				if (runnersBefore[i] && !newBases[i] && !scorerIds.includes(runnersBefore[i]!)) {
-					// Runner was here before, now gone, and didn't score - they're the out
-					outRunnerName = this.season.batters[runnersBefore[i]!]?.name;
+		if (outcome === 'fieldersChoice' && smOutRunnerId) {
+			// Use the out runner ID from the state machine
+			outRunnerName = this.season.batters[smOutRunnerId]?.name;
+			// Find which base the runner was on by checking runnersBefore
+			const baseNames = ['1B', '2B', '3B'] as const;
+			for (let i = 0; i < 3; i++) {
+				if (runnersBefore[i] === smOutRunnerId) {
 					outBase = baseNames[i];
 					break;
 				}

@@ -30,6 +30,7 @@ export interface TransitionResult {
 	runsScored: number;
 	scorerIds: string[];
 	advancement: BaserunningEvent[];
+	outRunnerId?: string; // ID of the runner who was put out (for fielder's choice, etc.)
 }
 
 /**
@@ -93,8 +94,13 @@ export function transition(
 			return handleSacrificeBunt(currentState, batterId, advancement);
 
 		// Other reach-base outcomes
-		case 'fieldersChoice':
-			return handleFieldersChoice(currentState, batterId, advancement);
+		case 'fieldersChoice': {
+			const fcResult = handleFieldersChoice(currentState, batterId, advancement);
+			return {
+				...fcResult,
+				outRunnerId: fcResult.outRunnerId,
+			};
+		}
 		case 'reachedOnError':
 			return handleReachedOnError(currentState, batterId, advancement);
 		case 'catcherInterference':
