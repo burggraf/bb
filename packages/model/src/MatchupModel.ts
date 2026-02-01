@@ -22,11 +22,12 @@ import { EVENT_RATE_KEYS } from './types.js';
 
 /**
  * Validate that rates sum to approximately 1.0
+ * Allows zero-sum rates (players with no data) which will be handled later
  */
 function validateRates(rates: EventRates, label: string): void {
   const sum = Object.values(rates).reduce((a, b) => a + b, 0);
-  // Allow 5% tolerance for players with few PAs where rounding causes drift
-  if (Math.abs(sum - 1.0) > 0.05) {
+  // Allow zero-sum rates (players with no data) - these will fall back to league rates
+  if (sum > 0 && Math.abs(sum - 1.0) > 0.05) {
     throw new Error(`${label} rates sum to ${sum}, expected ~1.0`);
   }
 }
@@ -79,14 +80,25 @@ function getRatesForMatchup(matchup: Matchup): {
   const pitcherHandedness = pitcher.handedness;
 
   // Get the correct split rates
-  const batterRates =
+  let batterRates =
     pitcherHandedness === 'L' ? batter.rates.vsLeft : batter.rates.vsRight;
 
-  const pitcherRates =
+  let pitcherRates =
     batterHandedness === 'L' ? pitcher.rates.vsLeft : pitcher.rates.vsRight;
 
   const leagueRates =
     pitcherHandedness === 'L' ? league.rates.vsLeft : league.rates.vsRight;
+
+  // Fall back to league rates for players with no data (zero-sum rates)
+  const batterSum = Object.values(batterRates).reduce((a, b) => a + b, 0);
+  if (batterSum === 0) {
+    batterRates = leagueRates;
+  }
+
+  const pitcherSum = Object.values(pitcherRates).reduce((a, b) => a + b, 0);
+  if (pitcherSum === 0) {
+    pitcherRates = leagueRates;
+  }
 
   return {
     batter: batterRates,

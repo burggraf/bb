@@ -124,21 +124,35 @@ class GameValidator {
 			// === HALF-INNING TRACKING ===
 			const isOutEvent = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly'].includes(play.outcome);
 
-			// Handle summaries first - they mark the end of the current half-inning
+			// Handle summaries first - they mark the end of a half-inning
 			if (play.isSummary) {
-				if (currentHalfInning !== null) {
-					currentHalfInning.endedWithSummary = true;
-
-					// Check if this is a walk-off win (home team took lead in bottom of 9th or later)
-					// For walk-off wins, fewer than 3 outs is acceptable
-					const isBottomInning = !play.isTopInning;
-					const isLateInning = play.inning >= 9;
-					const homeTeamWon = homeScore > awayScore;
-					const isWalkOff = isBottomInning && isLateInning && homeTeamWon;
-
-					if (currentHalfInning.outs !== 3 && !isWalkOff) {
-						errors.push(`Summary for ${play.isTopInning ? 'top' : 'bottom'} ${play.inning} shows ${currentHalfInning.outs} outs (expected 3)`);
+				// Count outs for ALL non-summary plays that match this summary's inning
+				// (not just plays before the summary, because the array order is newest-first)
+				let outsInThisHalfInning = 0;
+				for (let j = 0; j < plays.length; j++) {
+					const otherPlay = plays[j];
+					if (!otherPlay.isSummary && otherPlay.inning === play.inning && otherPlay.isTopInning === play.isTopInning) {
+						const otherIsOut = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly'].includes(otherPlay.outcome);
+						if (otherIsOut) {
+							outsInThisHalfInning++;
+						}
 					}
+				}
+
+				// Check if this is a walk-off win (home team took lead in bottom of 9th or later)
+				// For walk-off wins, fewer than 3 outs is acceptable
+				const isBottomInning = !play.isTopInning;
+				const isLateInning = play.inning >= 9;
+				const homeTeamWon = homeScore > awayScore;
+				const isWalkOff = isBottomInning && isLateInning && homeTeamWon;
+
+				if (outsInThisHalfInning !== 3 && !isWalkOff) {
+					errors.push(`Summary for ${play.isTopInning ? 'top' : 'bottom'} ${play.inning} shows ${outsInThisHalfInning} outs (expected 3)`);
+				}
+
+				// Mark current half-inning as ended if it matches
+				if (currentHalfInning !== null && currentHalfInning.inning === play.inning && currentHalfInning.isTop === play.isTopInning) {
+					currentHalfInning.endedWithSummary = true;
 				}
 				continue; // Skip the rest of the loop for summaries
 			}
