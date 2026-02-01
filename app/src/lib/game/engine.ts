@@ -389,17 +389,18 @@ export class GameEngine {
 		// Apply baserunning
 		const { runs, newBases, scorerIds, newOuts } = applyBaserunning(state, outcome, batterId);
 
-		// Update state bases and outs (use outs from state machine)
-		state.bases = newBases;
-		state.outs = newOuts;
+		// Check for inning change BEFORE updating state (so summary doesn't include this play)
+		// We need to check what the outs WOULD be, not what they currently are
+		const currentOuts = state.outs;
+		const wouldBeThirdOut = newOuts >= 3;
 
-		// Check for inning change (do this BEFORE any capping)
-		if (state.outs >= 3) {
-			// Add half-inning summary before changing
+		if (wouldBeThirdOut) {
+			// Add half-inning summary BEFORE updating state (summary based on current inning state)
 			addHalfInningSummary(state, this.season);
 
-			state.outs = 0;
+			// Now update state for the new inning
 			state.bases = [null, null, null];
+			state.outs = 0;
 
 			if (state.isTopInning) {
 				state.isTopInning = false;
@@ -407,6 +408,12 @@ export class GameEngine {
 				state.isTopInning = true;
 				state.inning++;
 			}
+		}
+
+		// Update state bases and outs (only if not already handled above)
+		if (!wouldBeThirdOut) {
+			state.bases = newBases;
+			state.outs = newOuts;
 		}
 
 		// Safety cap to prevent runaway outs (shouldn't happen with correct logic)
