@@ -98,7 +98,7 @@ function applyBaserunning(
 	batterId: string
 ): { runs: number; newBases: [string | null, string | null, string | null] } {
 	let runs = 0;
-	const newBases: [string | null, string | null, string | null] = [null, null, null];
+	let newBases: [string | null, string | null, string | null] = [null, null, null];
 
 	// V1: Static baserunning advancement
 	switch (outcome) {
@@ -274,11 +274,13 @@ export class GameEngine {
 			state.bases = newBases;
 		}
 
+		// Advance to next batter
+		advanceBatter(battingTeam);
+
 		// Check for inning change
 		if (state.outs >= 3) {
 			state.outs = 0;
 			state.bases = [null, null, null];
-			advanceBatter(battingTeam);
 
 			if (state.isTopInning) {
 				state.isTopInning = false;
@@ -292,8 +294,27 @@ export class GameEngine {
 	}
 
 	isComplete(): boolean {
-		// Game is complete after 9 innings (or home team ahead after 8.5)
-		return this.state.inning > 9 ||
-			(this.state.inning === 9 && !this.state.isTopInning);
+		// Calculate current score
+		let awayScore = 0;
+		let homeScore = 0;
+		for (const play of this.state.plays) {
+			if (play.isTopInning) {
+				awayScore += play.runsScored;
+			} else {
+				homeScore += play.runsScored;
+			}
+		}
+
+		// Top of 9th or later: game ends if home team is ahead
+		if (this.state.inning >= 9 && this.state.isTopInning && homeScore > awayScore) {
+			return true;
+		}
+
+		// Bottom of 9th or later: game ends after home team bats
+		if (this.state.inning >= 9 && !this.state.isTopInning) {
+			return true;
+		}
+
+		return false;
 	}
 }

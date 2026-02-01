@@ -11,7 +11,7 @@
 
 	function startGame() {
 		if (gameMode === 'quick') {
-			goto(`/game?year=${selectedYear}&away=${selectedAwayTeam}&home=${selectedHomeTeam}`);
+			goto(`/game?year=${selectedYear}`);
 		} else {
 			goto(`/schedule?year=${selectedYear}`);
 		}
@@ -37,7 +37,10 @@
 					class="px-4 py-2 rounded {gameMode === 'quick'
 						? 'bg-blue-600 text-white'
 						: 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}"
-					onclick={() => (gameMode = 'quick')}
+					onclick={() => {
+						gameMode = 'quick';
+						goto(`/game?year=${selectedYear}`);
+					}}
 				>
 					Quick Match
 				</button>
@@ -99,7 +102,7 @@
 		<!-- Start Button -->
 		<section class="text-center">
 			<button
-				disabled={gameMode === 'quick' && (!selectedAwayTeam || !selectedHomeTeam)}
+				disabled={gameMode === 'historical'}
 				class="px-8 py-3 bg-green-600 text-white font-semibold rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
 				onclick={startGame}
 			>
