@@ -2,7 +2,7 @@
  * Baseball game engine using the MatchupModel
  */
 
-import { MatchupModel } from '@bb/model';
+import { MatchupModel, type ProbabilityDistribution } from '@bb/model';
 import type {
 	GameState,
 	LineupState,
@@ -18,6 +18,7 @@ import { isHit, isOut } from './state-machine/outcome-types.js';
 // Generate lineup from batters on the specified team
 function generateLineup(
 	batters: Record<string, BatterStats>,
+	pitchers: Record<string, PitcherStats>,
 	teamId: string
 ): LineupState {
 	// Filter batters by teamId
@@ -41,11 +42,16 @@ function generateLineup(
 		})
 		.slice(0, 9);
 
+	// Select a starting pitcher (pick first pitcher for team - V1 simplification)
+	// V2 will implement proper rotation ordering
+	const teamPitchers = Object.values(pitchers).filter((p) => p.teamId === teamId);
+	const startingPitcher = teamPitchers[0]?.id ?? null;
+
 	return {
 		teamId,
 		players: teamBatters.map((b, i) => ({ playerId: b.id, position: i + 1 })),
 		currentBatterIndex: 0,
-		pitcher: null,
+		pitcher: startingPitcher,
 	};
 }
 
@@ -65,6 +71,11 @@ function advanceBatter(lineup: LineupState): void {
 	lineup.currentBatterIndex = (lineup.currentBatterIndex + 1) % 9;
 }
 
+// Check if bases are empty
+function areBasesEmpty(bases: [string | null, string | null, string | null]): boolean {
+	return !bases[0] && !bases[1] && !bases[2];
+}
+
 // Format name from "Last, First" to "First Last"
 function formatName(name: string): string {
 	const commaIndex = name.indexOf(',');
@@ -77,7 +88,9 @@ function describePlay(
 	outcome: Outcome,
 	batterName: string,
 	pitcherName: string,
-	runsScored: number
+	runsScored: number,
+	outRunnerName?: string,
+	outBase?: string
 ): string {
 	const batter = formatName(batterName);
 	const pitcher = formatName(pitcherName);
@@ -86,23 +99,23 @@ function describePlay(
 	switch (outcome) {
 		// Hits
 		case 'single':
-			return `${batter} singles off ${pitcherName}${runsText}`;
+			return `${batter} singles off ${pitcher}${runsText}`;
 		case 'double':
-			return `${batter} doubles off ${pitcherName}${runsText}`;
+			return `${batter} doubles off ${pitcher}${runsText}`;
 		case 'triple':
-			return `${batter} triples off ${pitcherName}${runsText}`;
+			return `${batter} triples off ${pitcher}${runsText}`;
 		case 'homeRun':
-			return `${batter} homers off ${pitcherName}${runsText}`;
+			return `${batter} homers off ${pitcher}${runsText}`;
 
 		// Walks
 		case 'walk':
 			return `${batter} walks${runsText}`;
 		case 'hitByPitch':
-			return `${batter} hit by pitch from ${pitcherName}${runsText}`;
+			return `${batter} hit by pitch from ${pitcher}${runsText}`;
 
 		// Strikeout
 		case 'strikeout':
-			return `${batter} strikes out against ${pitcherName}`;
+			return `${batter} strikes out against ${pitcher}`;
 
 		// Ball-in-play outs
 		case 'groundOut':
@@ -122,6 +135,9 @@ function describePlay(
 
 		// Other
 		case 'fieldersChoice':
+			if (outRunnerName && outBase) {
+				return `${batter} reaches on fielder's choice (${formatName(outRunnerName)} out at ${outBase})${runsText}`;
+			}
 			return `${batter} reaches on fielder's choice${runsText}`;
 		case 'reachedOnError':
 			return `${batter} reaches on an error${runsText}`;
@@ -259,8 +275,8 @@ export class GameEngine {
 			isTopInning: true,
 			outs: 0,
 			bases: [null, null, null],
-			awayLineup: generateLineup(season.batters, awayTeam),
-			homeLineup: generateLineup(season.batters, homeTeam),
+			awayLineup: generateLineup(season.batters, season.pitchers, awayTeam),
+			homeLineup: generateLineup(season.batters, season.pitchers, homeTeam),
 			plays: [],
 		};
 	}
@@ -277,9 +293,12 @@ export class GameEngine {
 		// Get batter and pitcher
 		const batterId = getNextBatter(battingTeam, season);
 		const batter = season.batters[batterId];
-		// Use a random pitcher for now
-		const pitchers = Object.values(season.pitchers);
-		const pitcher = pitchers[Math.floor(Math.random() * pitchers.length)];
+		// Use the current starting pitcher (V1: no bullpen changes yet)
+		const pitcherId = pitchingTeam.pitcher;
+		if (!pitcherId) {
+			throw new Error(`No pitcher found for ${pitchingTeam.teamId}`);
+		}
+		const pitcher = season.pitchers[pitcherId];
 
 		if (!batter || !pitcher) {
 			throw new Error('Missing batter or pitcher data');
@@ -327,8 +346,38 @@ export class GameEngine {
 			},
 		};
 
-		// Get outcome from model
-		const outcome = this.model.simulate(matchup) as Outcome;
+		// Get outcome from model, handling game state constraints
+		let outcome: Outcome;
+		if (areBasesEmpty(state.bases)) {
+			// Fielder's choice is impossible with empty bases
+			// Get the distribution, exclude fieldersChoice, re-normalize, then sample
+			const distribution = this.model.predict(matchup);
+			const fcProb = distribution.fieldersChoice || 0;
+
+			if (fcProb > 0) {
+				// Create adjusted distribution without fieldersChoice
+				// We need to use Partial to exclude the required field
+				const { fieldersChoice: _fc, ...remaining } = distribution;
+				const adjusted = remaining as Partial<ProbabilityDistribution>;
+
+				// Re-normalize the remaining probabilities
+				const totalProb = 1 - fcProb;
+				for (const key of Object.keys(adjusted) as (keyof ProbabilityDistribution)[]) {
+					if (key !== 'fieldersChoice' && adjusted[key] !== undefined) {
+						adjusted[key] = adjusted[key]! / totalProb;
+					}
+				}
+
+				// Sample from adjusted distribution (cast to full type since we know it's valid)
+				outcome = this.model.sample(adjusted as ProbabilityDistribution) as Outcome;
+			} else {
+				// No fieldersChoice probability, just sample normally
+				outcome = this.model.simulate(matchup) as Outcome;
+			}
+		} else {
+			// Normal sampling with runners on base
+			outcome = this.model.simulate(matchup) as Outcome;
+		}
 
 		// Capture runners before the play
 		const runnersBefore: [string | null, string | null, string | null] = [...state.bases];
@@ -342,6 +391,24 @@ export class GameEngine {
 			state.outs++;
 		}
 
+		// For fielder's choice, determine which runner was out
+		let outRunnerName: string | undefined;
+		let outBase: string | undefined;
+		if (outcome === 'fieldersChoice') {
+			// Find which runner was removed (comparing runnersBefore to newBases)
+			// Check from furthest base to nearest (3B -> 2B -> 1B)
+			const bases = ['third', 'second', 'first'] as const;
+			const baseNames = ['3B', '2B', '1B'] as const;
+			for (let i = 0; i < 3; i++) {
+				if (runnersBefore[i] && !newBases[i]) {
+					// Runner was here before, now gone - they're the out
+					outRunnerName = this.season.batters[runnersBefore[i]!]?.name;
+					outBase = baseNames[i];
+					break;
+				}
+			}
+		}
+
 		// Create play event
 		const play: PlayEvent = {
 			inning: state.inning,
@@ -351,7 +418,7 @@ export class GameEngine {
 			batterName: batter.name,
 			pitcherId: pitcher.id,
 			pitcherName: pitcher.name,
-			description: describePlay(outcome, batter.name, pitcher.name, runs),
+			description: describePlay(outcome, batter.name, pitcher.name, runs, outRunnerName, outBase),
 			runsScored: runs,
 			runnersAfter: [...state.bases],
 			scorerIds,
@@ -400,9 +467,15 @@ export class GameEngine {
 			return true;
 		}
 
-		// Bottom of 9th or later: game ends if home team is ahead or if away team is ahead (away team wins)
-		// If tied, game continues to extra innings
-		if (this.state.inning >= 9 && !this.state.isTopInning && homeScore !== awayScore) {
+		// Bottom of 9th or later: game ends if home team is ahead (home team wins)
+		// If tied or trailing, game continues (tied = extra innings, trailing = away leads)
+		if (this.state.inning >= 9 && !this.state.isTopInning && homeScore > awayScore) {
+			return true;
+		}
+
+		// Extra innings (10th+): if home team lost after their at-bat, game ends
+		// This triggers when inning incremented to 10+ and top is about to start with home team trailing
+		if (this.state.inning > 9 && this.state.isTopInning && awayScore > homeScore) {
 			return true;
 		}
 
@@ -420,11 +493,17 @@ export class GameEngine {
 	}
 
 	private getCurrentPitcher(): PitcherStats {
-		// Use a random pitcher (same as simulatePlateAppearance)
-		const pitchers = Object.values(this.season.pitchers);
-		const pitcher = pitchers[Math.floor(Math.random() * pitchers.length)];
+		// Use the current starting pitcher (same as simulatePlateAppearance)
+		const pitchingTeam = this.state.isTopInning
+			? this.state.homeLineup
+			: this.state.awayLineup;
+		const pitcherId = pitchingTeam.pitcher;
+		if (!pitcherId) {
+			throw new Error(`No pitcher found for ${pitchingTeam.teamId}`);
+		}
+		const pitcher = this.season.pitchers[pitcherId];
 		if (!pitcher) {
-			throw new Error('Missing pitcher data');
+			throw new Error(`Pitcher ${pitcherId} not found in season data`);
 		}
 		return pitcher;
 	}
@@ -484,8 +563,8 @@ export class GameEngine {
 		// This ensures lineups use correct team filtering even after data updates
 		engine.state = {
 			...state,
-			awayLineup: generateLineup(season.batters, state.meta.awayTeam),
-			homeLineup: generateLineup(season.batters, state.meta.homeTeam),
+			awayLineup: generateLineup(season.batters, season.pitchers, state.meta.awayTeam),
+			homeLineup: generateLineup(season.batters, season.pitchers, state.meta.homeTeam),
 		};
 		return engine;
 	}

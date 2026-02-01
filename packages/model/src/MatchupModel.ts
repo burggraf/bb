@@ -25,7 +25,8 @@ import { EVENT_RATE_KEYS } from './types.js';
  */
 function validateRates(rates: EventRates, label: string): void {
   const sum = Object.values(rates).reduce((a, b) => a + b, 0);
-  if (Math.abs(sum - 1.0) > 0.01) {
+  // Allow 5% tolerance for players with few PAs where rounding causes drift
+  if (Math.abs(sum - 1.0) > 0.05) {
     throw new Error(`${label} rates sum to ${sum}, expected ~1.0`);
   }
 }
