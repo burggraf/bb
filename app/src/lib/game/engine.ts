@@ -301,13 +301,14 @@ export class GameEngine {
 			}
 		}
 
-		// Top of 9th or later: game ends if home team is ahead
+		// Top of 9th or later: game ends if home team is ahead (home team wins without batting)
 		if (this.state.inning >= 9 && this.state.isTopInning && homeScore > awayScore) {
 			return true;
 		}
 
-		// Bottom of 9th or later: game ends after home team bats
-		if (this.state.inning >= 9 && !this.state.isTopInning) {
+		// Bottom of 9th or later: game ends if home team is ahead or if away team is ahead (away team wins)
+		// If tied, game continues to extra innings
+		if (this.state.inning >= 9 && !this.state.isTopInning && homeScore !== awayScore) {
 			return true;
 		}
 
