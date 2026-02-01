@@ -277,7 +277,7 @@ class GameValidator {
 			}
 		}
 
-		// Check game length - should be at least 9 innings (or 8.5 if home team wins)
+		// Check game length - should be at least 9 innings (unless walk-off)
 		// Use the actual state's inning number to determine game length
 		const actualInning = state.inning;
 		const isTopOfNext = state.isTopInning;
@@ -291,16 +291,14 @@ class GameValidator {
 		}
 
 		// Check if game ended properly
-		// Game is valid if:
-		// 1. 9+ full innings were played, OR
-		// 2. 8.5 innings played and home team is ahead (top of 9th completed, home team wins without batting), OR
-		// 3. Home team won in bottom 9th or later (walk-off)
+		// Game is INVALID if:
+		// - Fewer than 9 full innings played AND NOT a walk-off win
+		// Walk-off win: home team won in bottom of 9th or later
 		const hasFull9Innings = fullInningsPlayed >= 9;
-		const homeWonWithoutBatting = isTopOfNext && actualInning === 9 && homeScore > awayScore; // Top of 9th about to start, but home team already won
 		const homeWonWalkOff = !isTopOfNext && actualInning >= 9 && homeScore > awayScore;
 
-		if (!hasFull9Innings && !homeWonWithoutBatting && !homeWonWalkOff) {
-			errors.push(`Game ended after only ${fullInningsPlayed} full innings (state: inning=${actualInning}, isTop=${isTopOfNext}), expected at least 9`);
+		if (!hasFull9Innings && !homeWonWalkOff) {
+			errors.push(`Game ended after only ${fullInningsPlayed} full innings (state: inning=${actualInning}, isTop=${isTopOfNext}, home=${homeScore}, away=${awayScore}), expected at least 9`);
 		}
 
 		// Check game ended properly
