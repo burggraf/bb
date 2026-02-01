@@ -9,6 +9,7 @@
 	// Constants for localStorage
 	const STORAGE_KEY = 'baseball-game-state';
 	const PREFS_KEY = 'baseball-game-prefs';
+	const SAVE_VERSION = 2; // Increment when save format changes to invalidate old saves
 
 	// Game state
 	let awayScore = $state(0);
@@ -77,7 +78,8 @@
 	function saveGameState() {
 		if (!browser || !engine) return;
 		try {
-			localStorage.setItem(STORAGE_KEY, engine.serialize());
+			const saveData = JSON.stringify({ version: SAVE_VERSION, state: engine.serialize() });
+			localStorage.setItem(STORAGE_KEY, saveData);
 		} catch {
 			// Ignore storage errors
 		}
@@ -99,7 +101,13 @@
 		try {
 			const stored = localStorage.getItem(STORAGE_KEY);
 			if (stored) {
-				return stored;
+				const parsed = JSON.parse(stored);
+				// Check version - if old format or different version, clear and return null
+				if (!parsed.version || parsed.version !== SAVE_VERSION) {
+					clearGameState();
+					return null;
+				}
+				return parsed.state;
 			}
 		} catch {
 			// Ignore storage errors
