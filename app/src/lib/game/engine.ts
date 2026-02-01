@@ -405,11 +405,10 @@ export class GameEngine {
 		// Apply baserunning
 		const { runs, newBases, scorerIds } = applyBaserunning(state, outcome, batterId);
 
-		// Update state bases
+		// Update state bases and outs
+		state.bases = newBases;
 		if (outcome === 'out') {
 			state.outs++;
-		} else {
-			state.bases = newBases;
 		}
 
 		// Create play event

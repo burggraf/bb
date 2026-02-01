@@ -335,17 +335,17 @@
 	}
 
 	// Format runner info for play-by-play display
-	// Shows runners on base and scorers when there are scorers
+	// Shows runners who advanced or just reached base, plus scorers
 	function formatRunnerInfo(play: PlayEvent): string | null {
-		// Only show runner info if there are scorers OR runners on base
-		if ((!play.scorerIds || play.scorerIds.length === 0) && !play.runnersAfter?.some(r => r)) {
+		// Only show runner info if there are scorers OR runners who moved/reached
+		if (!play.runnersAfter) {
 			return null;
 		}
 
 		const parts: string[] = [];
 		const bases = ['1st', '2nd', '3rd'];
 
-		// Add runners on base (excluding those who scored)
+		// Add runners on base (excluding those who scored, and those who didn't move)
 		if (play.runnersAfter) {
 			for (let i = 0; i < 3; i++) {
 				const runnerId = play.runnersAfter[i];
@@ -356,7 +356,39 @@
 				if (runnerId && season?.batters[runnerId]) {
 					const name = season.batters[runnerId].name;
 					const formattedName = formatName(name);
-					parts.push(`${formattedName} on ${bases[i]}`);
+
+					// Check if this runner was on base before (didn't just reach)
+					let wasOnBaseBefore = false;
+					if (play.runnersBefore) {
+						for (let j = 0; j < 3; j++) {
+							if (play.runnersBefore[j] === runnerId) {
+								wasOnBaseBefore = true;
+								break;
+							}
+						}
+					}
+
+					// Only show if: (1) just reached base (wasn't on before), OR (2) advanced
+					if (!wasOnBaseBefore) {
+						// Just reached base
+						parts.push(`${formattedName} on ${bases[i]}`);
+					} else {
+						// Was on base before - check if advanced
+						let advancedFrom = -1;
+						if (play.runnersBefore) {
+							for (let j = 0; j < 3; j++) {
+								if (play.runnersBefore[j] === runnerId && j !== i) {
+									advancedFrom = j;
+									break;
+								}
+							}
+						}
+						// Only show if actually advanced to a different base
+						if (advancedFrom !== -1 && advancedFrom !== i) {
+							parts.push(`${formattedName} to ${bases[i]}`);
+						}
+						// If stayed in same place, don't show at all
+					}
 				}
 			}
 		}
