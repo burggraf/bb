@@ -743,8 +743,7 @@
 					<div class="text-2xl sm:text-3xl lg:text-4xl font-bold mb-1 sm:mb-2">🎉 GAME OVER</div>
 					<div class="text-xs sm:text-sm lg:text-base text-slate-400 mb-2 sm:mb-3 lg:mb-4">1976 Season - Reds vs Astros</div>
 					<div class="text-sm font-medium text-emerald-400 mb-3 sm:mb-4 lg:mb-6">
-						{@const fullInnings = isTopInning ? inning - 1 : inning}
-						{fullInnings} {fullInnings === 1 ? 'inning' : 'innings'}
+						{isTopInning ? inning - 1 : inning} {isTopInning && inning - 1 === 1 || !isTopInning && inning === 1 ? 'inning' : 'innings'}
 					</div>
 
 					<!-- Final Score -->
