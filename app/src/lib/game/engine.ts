@@ -492,31 +492,7 @@ export class GameEngine {
 			// The play we just added has the correct inning information
 			addHalfInningSummaryWithInning(state, this.season, playInning, playIsTop);
 
-			// Check if this was the top of the 9th and the home team is trailing or tied
-			// If so, the game ends - the home team doesn't get to bat in bottom 9th
-			if (playInning === 9 && playIsTop) {
-				let awayScore = 0;
-				let homeScore = 0;
-				for (const play of state.plays) {
-					if (play.isTopInning) {
-						awayScore += play.runsScored;
-					} else {
-						homeScore += play.runsScored;
-					}
-				}
-				// If home team is trailing or tied after top of 9th, game ends
-				if (homeScore <= awayScore) {
-					// Set state to top of 10th with away team still leading
-					// This will cause isComplete() to return true via extra innings ending logic
-					state.inning = 10;
-					state.isTopInning = true;
-					state.bases = [null, null, null];
-					state.outs = 0;
-					return play;
-				}
-			}
-
-			// Reset for the new inning (only if game continues)
+			// Reset for the new inning
 			state.bases = [null, null, null];
 			state.outs = 0;
 
