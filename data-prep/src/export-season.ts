@@ -55,6 +55,36 @@ function parseNumber(value: string): number {
 
 import { execSync } from 'child_process';
 import * as fs from 'fs';
+import type { EventRates } from '@bb/model';
+
+/**
+ * Modern trajectory distribution for imputing unknown outs.
+ * Based on 1990+ data where trajectory is reliably recorded.
+ */
+const TRAJECTORY_DISTRIBUTION = {
+  groundOut: 0.44,
+  flyOut: 0.30,
+  popOut: 0.14,
+  lineOut: 0.12,
+};
+
+/**
+ * Distribute unknown outs across trajectory types using modern distribution.
+ */
+function imputeUnknownOuts(
+  groundOuts: number,
+  flyOuts: number,
+  lineOuts: number,
+  popOuts: number,
+  unknownOuts: number
+): { groundOut: number; flyOut: number; lineOut: number; popOut: number } {
+  return {
+    groundOut: groundOuts + unknownOuts * TRAJECTORY_DISTRIBUTION.groundOut,
+    flyOut: flyOuts + unknownOuts * TRAJECTORY_DISTRIBUTION.flyOut,
+    lineOut: lineOuts + unknownOuts * TRAJECTORY_DISTRIBUTION.lineOut,
+    popOut: popOuts + unknownOuts * TRAJECTORY_DISTRIBUTION.popOut,
+  };
+}
 
 function runDuckDB(sql: string, dbPath: string): string {
   try {
@@ -116,22 +146,36 @@ WITH raw_batter_stats AS (
     p.throws as pitcher_throws,
     e.batting_team_id,
     COUNT(*) as pa,
-    SUM(CASE
-      WHEN e.plate_appearance_result IN ('InPlayOut', 'StrikeOut', 'SacrificeHit', 'SacrificeFly', 'FieldersChoice', 'ReachedOnError', 'Interference')
-      THEN 1 ELSE 0
-    END) as outs,
+    -- Strikeouts
+    SUM(CASE WHEN e.plate_appearance_result = 'StrikeOut' THEN 1 ELSE 0 END) as strikeouts,
+    -- Hits
     SUM(CASE WHEN e.plate_appearance_result = 'Single' THEN 1 ELSE 0 END) as singles,
     SUM(CASE WHEN e.plate_appearance_result IN ('Double', 'GroundRuleDouble') THEN 1 ELSE 0 END) as doubles,
     SUM(CASE WHEN e.plate_appearance_result = 'Triple' THEN 1 ELSE 0 END) as triples,
     SUM(CASE WHEN e.plate_appearance_result IN ('HomeRun', 'InsideTheParkHomeRun') THEN 1 ELSE 0 END) as home_runs,
-    SUM(CASE WHEN e.plate_appearance_result IN ('Walk', 'IntentionalWalk') THEN 1 ELSE 0 END) as walks,
-    SUM(CASE WHEN e.plate_appearance_result = 'HitByPitch' THEN 1 ELSE 0 END) as hbp
+    -- Walks
+    SUM(CASE WHEN e.plate_appearance_result = 'Walk' THEN 1 ELSE 0 END) as walks,
+    SUM(CASE WHEN e.plate_appearance_result = 'HitByPitch' THEN 1 ELSE 0 END) as hbp,
+    -- Ball-in-play outs by trajectory
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory IN ('GroundBall', 'GroundBallBunt') THEN 1 ELSE 0 END) as ground_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'Fly' THEN 1 ELSE 0 END) as fly_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'LineDrive' THEN 1 ELSE 0 END) as line_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'PopUp' THEN 1 ELSE 0 END) as pop_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND (e.batted_trajectory IS NULL OR e.batted_trajectory = 'Unknown') THEN 1 ELSE 0 END) as unknown_outs,
+    -- Sacrifices
+    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeFly' THEN 1 ELSE 0 END) as sacrifice_flies,
+    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeHit' THEN 1 ELSE 0 END) as sacrifice_bunts,
+    -- Other
+    SUM(CASE WHEN e.plate_appearance_result = 'FieldersChoice' THEN 1 ELSE 0 END) as fielders_choices,
+    SUM(CASE WHEN e.plate_appearance_result = 'ReachedOnError' THEN 1 ELSE 0 END) as reached_on_errors,
+    SUM(CASE WHEN e.plate_appearance_result = 'Interference' THEN 1 ELSE 0 END) as catcher_interferences
   FROM event.events e
   JOIN dim.players b ON e.batter_id = b.player_id
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN game.games g ON e.game_id = g.game_id
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
     AND e.no_play_flag = false
   GROUP BY e.batter_id, b.last_name, b.first_name, b.bats, p.throws, e.batting_team_id
 ),
@@ -159,22 +203,42 @@ aggregated AS (
     bt.primary_team_id,
     -- vs LHP
     SUM(CASE WHEN pitcher_throws = 'L' THEN pa ELSE 0 END) as pa_vs_l,
-    SUM(CASE WHEN pitcher_throws = 'L' THEN outs ELSE 0 END) as outs_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN strikeouts ELSE 0 END) as strikeouts_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN singles ELSE 0 END) as singles_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN doubles ELSE 0 END) as doubles_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN triples ELSE 0 END) as triples_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN home_runs ELSE 0 END) as hr_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN walks ELSE 0 END) as walks_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN hbp ELSE 0 END) as hbp_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN ground_outs ELSE 0 END) as ground_outs_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN fly_outs ELSE 0 END) as fly_outs_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN line_outs ELSE 0 END) as line_outs_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN pop_outs ELSE 0 END) as pop_outs_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN unknown_outs ELSE 0 END) as unknown_outs_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN sacrifice_flies ELSE 0 END) as sacrifice_flies_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN sacrifice_bunts ELSE 0 END) as sacrifice_bunts_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN fielders_choices ELSE 0 END) as fielders_choices_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN reached_on_errors ELSE 0 END) as reached_on_errors_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN catcher_interferences ELSE 0 END) as catcher_interferences_vs_l,
     -- vs RHP
     SUM(CASE WHEN pitcher_throws = 'R' THEN pa ELSE 0 END) as pa_vs_r,
-    SUM(CASE WHEN pitcher_throws = 'R' THEN outs ELSE 0 END) as outs_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN strikeouts ELSE 0 END) as strikeouts_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN singles ELSE 0 END) as singles_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN doubles ELSE 0 END) as doubles_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN triples ELSE 0 END) as triples_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN home_runs ELSE 0 END) as hr_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN walks ELSE 0 END) as walks_vs_r,
-    SUM(CASE WHEN pitcher_throws = 'R' THEN hbp ELSE 0 END) as hbp_vs_r
+    SUM(CASE WHEN pitcher_throws = 'R' THEN hbp ELSE 0 END) as hbp_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN ground_outs ELSE 0 END) as ground_outs_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN fly_outs ELSE 0 END) as fly_outs_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN line_outs ELSE 0 END) as line_outs_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN pop_outs ELSE 0 END) as pop_outs_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN unknown_outs ELSE 0 END) as unknown_outs_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN sacrifice_flies ELSE 0 END) as sacrifice_flies_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN sacrifice_bunts ELSE 0 END) as sacrifice_bunts_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN fielders_choices ELSE 0 END) as fielders_choices_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN reached_on_errors ELSE 0 END) as reached_on_errors_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN catcher_interferences ELSE 0 END) as catcher_interferences_vs_r
   FROM raw_batter_stats r
   JOIN batter_best_team bt ON r.batter_id = bt.batter_id AND bt.rn = 1
   GROUP BY r.batter_id, r.name, r.bats, bt.primary_team_id
@@ -195,22 +259,36 @@ WITH raw_pitcher_stats AS (
     b.bats as batter_bats,
     e.fielding_team_id,
     COUNT(*) as pa,
-    SUM(CASE
-      WHEN e.plate_appearance_result IN ('InPlayOut', 'StrikeOut', 'SacrificeHit', 'SacrificeFly', 'FieldersChoice', 'ReachedOnError', 'Interference')
-      THEN 1 ELSE 0
-    END) as outs,
+    -- Strikeouts
+    SUM(CASE WHEN e.plate_appearance_result = 'StrikeOut' THEN 1 ELSE 0 END) as strikeouts,
+    -- Hits
     SUM(CASE WHEN e.plate_appearance_result = 'Single' THEN 1 ELSE 0 END) as singles,
     SUM(CASE WHEN e.plate_appearance_result IN ('Double', 'GroundRuleDouble') THEN 1 ELSE 0 END) as doubles,
     SUM(CASE WHEN e.plate_appearance_result = 'Triple' THEN 1 ELSE 0 END) as triples,
     SUM(CASE WHEN e.plate_appearance_result IN ('HomeRun', 'InsideTheParkHomeRun') THEN 1 ELSE 0 END) as home_runs,
-    SUM(CASE WHEN e.plate_appearance_result IN ('Walk', 'IntentionalWalk') THEN 1 ELSE 0 END) as walks,
-    SUM(CASE WHEN e.plate_appearance_result = 'HitByPitch' THEN 1 ELSE 0 END) as hbp
+    -- Walks (excluding intentional walks)
+    SUM(CASE WHEN e.plate_appearance_result = 'Walk' THEN 1 ELSE 0 END) as walks,
+    SUM(CASE WHEN e.plate_appearance_result = 'HitByPitch' THEN 1 ELSE 0 END) as hbp,
+    -- Ball-in-play outs by trajectory
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory IN ('GroundBall', 'GroundBallBunt') THEN 1 ELSE 0 END) as ground_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'Fly' THEN 1 ELSE 0 END) as fly_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'LineDrive' THEN 1 ELSE 0 END) as line_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'PopUp' THEN 1 ELSE 0 END) as pop_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND (e.batted_trajectory IS NULL OR e.batted_trajectory = 'Unknown') THEN 1 ELSE 0 END) as unknown_outs,
+    -- Sacrifices
+    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeFly' THEN 1 ELSE 0 END) as sacrifice_flies,
+    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeHit' THEN 1 ELSE 0 END) as sacrifice_bunts,
+    -- Other
+    SUM(CASE WHEN e.plate_appearance_result = 'FieldersChoice' THEN 1 ELSE 0 END) as fielders_choices,
+    SUM(CASE WHEN e.plate_appearance_result = 'ReachedOnError' THEN 1 ELSE 0 END) as reached_on_errors,
+    SUM(CASE WHEN e.plate_appearance_result = 'Interference' THEN 1 ELSE 0 END) as catcher_interferences
   FROM event.events e
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN dim.players b ON e.batter_id = b.player_id
   JOIN game.games g ON e.game_id = g.game_id
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
     AND e.no_play_flag = false
   GROUP BY e.pitcher_id, p.last_name, p.first_name, p.throws, b.bats, e.fielding_team_id
 ),
@@ -238,22 +316,42 @@ aggregated AS (
     pt.primary_team_id,
     -- vs LHB
     SUM(CASE WHEN batter_bats = 'L' THEN pa ELSE 0 END) as pa_vs_l,
-    SUM(CASE WHEN batter_bats = 'L' THEN outs ELSE 0 END) as outs_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN strikeouts ELSE 0 END) as strikeouts_vs_l,
     SUM(CASE WHEN batter_bats = 'L' THEN singles ELSE 0 END) as singles_vs_l,
     SUM(CASE WHEN batter_bats = 'L' THEN doubles ELSE 0 END) as doubles_vs_l,
     SUM(CASE WHEN batter_bats = 'L' THEN triples ELSE 0 END) as triples_vs_l,
     SUM(CASE WHEN batter_bats = 'L' THEN home_runs ELSE 0 END) as hr_vs_l,
     SUM(CASE WHEN batter_bats = 'L' THEN walks ELSE 0 END) as walks_vs_l,
     SUM(CASE WHEN batter_bats = 'L' THEN hbp ELSE 0 END) as hbp_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN ground_outs ELSE 0 END) as ground_outs_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN fly_outs ELSE 0 END) as fly_outs_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN line_outs ELSE 0 END) as line_outs_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN pop_outs ELSE 0 END) as pop_outs_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN unknown_outs ELSE 0 END) as unknown_outs_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN sacrifice_flies ELSE 0 END) as sacrifice_flies_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN sacrifice_bunts ELSE 0 END) as sacrifice_bunts_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN fielders_choices ELSE 0 END) as fielders_choices_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN reached_on_errors ELSE 0 END) as reached_on_errors_vs_l,
+    SUM(CASE WHEN batter_bats = 'L' THEN catcher_interferences ELSE 0 END) as catcher_interferences_vs_l,
     -- vs RHB
     SUM(CASE WHEN batter_bats = 'R' THEN pa ELSE 0 END) as pa_vs_r,
-    SUM(CASE WHEN batter_bats = 'R' THEN outs ELSE 0 END) as outs_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN strikeouts ELSE 0 END) as strikeouts_vs_r,
     SUM(CASE WHEN batter_bats = 'R' THEN singles ELSE 0 END) as singles_vs_r,
     SUM(CASE WHEN batter_bats = 'R' THEN doubles ELSE 0 END) as doubles_vs_r,
     SUM(CASE WHEN batter_bats = 'R' THEN triples ELSE 0 END) as triples_vs_r,
     SUM(CASE WHEN batter_bats = 'R' THEN home_runs ELSE 0 END) as hr_vs_r,
     SUM(CASE WHEN batter_bats = 'R' THEN walks ELSE 0 END) as walks_vs_r,
-    SUM(CASE WHEN batter_bats = 'R' THEN hbp ELSE 0 END) as hbp_vs_r
+    SUM(CASE WHEN batter_bats = 'R' THEN hbp ELSE 0 END) as hbp_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN ground_outs ELSE 0 END) as ground_outs_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN fly_outs ELSE 0 END) as fly_outs_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN line_outs ELSE 0 END) as line_outs_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN pop_outs ELSE 0 END) as pop_outs_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN unknown_outs ELSE 0 END) as unknown_outs_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN sacrifice_flies ELSE 0 END) as sacrifice_flies_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN sacrifice_bunts ELSE 0 END) as sacrifice_bunts_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN fielders_choices ELSE 0 END) as fielders_choices_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN reached_on_errors ELSE 0 END) as reached_on_errors_vs_r,
+    SUM(CASE WHEN batter_bats = 'R' THEN catcher_interferences ELSE 0 END) as catcher_interferences_vs_r
   FROM raw_pitcher_stats r
   JOIN pitcher_best_team pt ON r.pitcher_id = pt.pitcher_id AND pt.rn = 1
   GROUP BY r.pitcher_id, r.name, r.throws, pt.primary_team_id
@@ -270,33 +368,61 @@ WITH league_rates AS (
   SELECT
     p.throws as pitcher_throws,
     COUNT(*) as pa,
-    SUM(CASE
-      WHEN e.plate_appearance_result IN ('InPlayOut', 'StrikeOut', 'SacrificeHit', 'SacrificeFly', 'FieldersChoice', 'ReachedOnError', 'Interference')
-      THEN 1 ELSE 0
-    END) as outs,
+    -- Strikeouts
+    SUM(CASE WHEN e.plate_appearance_result = 'StrikeOut' THEN 1 ELSE 0 END) as strikeouts,
+    -- Hits
     SUM(CASE WHEN e.plate_appearance_result = 'Single' THEN 1 ELSE 0 END) as singles,
     SUM(CASE WHEN e.plate_appearance_result IN ('Double', 'GroundRuleDouble') THEN 1 ELSE 0 END) as doubles,
     SUM(CASE WHEN e.plate_appearance_result = 'Triple' THEN 1 ELSE 0 END) as triples,
     SUM(CASE WHEN e.plate_appearance_result IN ('HomeRun', 'InsideTheParkHomeRun') THEN 1 ELSE 0 END) as home_runs,
-    SUM(CASE WHEN e.plate_appearance_result IN ('Walk', 'IntentionalWalk') THEN 1 ELSE 0 END) as walks,
-    SUM(CASE WHEN e.plate_appearance_result = 'HitByPitch' THEN 1 ELSE 0 END) as hbp
+    -- Walks (excluding intentional walks)
+    SUM(CASE WHEN e.plate_appearance_result = 'Walk' THEN 1 ELSE 0 END) as walks,
+    SUM(CASE WHEN e.plate_appearance_result = 'HitByPitch' THEN 1 ELSE 0 END) as hbp,
+    -- Ball-in-play outs by trajectory
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory IN ('GroundBall', 'GroundBallBunt') THEN 1 ELSE 0 END) as ground_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'Fly' THEN 1 ELSE 0 END) as fly_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'LineDrive' THEN 1 ELSE 0 END) as line_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory = 'PopUp' THEN 1 ELSE 0 END) as pop_outs,
+    SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND (e.batted_trajectory IS NULL OR e.batted_trajectory = 'Unknown') THEN 1 ELSE 0 END) as unknown_outs,
+    -- Sacrifices
+    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeFly' THEN 1 ELSE 0 END) as sacrifice_flies,
+    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeHit' THEN 1 ELSE 0 END) as sacrifice_bunts,
+    -- Other
+    SUM(CASE WHEN e.plate_appearance_result = 'FieldersChoice' THEN 1 ELSE 0 END) as fielders_choices,
+    SUM(CASE WHEN e.plate_appearance_result = 'ReachedOnError' THEN 1 ELSE 0 END) as reached_on_errors,
+    SUM(CASE WHEN e.plate_appearance_result = 'Interference' THEN 1 ELSE 0 END) as catcher_interferences
   FROM event.events e
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN game.games g ON e.game_id = g.game_id
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
     AND e.no_play_flag = false
   GROUP BY p.throws
 )
 SELECT
   pitcher_throws,
-  outs::FLOAT / pa as out_rate,
+  -- Hit rates
   singles::FLOAT / pa as single_rate,
   doubles::FLOAT / pa as double_rate,
   triples::FLOAT / pa as triple_rate,
   home_runs::FLOAT / pa as hr_rate,
+  -- Walk rates
   walks::FLOAT / pa as walk_rate,
-  hbp::FLOAT / pa as hbp_rate
+  hbp::FLOAT / pa as hbp_rate,
+  -- Out rates
+  strikeouts::FLOAT / pa as strikeout_rate,
+  ground_outs::FLOAT / pa as ground_out_rate,
+  fly_outs::FLOAT / pa as fly_out_rate,
+  line_outs::FLOAT / pa as line_out_rate,
+  pop_outs::FLOAT / pa as pop_out_rate,
+  -- Sacrifice rates
+  sacrifice_flies::FLOAT / pa as sacrifice_fly_rate,
+  sacrifice_bunts::FLOAT / pa as sacrifice_bunt_rate,
+  -- Other rates
+  fielders_choices::FLOAT / pa as fielders_choice_rate,
+  reached_on_errors::FLOAT / pa as reached_on_error_rate,
+  catcher_interferences::FLOAT / pa as catcher_interference_rate
 FROM league_rates
 WHERE pitcher_throws IN ('L', 'R')
 ORDER BY pitcher_throws;
@@ -342,8 +468,8 @@ export interface SeasonPackage {
     bats: 'L' | 'R' | 'S';
     teamId: string;
     rates: {
-      vsLHP: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
-      vsRHP: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
+      vsLHP: EventRates;
+      vsRHP: EventRates;
     };
   }>;
   pitchers: Record<string, {
@@ -352,16 +478,98 @@ export interface SeasonPackage {
     throws: 'L' | 'R';
     teamId: string;
     rates: {
-      vsLHB: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
-      vsRHB: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
+      vsLHB: EventRates;
+      vsRHB: EventRates;
     };
   }>;
   league: {
-    vsLHP: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
-    vsRHP: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
+    vsLHP: EventRates;
+    vsRHP: EventRates;
   };
   teams: Record<string, { id: string; league: string; city: string; nickname: string }>;
   games: Array<{ id: string; date: string; awayTeam: string; homeTeam: string; useDH: boolean }>;
+}
+
+function calcEventRates(row: {
+  singles: number;
+  doubles: number;
+  triples: number;
+  homeRuns: number;
+  walks: number;
+  hitByPitches: number;
+  strikeouts: number;
+  groundOuts: number;
+  flyOuts: number;
+  lineOuts: number;
+  popOuts: number;
+  unknownOuts: number;
+  sacrificeFlies: number;
+  sacrificeBunts: number;
+  fieldersChoices: number;
+  reachedOnErrors: number;
+  catcherInterferences: number;
+  pa: number;
+}): EventRates {
+  const pa = row.pa;
+  if (pa === 0) {
+    return getZeroRates();
+  }
+
+  // Impute unknown trajectory outs
+  const imputed = imputeUnknownOuts(
+    row.groundOuts,
+    row.flyOuts,
+    row.lineOuts,
+    row.popOuts,
+    row.unknownOuts
+  );
+
+  const rates: EventRates = {
+    single: row.singles / pa,
+    double: row.doubles / pa,
+    triple: row.triples / pa,
+    homeRun: row.homeRuns / pa,
+    walk: row.walks / pa,
+    hitByPitch: row.hitByPitches / pa,
+    strikeout: row.strikeouts / pa,
+    groundOut: imputed.groundOut / pa,
+    flyOut: imputed.flyOut / pa,
+    lineOut: imputed.lineOut / pa,
+    popOut: imputed.popOut / pa,
+    sacrificeFly: row.sacrificeFlies / pa,
+    sacrificeBunt: row.sacrificeBunts / pa,
+    fieldersChoice: row.fieldersChoices / pa,
+    reachedOnError: row.reachedOnErrors / pa,
+    catcherInterference: row.catcherInterferences / pa,
+  };
+
+  // Round to 4 decimal places
+  for (const key of Object.keys(rates) as (keyof EventRates)[]) {
+    rates[key] = Math.round(rates[key] * 10000) / 10000;
+  }
+
+  return rates;
+}
+
+function getZeroRates(): EventRates {
+  return {
+    single: 0,
+    double: 0,
+    triple: 0,
+    homeRun: 0,
+    walk: 0,
+    hitByPitch: 0,
+    strikeout: 0,
+    groundOut: 0,
+    flyOut: 0,
+    lineOut: 0,
+    popOut: 0,
+    sacrificeFly: 0,
+    sacrificeBunt: 0,
+    fieldersChoice: 0,
+    reachedOnError: 0,
+    catcherInterference: 0,
+  };
 }
 
 function calcRate(count: number, pa: number): number {
@@ -388,24 +596,46 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       bats: row.bats === 'B' ? 'S' : row.bats, // Convert 'B' (both) to 'S' (switch)
       teamId: row.primary_team_id,
       rates: {
-        vsLHP: {
-          out: calcRate(parseNumber(row.outs_vs_l), paL),
-          single: calcRate(parseNumber(row.singles_vs_l), paL),
-          double: calcRate(parseNumber(row.doubles_vs_l), paL),
-          triple: calcRate(parseNumber(row.triples_vs_l), paL),
-          homeRun: calcRate(parseNumber(row.hr_vs_l), paL),
-          walk: calcRate(parseNumber(row.walks_vs_l), paL),
-          hitByPitch: calcRate(parseNumber(row.hbp_vs_l), paL),
-        },
-        vsRHP: {
-          out: calcRate(parseNumber(row.outs_vs_r), paR),
-          single: calcRate(parseNumber(row.singles_vs_r), paR),
-          double: calcRate(parseNumber(row.doubles_vs_r), paR),
-          triple: calcRate(parseNumber(row.triples_vs_r), paR),
-          homeRun: calcRate(parseNumber(row.hr_vs_r), paR),
-          walk: calcRate(parseNumber(row.walks_vs_r), paR),
-          hitByPitch: calcRate(parseNumber(row.hbp_vs_r), paR),
-        },
+        vsLHP: calcEventRates({
+          singles: parseNumber(row.singles_vs_l),
+          doubles: parseNumber(row.doubles_vs_l),
+          triples: parseNumber(row.triples_vs_l),
+          homeRuns: parseNumber(row.hr_vs_l),
+          walks: parseNumber(row.walks_vs_l),
+          hitByPitches: parseNumber(row.hbp_vs_l),
+          strikeouts: parseNumber(row.strikeouts_vs_l),
+          groundOuts: parseNumber(row.ground_outs_vs_l),
+          flyOuts: parseNumber(row.fly_outs_vs_l),
+          lineOuts: parseNumber(row.line_outs_vs_l),
+          popOuts: parseNumber(row.pop_outs_vs_l),
+          unknownOuts: parseNumber(row.unknown_outs_vs_l),
+          sacrificeFlies: parseNumber(row.sacrifice_flies_vs_l),
+          sacrificeBunts: parseNumber(row.sacrifice_bunts_vs_l),
+          fieldersChoices: parseNumber(row.fielders_choices_vs_l),
+          reachedOnErrors: parseNumber(row.reached_on_errors_vs_l),
+          catcherInterferences: parseNumber(row.catcher_interferences_vs_l),
+          pa: paL,
+        }),
+        vsRHP: calcEventRates({
+          singles: parseNumber(row.singles_vs_r),
+          doubles: parseNumber(row.doubles_vs_r),
+          triples: parseNumber(row.triples_vs_r),
+          homeRuns: parseNumber(row.hr_vs_r),
+          walks: parseNumber(row.walks_vs_r),
+          hitByPitches: parseNumber(row.hbp_vs_r),
+          strikeouts: parseNumber(row.strikeouts_vs_r),
+          groundOuts: parseNumber(row.ground_outs_vs_r),
+          flyOuts: parseNumber(row.fly_outs_vs_r),
+          lineOuts: parseNumber(row.line_outs_vs_r),
+          popOuts: parseNumber(row.pop_outs_vs_r),
+          unknownOuts: parseNumber(row.unknown_outs_vs_r),
+          sacrificeFlies: parseNumber(row.sacrifice_flies_vs_r),
+          sacrificeBunts: parseNumber(row.sacrifice_bunts_vs_r),
+          fieldersChoices: parseNumber(row.fielders_choices_vs_r),
+          reachedOnErrors: parseNumber(row.reached_on_errors_vs_r),
+          catcherInterferences: parseNumber(row.catcher_interferences_vs_r),
+          pa: paR,
+        }),
       },
     };
   }
@@ -427,24 +657,46 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       throws: row.throws,
       teamId: row.primary_team_id,
       rates: {
-        vsLHB: {
-          out: calcRate(parseNumber(row.outs_vs_l), paL),
-          single: calcRate(parseNumber(row.singles_vs_l), paL),
-          double: calcRate(parseNumber(row.doubles_vs_l), paL),
-          triple: calcRate(parseNumber(row.triples_vs_l), paL),
-          homeRun: calcRate(parseNumber(row.hr_vs_l), paL),
-          walk: calcRate(parseNumber(row.walks_vs_l), paL),
-          hitByPitch: calcRate(parseNumber(row.hbp_vs_l), paL),
-        },
-        vsRHB: {
-          out: calcRate(parseNumber(row.outs_vs_r), paR),
-          single: calcRate(parseNumber(row.singles_vs_r), paR),
-          double: calcRate(parseNumber(row.doubles_vs_r), paR),
-          triple: calcRate(parseNumber(row.triples_vs_r), paR),
-          homeRun: calcRate(parseNumber(row.hr_vs_r), paR),
-          walk: calcRate(parseNumber(row.walks_vs_r), paR),
-          hitByPitch: calcRate(parseNumber(row.hbp_vs_r), paR),
-        },
+        vsLHB: calcEventRates({
+          singles: parseNumber(row.singles_vs_l),
+          doubles: parseNumber(row.doubles_vs_l),
+          triples: parseNumber(row.triples_vs_l),
+          homeRuns: parseNumber(row.hr_vs_l),
+          walks: parseNumber(row.walks_vs_l),
+          hitByPitches: parseNumber(row.hbp_vs_l),
+          strikeouts: parseNumber(row.strikeouts_vs_l),
+          groundOuts: parseNumber(row.ground_outs_vs_l),
+          flyOuts: parseNumber(row.fly_outs_vs_l),
+          lineOuts: parseNumber(row.line_outs_vs_l),
+          popOuts: parseNumber(row.pop_outs_vs_l),
+          unknownOuts: parseNumber(row.unknown_outs_vs_l),
+          sacrificeFlies: parseNumber(row.sacrifice_flies_vs_l),
+          sacrificeBunts: parseNumber(row.sacrifice_bunts_vs_l),
+          fieldersChoices: parseNumber(row.fielders_choices_vs_l),
+          reachedOnErrors: parseNumber(row.reached_on_errors_vs_l),
+          catcherInterferences: parseNumber(row.catcher_interferences_vs_l),
+          pa: paL,
+        }),
+        vsRHB: calcEventRates({
+          singles: parseNumber(row.singles_vs_r),
+          doubles: parseNumber(row.doubles_vs_r),
+          triples: parseNumber(row.triples_vs_r),
+          homeRuns: parseNumber(row.hr_vs_r),
+          walks: parseNumber(row.walks_vs_r),
+          hitByPitches: parseNumber(row.hbp_vs_r),
+          strikeouts: parseNumber(row.strikeouts_vs_r),
+          groundOuts: parseNumber(row.ground_outs_vs_r),
+          flyOuts: parseNumber(row.fly_outs_vs_r),
+          lineOuts: parseNumber(row.line_outs_vs_r),
+          popOuts: parseNumber(row.pop_outs_vs_r),
+          unknownOuts: parseNumber(row.unknown_outs_vs_r),
+          sacrificeFlies: parseNumber(row.sacrifice_flies_vs_r),
+          sacrificeBunts: parseNumber(row.sacrifice_bunts_vs_r),
+          fieldersChoices: parseNumber(row.fielders_choices_vs_r),
+          reachedOnErrors: parseNumber(row.reached_on_errors_vs_r),
+          catcherInterferences: parseNumber(row.catcher_interferences_vs_r),
+          pa: paR,
+        }),
       },
     };
   }
@@ -455,30 +707,48 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   const leagueResult = runDuckDB(getLeagueAveragesSQL(year), dbPath);
   const leagueRaw = parseCSV(leagueResult);
   const league: SeasonPackage['league'] = {
-    vsLHP: { out: 0, single: 0, double: 0, triple: 0, homeRun: 0, walk: 0, hitByPitch: 0 },
-    vsRHP: { out: 0, single: 0, double: 0, triple: 0, homeRun: 0, walk: 0, hitByPitch: 0 },
+    vsLHP: getZeroRates(),
+    vsRHP: getZeroRates(),
   };
 
   for (const row of leagueRaw) {
     if (row.pitcher_throws === 'L') {
       league.vsLHP = {
-        out: Math.round(parseNumber(row.out_rate) * 10000) / 10000,
         single: Math.round(parseNumber(row.single_rate) * 10000) / 10000,
         double: Math.round(parseNumber(row.double_rate) * 10000) / 10000,
         triple: Math.round(parseNumber(row.triple_rate) * 10000) / 10000,
         homeRun: Math.round(parseNumber(row.hr_rate) * 10000) / 10000,
         walk: Math.round(parseNumber(row.walk_rate) * 10000) / 10000,
         hitByPitch: Math.round(parseNumber(row.hbp_rate) * 10000) / 10000,
+        strikeout: Math.round(parseNumber(row.strikeout_rate) * 10000) / 10000,
+        groundOut: Math.round(parseNumber(row.ground_out_rate) * 10000) / 10000,
+        flyOut: Math.round(parseNumber(row.fly_out_rate) * 10000) / 10000,
+        lineOut: Math.round(parseNumber(row.line_out_rate) * 10000) / 10000,
+        popOut: Math.round(parseNumber(row.pop_out_rate) * 10000) / 10000,
+        sacrificeFly: Math.round(parseNumber(row.sacrifice_fly_rate) * 10000) / 10000,
+        sacrificeBunt: Math.round(parseNumber(row.sacrifice_bunt_rate) * 10000) / 10000,
+        fieldersChoice: Math.round(parseNumber(row.fielders_choice_rate) * 10000) / 10000,
+        reachedOnError: Math.round(parseNumber(row.reached_on_error_rate) * 10000) / 10000,
+        catcherInterference: Math.round(parseNumber(row.catcher_interference_rate) * 10000) / 10000,
       };
     } else if (row.pitcher_throws === 'R') {
       league.vsRHP = {
-        out: Math.round(parseNumber(row.out_rate) * 10000) / 10000,
         single: Math.round(parseNumber(row.single_rate) * 10000) / 10000,
         double: Math.round(parseNumber(row.double_rate) * 10000) / 10000,
         triple: Math.round(parseNumber(row.triple_rate) * 10000) / 10000,
         homeRun: Math.round(parseNumber(row.hr_rate) * 10000) / 10000,
         walk: Math.round(parseNumber(row.walk_rate) * 10000) / 10000,
         hitByPitch: Math.round(parseNumber(row.hbp_rate) * 10000) / 10000,
+        strikeout: Math.round(parseNumber(row.strikeout_rate) * 10000) / 10000,
+        groundOut: Math.round(parseNumber(row.ground_out_rate) * 10000) / 10000,
+        flyOut: Math.round(parseNumber(row.fly_out_rate) * 10000) / 10000,
+        lineOut: Math.round(parseNumber(row.line_out_rate) * 10000) / 10000,
+        popOut: Math.round(parseNumber(row.pop_out_rate) * 10000) / 10000,
+        sacrificeFly: Math.round(parseNumber(row.sacrifice_fly_rate) * 10000) / 10000,
+        sacrificeBunt: Math.round(parseNumber(row.sacrifice_bunt_rate) * 10000) / 10000,
+        fieldersChoice: Math.round(parseNumber(row.fielders_choice_rate) * 10000) / 10000,
+        reachedOnError: Math.round(parseNumber(row.reached_on_error_rate) * 10000) / 10000,
+        catcherInterference: Math.round(parseNumber(row.catcher_interference_rate) * 10000) / 10000,
       };
     }
   }
@@ -522,7 +792,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     meta: {
       year,
       generatedAt: new Date().toISOString(),
-      version: '1.0.0',
+      version: '2.0.0',
     },
     batters,
     pitchers,
