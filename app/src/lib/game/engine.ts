@@ -192,8 +192,44 @@ function applyBaserunning(
 	// V1: Static baserunning advancement
 	switch (outcome) {
 		case 'out':
-			// Runners hold
-			newBases = [...state.bases];
+			// Ground out: runners advance depending on outs
+			const outsBefore = state.outs;
+
+			if (outsBefore >= 2) {
+				// With 2 outs, runners run with pitch
+				// Runner on 3B scores
+				if (state.bases[2]) {
+					runs++;
+					scorerIds.push(state.bases[2]!);
+				}
+				// Runner on 2B advances to 3B
+				newBases[2] = state.bases[1];
+				// Runner on 1B advances to 2B
+				newBases[1] = state.bases[0];
+				// Batter out, nobody reaches
+				newBases[0] = null;
+			} else {
+				// With 0-1 outs, more limited advancement
+				// Runner on 3B: scores with 1 out, holds with 0 outs
+				if (state.bases[2]) {
+					if (outsBefore === 1) {
+						runs++;
+						scorerIds.push(state.bases[2]!);
+					} else {
+						newBases[2] = state.bases[2];
+					}
+				}
+				// Runner on 2B: may advance to 3B or hold
+				if (state.bases[1]) {
+					// Usually holds on ground out, could advance
+					newBases[2] = state.bases[1];
+				}
+				// Runner on 1B: forced out or advances to 2B (fielder's choice)
+				if (state.bases[0]) {
+					newBases[1] = state.bases[0];
+				}
+				newBases[0] = null; // Batter out
+			}
 			break;
 		case 'walk':
 		case 'hitByPitch':
