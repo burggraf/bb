@@ -335,58 +335,62 @@
 	}
 
 	// Format runner info for play-by-play display
-	// Only shows runner info if there are scorers (walk-offs or runs scored)
+	// Shows runners on base and scorers when there are scorers
 	function formatRunnerInfo(play: PlayEvent): string | null {
-		// Only show runner info if there are scorers
-		if (!play.scorerIds || play.scorerIds.length === 0) {
+		// Only show runner info if there are scorers OR runners on base
+		if ((!play.scorerIds || play.scorerIds.length === 0) && !play.runnersAfter?.some(r => r)) {
 			return null;
 		}
 
 		const parts: string[] = [];
 		const bases = ['1st', '2nd', '3rd'];
 
-		// Add runners on base (only when there are scorers)
+		// Add runners on base (excluding those who scored)
 		if (play.runnersAfter) {
 			for (let i = 0; i < 3; i++) {
 				const runnerId = play.runnersAfter[i];
+				// Skip if this runner scored
+				if (runnerId && play.scorerIds?.includes(runnerId)) {
+					continue;
+				}
 				if (runnerId && season?.batters[runnerId]) {
 					const name = season.batters[runnerId].name;
 					const formattedName = formatName(name);
-
-					// Check if runner advanced from another base
-					let advancedFrom = -1;
-					if (play.runnersBefore) {
-						for (let j = 0; j < 3; j++) {
-							if (play.runnersBefore[j] === runnerId) {
-								advancedFrom = j;
-								break;
-							}
-						}
-					}
-
-					// If runner advanced, use "to"; otherwise just show position
-					if (advancedFrom !== -1 && advancedFrom !== i) {
-						parts.push(`${formattedName} to ${bases[i]}`);
-					} else {
-						parts.push(`${formattedName} ${bases[i]}`);
-					}
+					parts.push(`${formattedName} on ${bases[i]}`);
 				}
 			}
 		}
 
 		// Add scorers
-		const scorerNames = play.scorerIds
-			.map((id) => season?.batters[id]?.name)
-			.filter(Boolean)
-			.map((name) => formatName(name!));
+		if (play.scorerIds && play.scorerIds.length > 0) {
+			const scorerNames = play.scorerIds
+				.map((id) => season?.batters[id]?.name)
+				.filter(Boolean)
+				.map((name) => formatName(name!));
 
-		if (scorerNames.length === 1) {
-			parts.push(`${scorerNames[0]} scores`);
-		} else {
-			parts.push(`${scorerNames.join(', ')} score`);
+			if (scorerNames.length === 1) {
+				parts.push(`${scorerNames[0]} scores`);
+			} else {
+				parts.push(`${scorerNames.join(', ')} score`);
+			}
 		}
 
 		return parts.length > 0 ? parts.join(', ') : null;
+	}
+
+	// Format score line for plays with runs
+	function formatScoreLine(play: PlayEvent, awayScore: number, homeScore: number): string | null {
+		// Only show score line if there are scorers
+		if (!play.scorerIds || play.scorerIds.length === 0) {
+			return null;
+		}
+
+		const awayTeam = season?.teams['CIN'];
+		const homeTeam = season?.teams['HOU'];
+		const awayName = awayTeam ? `${awayTeam.city} ${awayTeam.nickname}` : 'Reds';
+		const homeName = homeTeam ? `${homeTeam.city} ${homeTeam.nickname}` : 'Astros';
+
+		return `${awayName} ${awayScore}, ${homeName} ${homeScore}`;
 	}
 
 	// Format name from "Last, First" to "First Last"
@@ -394,6 +398,22 @@
 		const commaIndex = name.indexOf(',');
 		if (commaIndex === -1) return name;
 		return `${name.slice(commaIndex + 1).trim()} ${name.slice(0, commaIndex).trim()}`;
+	}
+
+	// Calculate running score at a specific play index (from newest to oldest)
+	function getScoreAtPlay(playIndex: number, totalPlays: PlayEvent[]): { away: number; home: number } {
+		let away = 0;
+		let home = 0;
+		// Plays are stored with newest first (unshift), so we iterate from playIndex to end
+		for (let i = playIndex; i < totalPlays.length; i++) {
+			const play = totalPlays[i];
+			if (play.isTopInning) {
+				away += play.runsScored;
+			} else {
+				home += play.runsScored;
+			}
+		}
+		return { away, home };
 	}
 </script>
 
@@ -566,6 +586,7 @@
 						{#each plays.slice(0, 10) as play, index}
 							{@const playNumber = plays.slice(0, index).filter(p => !p.isSummary).length + 1}
 							{@const runnerInfo = formatRunnerInfo(play)}
+							{@const scoreInfo = formatScoreLine(play, ...getScoreAtPlay(index, plays))}
 							<div class="rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border {play.isSummary
 								? 'bg-amber-900/30 border-amber-700/40'
 								: 'bg-slate-800/50 border-slate-700/30'}">
@@ -581,6 +602,11 @@
 							{#if runnerInfo && !play.isSummary}
 								<div class="pl-4 sm:pl-6 pr-2 sm:pr-3 py-1 text-xs text-slate-400 italic">
 									{runnerInfo}
+								</div>
+							{/if}
+							{#if scoreInfo && !play.isSummary}
+								<div class="pl-4 sm:pl-6 pr-2 sm:pr-3 py-1 text-xs text-emerald-400 font-medium">
+									{scoreInfo}
 								</div>
 							{/if}
 						{/each}
@@ -774,6 +800,7 @@
 							{@const reversedPlays = plays.slice().reverse()}
 							{@const playNumber = reversedPlays.slice(0, index).filter(p => !p.isSummary).length + 1}
 							{@const runnerInfo = formatRunnerInfo(play)}
+							{@const scoreInfo = formatScoreLine(play, ...getScoreAtPlay(reversedPlays.length - 1 - index, reversedPlays))}
 							<div class="rounded-lg px-3 sm:px-4 py-2 sm:py-3 border {play.isSummary
 								? 'bg-amber-900/30 border-amber-700/40'
 								: 'bg-slate-800/50 border-slate-700/30'}">
@@ -789,6 +816,11 @@
 							{#if runnerInfo && !play.isSummary}
 								<div class="pl-7 sm:pl-10 pr-3 sm:pr-4 py-1 text-sm text-slate-400 italic">
 									{runnerInfo}
+								</div>
+							{/if}
+							{#if scoreInfo && !play.isSummary}
+								<div class="pl-7 sm:pl-10 pr-3 sm:pr-4 py-1 text-sm text-emerald-400 font-medium">
+									{scoreInfo}
 								</div>
 							{/if}
 						{/each}
