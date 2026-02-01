@@ -50,6 +50,14 @@ function formatName(name: string): string {
 	return `${name.slice(commaIndex + 1).trim()} ${name.slice(0, commaIndex).trim()}`;
 }
 
+interface HalfInningStats {
+	inning: number;
+	isTop: boolean;
+	outs: number;
+	plays: number;
+	endedWithSummary: boolean;
+}
+
 interface ValidationResult {
 	isValid: boolean;
 	errors: string[];
@@ -60,6 +68,7 @@ interface ValidationResult {
 		innings: number;
 		finalScore: { away: number; home: number };
 		outcomesSeen: string[];
+		halfInnings: HalfInningStats[];
 	};
 }
 
@@ -75,13 +84,13 @@ class GameValidator {
 		const outcomes: Record<string, number> = {};
 
 		// Track state for validation
-		let currentInning = 0;
-		let currentIsTop = true;
-		let outsInInning = 0;
-		let lastOuts = 0;
 		let awayScore = 0;
 		let homeScore = 0;
 		const pitchersUsed = new Map<string, Set<string>>(); // team -> pitcher IDs
+
+		// Track half-innings for proper validation
+		const halfInnings: HalfInningStats[] = [];
+		let currentHalfInning: HalfInningStats | null = null;
 
 		// Process plays in reverse (oldest to newest)
 		const plays = [...state.plays].reverse();
@@ -89,7 +98,87 @@ class GameValidator {
 		for (let i = 0; i < plays.length; i++) {
 			const play = plays[i];
 
-			// Skip summary entries
+			// Track outcomes
+			if (!play.isSummary) {
+				if (!outcomes[play.outcome]) {
+					outcomes[play.outcome] = 0;
+				}
+				outcomes[play.outcome]++;
+				this.seenOutcomes.add(play.outcome);
+
+				// Update score
+				if (play.isTopInning) {
+					awayScore += play.runsScored;
+				} else {
+					homeScore += play.runsScored;
+				}
+
+				// Track pitchers
+				const team = play.isTopInning ? state.meta.awayTeam : state.meta.homeTeam;
+				if (!pitchersUsed.has(team)) {
+					pitchersUsed.set(team, new Set());
+				}
+				pitchersUsed.get(team)!.add(play.pitcherId);
+			}
+
+			// === HALF-INNING TRACKING ===
+			const isOutEvent = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly'].includes(play.outcome);
+
+			// Handle summaries first - they mark the end of the current half-inning
+			if (play.isSummary) {
+				if (currentHalfInning !== null) {
+					currentHalfInning.endedWithSummary = true;
+
+					// Check if this is a walk-off win (home team took lead in bottom of 9th or later)
+					// For walk-off wins, fewer than 3 outs is acceptable
+					const isBottomInning = !play.isTopInning;
+					const isLateInning = play.inning >= 9;
+					const homeTeamWon = homeScore > awayScore;
+					const isWalkOff = isBottomInning && isLateInning && homeTeamWon;
+
+					if (currentHalfInning.outs !== 3 && !isWalkOff) {
+						errors.push(`Summary for ${play.isTopInning ? 'top' : 'bottom'} ${play.inning} shows ${currentHalfInning.outs} outs (expected 3)`);
+					}
+				}
+				continue; // Skip the rest of the loop for summaries
+			}
+
+			// For regular plays, check if we need to start a new half-inning
+			if (currentHalfInning === null ||
+				play.inning !== currentHalfInning.inning ||
+				play.isTopInning !== currentHalfInning.isTop) {
+
+				// Validate previous half-inning if it exists
+				if (currentHalfInning !== null && !currentHalfInning.endedWithSummary) {
+					// Half-inning ended without a summary - validate it had 3 outs
+					if (currentHalfInning.outs !== 3) {
+						errors.push(`${currentHalfInning.isTop ? 'Top' : 'Bottom'} ${currentHalfInning.inning} ended with ${currentHalfInning.outs} outs (expected 3)`);
+					}
+				}
+
+				// Start new half-inning
+				currentHalfInning = {
+					inning: play.inning,
+					isTop: play.isTopInning,
+					outs: 0,
+					plays: 0,
+					endedWithSummary: false,
+				};
+				halfInnings.push(currentHalfInning);
+			}
+
+			// Update current half-inning stats for regular plays
+			currentHalfInning.plays++;
+			if (isOutEvent) {
+				currentHalfInning.outs++;
+				if (currentHalfInning.outs > 3) {
+					errors.push(`Play ${i}: More than 3 outs in ${play.isTopInning ? 'top' : 'bottom'} of ${play.inning} (outs: ${currentHalfInning.outs})`);
+				}
+			}
+
+			// === RULE VALIDATIONS ===
+
+			// Skip summary entries for most other validations
 			if (play.isSummary) {
 				// Verify half-inning summary format
 				if (!play.description.includes('Top') && !play.description.includes('Bottom')) {
@@ -98,85 +187,17 @@ class GameValidator {
 				continue;
 			}
 
-			// Track outcomes
-			if (!outcomes[play.outcome]) {
-				outcomes[play.outcome] = 0;
-			}
-			outcomes[play.outcome]++;
-			this.seenOutcomes.add(play.outcome);
-
-			// Update score
-			if (play.isTopInning) {
-				awayScore += play.runsScored;
-			} else {
-				homeScore += play.runsScored;
-			}
-
-			// Track pitchers
-			const team = play.isTopInning ? state.meta.awayTeam : state.meta.homeTeam;
-			if (!pitchersUsed.has(team)) {
-				pitchersUsed.set(team, new Set());
-			}
-			pitchersUsed.get(team)!.add(play.pitcherId);
-
-			// === RULE VALIDATIONS ===
-
-			// 1. Check for inning changes
-			if (play.inning !== currentInning) {
-				if (play.inning !== currentInning + 1) {
-					errors.push(`Play ${i}: Inning jumped from ${currentInning} to ${play.inning}`);
-				}
-				if (!play.isSummary) {
-					// Should have a summary before non-summary play in new inning
-					if (i > 0 && plays[i - 1].inning !== play.inning) {
-						const prevPlay = plays[i - 1];
-						if (!prevPlay?.isSummary) {
-							warnings.push(`Play ${i}: New inning ${play.inning} without summary`);
-						}
-					}
-				}
-				currentInning = play.inning;
-				outsInInning = 0;
-			}
-
-			// 2. Check for top/bottom transitions
+			// Check for inning jumps
 			if (i > 0) {
 				const prevPlay = plays[i - 1];
-				if (prevPlay && !prevPlay.isSummary) {
-					// Check if we switched from top to bottom or vice versa
-					if (prevPlay.inning === play.inning && prevPlay.isTopInning !== play.isTopInning) {
-						// We should have a summary between halves
-						if (!prevPlay.isSummary) {
-							errors.push(`Play ${i}: Switched from ${prevPlay.isTopInning ? 'top' : 'bottom'} to ${play.isTopInning ? 'top' : 'bottom'} of inning ${play.inning} without summary`);
-						}
+				if (prevPlay && !prevPlay.isSummary && play.inning !== prevPlay.inning) {
+					if (play.inning !== prevPlay.inning + 1) {
+						errors.push(`Play ${i}: Inning jumped from ${prevPlay.inning} to ${play.inning}`);
 					}
 				}
 			}
 
-			// 3. Validate outs count
-			if (play.inning === currentInning && play.isTopInning === currentIsTop) {
-				// Same half-inning
-				const isOut = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly', 'sacrificeBunt', 'doublePlay', 'triplePlay'].includes(play.outcome);
-				// Note: doublePlay and triplePlay aren't outcomes yet, but might be added
-				const isOutEvent = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly'].includes(play.outcome);
-
-				if (isOutEvent) {
-					outsInInning++;
-					if (outsInInning > 3) {
-						errors.push(`Play ${i}: More than 3 outs in ${play.isTopInning ? 'top' : 'bottom'} of ${play.inning} (outs: ${outsInInning})`);
-					}
-				}
-			} else {
-				// New half-inning
-				currentIsTop = play.isTopInning;
-				outsInInning = 0;
-				const isOutEvent = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'fieldersChoice', 'sacrificeFly'].includes(play.outcome);
-				if (isOutEvent) {
-					outsInInning = 1;
-				}
-			}
-
-			// 4. Fielder's choice should have runners on base
+			// Fielder's choice should have runners on base
 			if (play.outcome === 'fieldersChoice') {
 				const hadRunners = play.runnersBefore && play.runnersBefore.some(r => r !== null);
 				if (!hadRunners) {
@@ -188,7 +209,7 @@ class GameValidator {
 				}
 			}
 
-			// 5. Sacrifice flies should have runners on base or be with 0-2 outs
+			// Sacrifice flies should have runners on base
 			if (play.outcome === 'sacrificeFly') {
 				const hadRunners = play.runnersBefore && play.runnersBefore.some(r => r !== null);
 				if (!hadRunners) {
@@ -196,7 +217,7 @@ class GameValidator {
 				}
 			}
 
-			// 6. Sacrifice bunt should typically have runners on base
+			// Sacrifice bunt should typically have runners on base
 			if (play.outcome === 'sacrificeBunt') {
 				const hadRunners = play.runnersBefore && play.runnersBefore.some(r => r !== null);
 				if (!hadRunners) {
@@ -204,13 +225,8 @@ class GameValidator {
 				}
 			}
 
-			// 7. Check for runner advancement sanity
-			// Note: We can't track which specific runner was put out on most plays
-			// (except fielder's choice), so runner disappearance is expected on outs
+			// Check for runner advancement sanity
 			if (play.runnersBefore && play.runnersAfter) {
-				// Check for duplicate runners
-				// Note: runnersAfter includes the batter if they reached base
-				// We need to check for duplicates within runnersAfter itself
 				const runnersOnBase = play.runnersAfter.filter(r => r !== null);
 				const uniqueRunners = new Set(runnersOnBase);
 				if (runnersOnBase.length !== uniqueRunners.size) {
@@ -218,35 +234,71 @@ class GameValidator {
 				}
 			}
 
-			// 8. Check pitcher name format (should be "First Last")
+			// Check pitcher name format (should be "First Last")
 			if (play.pitcherName.includes(',')) {
 				errors.push(`Play ${i}: Pitcher name not formatted: "${play.pitcherName}"`);
 			}
 
-			// 9. Check batter name format (should be "First Last")
+			// Check batter name format (should be "First Last")
 			if (play.batterName.includes(',')) {
 				errors.push(`Play ${i}: Batter name not formatted: "${play.batterName}"`);
 			}
 
-			// 10. Validate play description format
+			// Validate play description format
 			this.validatePlayDescription(play, i, errors, warnings);
 		}
 
 		// === POST-GAME VALIDATIONS ===
 
+		// Check final half-inning (game might have ended without summary)
+		if (currentHalfInning !== null && !currentHalfInning.endedWithSummary) {
+			// Game-ending play might not have a summary after it
+			// But it should still have 3 outs (unless home team won in bottom 9th)
+			const isWalkOff = !currentHalfInning.isTop &&
+				currentHalfInning.inning >= 9 &&
+				homeScore > awayScore;
+
+			if (!isWalkOff && currentHalfInning.outs !== 3) {
+				errors.push(`Final half-inning (${currentHalfInning.isTop ? 'top' : 'bottom'} ${currentHalfInning.inning}) ended with ${currentHalfInning.outs} outs (expected 3)`);
+			}
+		}
+
+		// Check game length - should be at least 9 innings (or 8.5 if home team wins)
+		// Use the actual state's inning number to determine game length
+		const actualInning = state.inning;
+		const isTopOfNext = state.isTopInning;
+
+		// Calculate how many full innings were played
+		// If we're in top of inning X, then X-1 full innings were completed
+		// If we're in bottom of inning X, then X full innings were completed (or in progress)
+		let fullInningsPlayed = actualInning;
+		if (isTopOfNext) {
+			fullInningsPlayed = actualInning - 1;
+		}
+
+		// Check if game ended properly
+		// Game is valid if:
+		// 1. 9+ full innings were played, OR
+		// 2. 8.5 innings played and home team is ahead (top of 9th completed, home team wins without batting), OR
+		// 3. Home team won in bottom 9th or later (walk-off)
+		const hasFull9Innings = fullInningsPlayed >= 9;
+		const homeWonWithoutBatting = isTopOfNext && actualInning === 9 && homeScore > awayScore; // Top of 9th about to start, but home team already won
+		const homeWonWalkOff = !isTopOfNext && actualInning >= 9 && homeScore > awayScore;
+
+		if (!hasFull9Innings && !homeWonWithoutBatting && !homeWonWalkOff) {
+			errors.push(`Game ended after only ${fullInningsPlayed} full innings (state: inning=${actualInning}, isTop=${isTopOfNext}), expected at least 9`);
+		}
+
 		// Check game ended properly
-		if (awayScore === homeScore && currentInning < 9) {
+		if (awayScore === homeScore && fullInningsPlayed < 9) {
 			errors.push(`Game ended in tie before 9th inning: ${awayScore}-${homeScore}`);
 		}
 
-		// Check if home team got their last at-bat
-		if (awayScore > homeScore && currentInning === 9 && currentIsTop) {
-			// Home team was about to bat in bottom 9th but game ended
-			// This is OK if away team was winning
-		} else if (awayScore > homeScore && currentInning === 9 && !currentIsTop) {
-			// Home team batted in bottom 9th and lost - OK
-		} else if (homeScore > awayScore) {
-			// Home team won - OK
+		// Validate each half-inning had exactly 3 outs
+		for (const hi of halfInnings) {
+			if (hi.outs !== 3 && !hi.endedWithSummary) {
+				errors.push(`${hi.isTop ? 'Top' : 'Bottom'} ${hi.inning}: ${hi.outs} outs (expected 3)`);
+			}
 		}
 
 		// Check that pitchers were reasonably consistent
@@ -263,9 +315,10 @@ class GameValidator {
 			stats: {
 				totalPlays: plays.filter(p => !p.isSummary).length,
 				outcomes,
-				innings: currentInning,
+				innings: fullInningsPlayed,
 				finalScore: { away: awayScore, home: homeScore },
 				outcomesSeen: Array.from(this.seenOutcomes),
+				halfInnings,
 			},
 		};
 	}
@@ -406,6 +459,20 @@ async function runGameTests(numGames: number = 10): Promise<void> {
 
 	const avgInnings = results.reduce((sum, r) => sum + r.stats.innings, 0) / numGames;
 	console.log(`  Average innings: ${avgInnings.toFixed(1)}`);
+
+	// Half-inning validation stats
+	console.log(`\n📊 Half-Inning Validation:`);
+	let totalHalfInnings = 0;
+	let halfInningsWith3Outs = 0;
+	for (const r of results) {
+		for (const hi of r.stats.halfInnings) {
+			totalHalfInnings++;
+			if (hi.outs === 3) halfInningsWith3Outs++;
+		}
+	}
+	console.log(`  Total half-innings: ${totalHalfInnings}`);
+	console.log(`  Half-innings with 3 outs: ${halfInningsWith3Outs}`);
+	console.log(`  Half-innings with wrong outs: ${totalHalfInnings - halfInningsWith3Outs}`);
 
 	// Sample play-by-play from first game
 	console.log(`\n📝 Sample Play-by-Play (Game 1):`);

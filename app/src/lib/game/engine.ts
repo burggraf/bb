@@ -454,6 +454,10 @@ export class GameEngine {
 				state.isTopInning = true;
 				state.inning++;
 			}
+		} else if (!wouldBeThirdOut && this.isComplete()) {
+			// Game ended without 3 outs (walk-off win)
+			// Add a summary for the final half-inning
+			addHalfInningSummary(state, this.season);
 		}
 
 		// Safety cap to prevent runaway outs (shouldn't happen with correct logic)
