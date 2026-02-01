@@ -19,7 +19,7 @@
 	let outs = $state(0);
 
 	let runners = $state([false, false, false]); // 1B, 2B, 3B
-	let plays = $state<string[]>([]);
+	let plays = $state<PlayEvent[]>([]);
 	let gameComplete = $state(false);
 
 	// Current matchup display
@@ -207,7 +207,7 @@
 			state.bases[2] !== null,
 		];
 
-		plays = state.plays.map((p) => p.description);
+		plays = state.plays;
 
 		if (state.plays.length > 0) {
 			const lastPlay = state.plays[0];
@@ -332,6 +332,68 @@
 			engine = new GameEngine(season, 'CIN', 'HOU');
 			updateFromEngine();
 		}
+	}
+
+	// Format runner info for play-by-play display
+	// Only shows runner info if there are scorers (walk-offs or runs scored)
+	function formatRunnerInfo(play: PlayEvent): string | null {
+		// Only show runner info if there are scorers
+		if (!play.scorerIds || play.scorerIds.length === 0) {
+			return null;
+		}
+
+		const parts: string[] = [];
+		const bases = ['1st', '2nd', '3rd'];
+
+		// Add runners on base (only when there are scorers)
+		if (play.runnersAfter) {
+			for (let i = 0; i < 3; i++) {
+				const runnerId = play.runnersAfter[i];
+				if (runnerId && season?.batters[runnerId]) {
+					const name = season.batters[runnerId].name;
+					const formattedName = formatName(name);
+
+					// Check if runner advanced from another base
+					let advancedFrom = -1;
+					if (play.runnersBefore) {
+						for (let j = 0; j < 3; j++) {
+							if (play.runnersBefore[j] === runnerId) {
+								advancedFrom = j;
+								break;
+							}
+						}
+					}
+
+					// If runner advanced, use "to"; otherwise just show position
+					if (advancedFrom !== -1 && advancedFrom !== i) {
+						parts.push(`${formattedName} to ${bases[i]}`);
+					} else {
+						parts.push(`${formattedName} ${bases[i]}`);
+					}
+				}
+			}
+		}
+
+		// Add scorers
+		const scorerNames = play.scorerIds
+			.map((id) => season?.batters[id]?.name)
+			.filter(Boolean)
+			.map((name) => formatName(name!));
+
+		if (scorerNames.length === 1) {
+			parts.push(`${scorerNames[0]} scores`);
+		} else {
+			parts.push(`${scorerNames.join(', ')} score`);
+		}
+
+		return parts.length > 0 ? parts.join(', ') : null;
+	}
+
+	// Format name from "Last, First" to "First Last"
+	function formatName(name: string): string {
+		const commaIndex = name.indexOf(',');
+		if (commaIndex === -1) return name;
+		return `${name.slice(commaIndex + 1).trim()} ${name.slice(0, commaIndex).trim()}`;
 	}
 </script>
 
@@ -499,18 +561,35 @@
 			<!-- Play-by-Play Feed -->
 			<div class="flex-1 flex flex-col overflow-hidden">
 				<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3">Play-by-Play</div>
-				<div class="flex-1 overflow-y-auto space-y-1.5 sm:space-y-2 pr-1 sm:pr-2" style="max-height: 200px; lg:max-height: none;">
-					{#each plays.slice(0, 10) as play, index}
-						<div class="bg-slate-800/50 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border border-slate-700/30">
-							<div class="flex items-start gap-1.5 sm:gap-2">
-								<span class="text-[10px] sm:text-xs text-slate-500 mt-0.5">{plays.length - index}</span>
-								<p class="text-xs sm:text-sm text-slate-300">{play}</p>
+				{#if plays.length > 0}
+					<div class="flex-1 overflow-y-auto space-y-1.5 sm:space-y-2 pr-1 sm:pr-2" style="max-height: 200px; lg:max-height: none;">
+						{#each plays.slice(0, 10) as play, index}
+							{@const playNumber = plays.slice(0, index).filter(p => !p.isSummary).length + 1}
+							{@const runnerInfo = formatRunnerInfo(play)}
+							<div class="rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border {play.isSummary
+								? 'bg-amber-900/30 border-amber-700/40'
+								: 'bg-slate-800/50 border-slate-700/30'}">
+								<div class="flex items-start gap-1.5 sm:gap-2">
+									{#if !play.isSummary}
+										<span class="text-[10px] sm:text-xs text-slate-500 mt-0.5">{playNumber}</span>
+									{/if}
+									<p class="text-xs sm:text-sm {play.isSummary
+										? 'text-amber-200 font-medium'
+										: 'text-slate-300'}">{play.description}</p>
+								</div>
 							</div>
-						</div>
-					{:else}
+							{#if runnerInfo && !play.isSummary}
+								<div class="pl-4 sm:pl-6 pr-2 sm:pr-3 py-1 text-xs text-slate-400 italic">
+									{runnerInfo}
+								</div>
+							{/if}
+						{/each}
+					</div>
+				{:else}
+					<div class="flex-1 flex items-center justify-center">
 						<div class="text-xs sm:text-sm text-slate-500 text-center py-4 sm:py-8">Game starting...</div>
-					{/each}
-				</div>
+					</div>
+				{/if}
 			</div>
 
 			<!-- Controls -->
@@ -689,18 +768,36 @@
 					</button>
 				</div>
 
-				<div class="flex-1 overflow-y-auto space-y-2 pr-2">
-					{#each plays.slice().reverse() as play, index}
-						<div class="bg-slate-800/50 rounded-lg px-3 sm:px-4 py-2 sm:py-3 border border-slate-700/30">
-							<div class="flex items-start gap-2 sm:gap-3">
-								<span class="text-xs sm:text-sm text-slate-500 mt-0.5 font-mono">{plays.length - index}</span>
-								<p class="text-sm sm:text-base text-slate-300">{play}</p>
+				{#if plays.length > 0}
+					<div class="flex-1 overflow-y-auto space-y-2 pr-2">
+						{#each plays.slice().reverse() as play, index}
+							{@const reversedPlays = plays.slice().reverse()}
+							{@const playNumber = reversedPlays.slice(0, index).filter(p => !p.isSummary).length + 1}
+							{@const runnerInfo = formatRunnerInfo(play)}
+							<div class="rounded-lg px-3 sm:px-4 py-2 sm:py-3 border {play.isSummary
+								? 'bg-amber-900/30 border-amber-700/40'
+								: 'bg-slate-800/50 border-slate-700/30'}">
+								<div class="flex items-start gap-2 sm:gap-3">
+									{#if !play.isSummary}
+										<span class="text-xs sm:text-sm text-slate-500 mt-0.5 font-mono">{playNumber}</span>
+									{/if}
+									<p class="text-sm sm:text-base {play.isSummary
+										? 'text-amber-200 font-medium'
+										: 'text-slate-300'}">{play.description}</p>
+								</div>
 							</div>
-						</div>
-					{:else}
+							{#if runnerInfo && !play.isSummary}
+								<div class="pl-7 sm:pl-10 pr-3 sm:pr-4 py-1 text-sm text-slate-400 italic">
+									{runnerInfo}
+								</div>
+							{/if}
+						{/each}
+					</div>
+				{:else}
+					<div class="flex-1 flex items-center justify-center">
 						<div class="text-sm sm:text-base text-slate-500 text-center py-8">No plays recorded</div>
-					{/each}
-				</div>
+					</div>
+				{/if}
 
 				<div class="flex-1 sm:flex-none">
 					<button

@@ -118,6 +118,10 @@ export interface PlayEvent {
 	pitcherName: string;
 	description: string;
 	runsScored: number;
+	isSummary?: boolean; // true for half-inning summaries
+	runnersAfter?: [string | null, string | null, string | null]; // runners on base after the play (1B, 2B, 3B)
+	scorerIds?: string[]; // players who scored on this play
+	runnersBefore?: [string | null, string | null, string | null]; // runners on base before the play
 }
 
 export type GameMode = 'pitch-by-pitch' | 'auto-play' | 'quick-sim';
