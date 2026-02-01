@@ -13,16 +13,14 @@ import type {
 	PitcherStats,
 } from './types.js';
 
-// Simple lineup generation (top of order)
+// Generate lineup from batters on the specified team
 function generateLineup(
 	batters: Record<string, BatterStats>,
 	teamId: string
 ): LineupState {
+	// Filter batters by teamId
 	const teamBatters = Object.values(batters)
-		.filter((b) => {
-			// For now, just take batters - in real app, filter by team
-			return true;
-		})
+		.filter((b) => b.teamId === teamId)
 		.sort((a, b) => {
 			// Sort by OBP (simplified)
 			const aOBP =

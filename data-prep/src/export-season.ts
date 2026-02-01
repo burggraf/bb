@@ -114,6 +114,7 @@ WITH raw_batter_stats AS (
     b.last_name || ', ' || b.first_name as name,
     b.bats,
     p.throws as pitcher_throws,
+    e.batting_team_id,
     COUNT(*) as pa,
     SUM(CASE
       WHEN e.plate_appearance_result IN ('InPlayOut', 'StrikeOut', 'SacrificeHit', 'SacrificeFly', 'FieldersChoice', 'ReachedOnError', 'Interference')
@@ -132,13 +133,30 @@ WITH raw_batter_stats AS (
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
     AND e.no_play_flag = false
-  GROUP BY e.batter_id, b.last_name, b.first_name, b.bats, p.throws
+  GROUP BY e.batter_id, b.last_name, b.first_name, b.bats, p.throws, e.batting_team_id
+),
+-- Find primary team for each batter (most PAs)
+batter_primary_team AS (
+  SELECT
+    batter_id,
+    batting_team_id,
+    SUM(pa) as team_pa
+  FROM raw_batter_stats
+  GROUP BY batter_id, batting_team_id
+),
+batter_best_team AS (
+  SELECT
+    batter_id,
+    batting_team_id as primary_team_id,
+    ROW_NUMBER() OVER (PARTITION BY batter_id ORDER BY team_pa DESC) as rn
+  FROM batter_primary_team
 ),
 aggregated AS (
   SELECT
-    batter_id,
-    name,
-    bats,
+    r.batter_id,
+    r.name,
+    r.bats,
+    bt.primary_team_id,
     -- vs LHP
     SUM(CASE WHEN pitcher_throws = 'L' THEN pa ELSE 0 END) as pa_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN outs ELSE 0 END) as outs_vs_l,
@@ -157,8 +175,9 @@ aggregated AS (
     SUM(CASE WHEN pitcher_throws = 'R' THEN home_runs ELSE 0 END) as hr_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN walks ELSE 0 END) as walks_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN hbp ELSE 0 END) as hbp_vs_r
-  FROM raw_batter_stats
-  GROUP BY batter_id, name, bats
+  FROM raw_batter_stats r
+  JOIN batter_best_team bt ON r.batter_id = bt.batter_id AND bt.rn = 1
+  GROUP BY r.batter_id, r.name, r.bats, bt.primary_team_id
 )
 SELECT * FROM aggregated
 WHERE (pa_vs_l >= ${minPA} OR pa_vs_r >= ${minPA})
@@ -174,6 +193,7 @@ WITH raw_pitcher_stats AS (
     p.last_name || ', ' || p.first_name as name,
     p.throws,
     b.bats as batter_bats,
+    e.fielding_team_id,
     COUNT(*) as pa,
     SUM(CASE
       WHEN e.plate_appearance_result IN ('InPlayOut', 'StrikeOut', 'SacrificeHit', 'SacrificeFly', 'FieldersChoice', 'ReachedOnError', 'Interference')
@@ -192,13 +212,30 @@ WITH raw_pitcher_stats AS (
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
     AND e.no_play_flag = false
-  GROUP BY e.pitcher_id, p.last_name, p.first_name, p.throws, b.bats
+  GROUP BY e.pitcher_id, p.last_name, p.first_name, p.throws, b.bats, e.fielding_team_id
+),
+-- Find primary team for each pitcher (most PAs)
+pitcher_primary_team AS (
+  SELECT
+    pitcher_id,
+    fielding_team_id,
+    SUM(pa) as team_pa
+  FROM raw_pitcher_stats
+  GROUP BY pitcher_id, fielding_team_id
+),
+pitcher_best_team AS (
+  SELECT
+    pitcher_id,
+    fielding_team_id as primary_team_id,
+    ROW_NUMBER() OVER (PARTITION BY pitcher_id ORDER BY team_pa DESC) as rn
+  FROM pitcher_primary_team
 ),
 aggregated AS (
   SELECT
-    pitcher_id,
-    name,
-    throws,
+    r.pitcher_id,
+    r.name,
+    r.throws,
+    pt.primary_team_id,
     -- vs LHB
     SUM(CASE WHEN batter_bats = 'L' THEN pa ELSE 0 END) as pa_vs_l,
     SUM(CASE WHEN batter_bats = 'L' THEN outs ELSE 0 END) as outs_vs_l,
@@ -217,8 +254,9 @@ aggregated AS (
     SUM(CASE WHEN batter_bats = 'R' THEN home_runs ELSE 0 END) as hr_vs_r,
     SUM(CASE WHEN batter_bats = 'R' THEN walks ELSE 0 END) as walks_vs_r,
     SUM(CASE WHEN batter_bats = 'R' THEN hbp ELSE 0 END) as hbp_vs_r
-  FROM raw_pitcher_stats
-  GROUP BY pitcher_id, name, throws
+  FROM raw_pitcher_stats r
+  JOIN pitcher_best_team pt ON r.pitcher_id = pt.pitcher_id AND pt.rn = 1
+  GROUP BY r.pitcher_id, r.name, r.throws, pt.primary_team_id
 )
 SELECT * FROM aggregated
 WHERE (pa_vs_l >= ${minPA} OR pa_vs_r >= ${minPA})
@@ -302,6 +340,7 @@ export interface SeasonPackage {
     id: string;
     name: string;
     bats: 'L' | 'R' | 'S';
+    teamId: string;
     rates: {
       vsLHP: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
       vsRHP: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
@@ -311,6 +350,7 @@ export interface SeasonPackage {
     id: string;
     name: string;
     throws: 'L' | 'R';
+    teamId: string;
     rates: {
       vsLHB: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
       vsRHB: { out: number; single: number; double: number; triple: number; homeRun: number; walk: number; hitByPitch: number };
@@ -345,7 +385,8 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     batters[row.batter_id] = {
       id: row.batter_id,
       name: row.name,
-      bats: row.bats,
+      bats: row.bats === 'B' ? 'S' : row.bats, // Convert 'B' (both) to 'S' (switch)
+      teamId: row.primary_team_id,
       rates: {
         vsLHP: {
           out: calcRate(parseNumber(row.outs_vs_l), paL),
@@ -384,6 +425,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       id: row.pitcher_id,
       name: row.name,
       throws: row.throws,
+      teamId: row.primary_team_id,
       rates: {
         vsLHB: {
           out: calcRate(parseNumber(row.outs_vs_l), paL),
