@@ -317,4 +317,17 @@ export class GameEngine {
 
 		return false;
 	}
+
+	// Serialize the current game state for persistence
+	serialize(): string {
+		return JSON.stringify(this.state);
+	}
+
+	// Create a new GameEngine from a serialized state
+	static restore(serializedState: string, season: SeasonPackage): GameEngine {
+		const state = JSON.parse(serializedState) as GameState;
+		const engine = new GameEngine(season, state.meta.awayTeam, state.meta.homeTeam);
+		engine.state = state;
+		return engine;
+	}
 }
