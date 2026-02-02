@@ -1,20 +1,120 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { getAvailableYears, loadSeason } from '$lib/game/season-loader.js';
+	import {
+		downloadSeason,
+		isSeasonDownloaded,
+		type SeasonDownloadState
+	} from '$lib/game/season-download.js';
+	import type { Team, SeasonPackage } from '$lib/game/types.js';
 
-	// TODO: Load from season data
-	const years = Array.from({ length: 115 }, (_, i) => 1910 + i).reverse();
+	// Available years
+	let availableYears = $state<number[]>([]);
+	let selectedYear = $state<number>(1976);
 
-	let selectedYear = $state(1976);
-	let gameMode = $state<'quick' | 'historical'>('quick');
-	let selectedHomeTeam = $state<string | null>(null);
+	// Season data and download state
+	let seasonData = $state<SeasonPackage | null>(null);
+	let downloadState = $state<SeasonDownloadState | null>(null);
+	let isSeasonReady = $state(false);
+
+	// Team selection
+	let teams = $state<Team[]>([]);
 	let selectedAwayTeam = $state<string | null>(null);
+	let selectedHomeTeam = $state<string | null>(null);
 
-	function startGame() {
-		if (gameMode === 'quick') {
-			goto(`/game?year=${selectedYear}`);
-		} else {
-			goto(`/schedule?year=${selectedYear}`);
+	// Loading state
+	let isLoadingYears = $state(true);
+
+	// Load available years on mount
+	onMount(async () => {
+		try {
+			const years = await getAvailableYears();
+			availableYears = years.sort((a, b) => b - a); // Newest first
+			if (years.length > 0 && !years.includes(selectedYear)) {
+				selectedYear = years[0];
+			}
+			isLoadingYears = false;
+		} catch (error) {
+			console.error('Failed to load available years:', error);
+			isLoadingYears = false;
 		}
+	});
+
+	// When year changes, check if season is downloaded
+	$effect(() => {
+		const year = selectedYear;
+		if (!year || availableYears.length === 0) return;
+
+		// Reset state
+		seasonData = null;
+		teams = [];
+		selectedAwayTeam = null;
+		selectedHomeTeam = null;
+		isSeasonReady = false;
+		downloadState = null;
+
+		// Check if already downloaded (async operation in effect)
+		(async () => {
+			const downloaded = await isSeasonDownloaded(year);
+			if (downloaded) {
+				// Load the season to get team info
+				try {
+					seasonData = await loadSeason(year);
+					teams = Object.values(seasonData.teams).sort((a, b) =>
+						a.city.localeCompare(b.city)
+					) as Team[];
+					isSeasonReady = true;
+				} catch (error) {
+					console.error('Failed to load season:', error);
+				}
+			}
+		})();
+	});
+
+	// Download the selected season
+	async function downloadSelectedSeason() {
+		if (!selectedYear) return;
+
+		downloadState = { status: 'downloading', progress: 0, error: null };
+
+		try {
+			seasonData = await downloadSeason(selectedYear, (progress) => {
+				if (downloadState) {
+					downloadState.progress = progress;
+				}
+			});
+
+			teams = Object.values(seasonData.teams).sort((a, b) => a.city.localeCompare(b.city)) as Team[];
+			isSeasonReady = true;
+			downloadState = { status: 'complete', progress: 1, error: null };
+		} catch (error) {
+			downloadState = {
+				status: 'error',
+				progress: 0,
+				error: (error as Error).message
+			};
+		}
+	}
+
+	// Check if we can start the game
+	const canStartGame = $derived(
+		isSeasonReady && selectedAwayTeam && selectedHomeTeam && selectedAwayTeam !== selectedHomeTeam
+	);
+
+	// Start the game
+	function startGame() {
+		if (!canStartGame || !selectedYear) return;
+
+		goto(
+			`/game?year=${selectedYear}&away=${encodeURIComponent(selectedAwayTeam!)}&home=${encodeURIComponent(selectedHomeTeam!)}`
+		);
+	}
+
+	// Get team display name
+	function getTeamDisplayName(teamId: string): string {
+		const team = teams.find((t) => t.id === teamId);
+		return team ? `${team.city} ${team.nickname}` : teamId;
 	}
 </script>
 
@@ -29,85 +129,177 @@
 	</header>
 
 	<main class="space-y-4 sm:space-y-6 lg:space-y-8">
-		<!-- Mode Selection -->
-		<section class="bg-zinc-900 rounded-lg p-4 sm:p-6">
-			<h2 class="text-base sm:text-lg lg:text-xl font-semibold mb-3 sm:mb-4">Game Mode</h2>
-			<div class="flex gap-2 sm:gap-4">
-				<button
-					class="flex-1 px-3 py-2 sm:px-4 sm:py-2 rounded {gameMode === 'quick'
-						? 'bg-blue-600 text-white'
-						: 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'} text-sm sm:text-base"
-					onclick={() => {
-						gameMode = 'quick';
-						goto(`/game?year=${selectedYear}`);
-					}}
-				>
-					Quick Match
-				</button>
-				<button
-					class="flex-1 px-3 py-2 sm:px-4 sm:py-2 rounded {gameMode === 'historical'
-						? 'bg-blue-600 text-white'
-						: 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'} text-sm sm:text-base"
-					onclick={() => (gameMode = 'historical')}
-				>
-					Historical Game
-				</button>
-			</div>
-		</section>
-
 		<!-- Season Selection -->
 		<section class="bg-zinc-900 rounded-lg p-4 sm:p-6">
 			<h2 class="text-base sm:text-lg lg:text-xl font-semibold mb-3 sm:mb-4">Select Season</h2>
-			<select
-				bind:value={selectedYear}
-				class="w-full max-w-xs bg-zinc-800 border border-zinc-700 rounded px-3 py-2 sm:px-4 text-white text-sm sm:text-base"
-			>
-				{#each years as year}
-					<option value={year}>{year}</option
-					>{/each}
-			</select>
+
+			{#if isLoadingYears}
+				<div class="flex items-center gap-2 text-zinc-400 text-sm">
+					<svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path
+							class="opacity-75"
+							fill="currentColor"
+							d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+						></path>
+					</svg>
+					Loading available seasons...
+				</div>
+			{:else}
+				<div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
+					<select
+						bind:value={selectedYear}
+						disabled={downloadState?.status === 'downloading'}
+						class="flex-1 w-full max-w-xs bg-zinc-800 border border-zinc-700 rounded px-3 py-2 sm:px-4 text-white text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed"
+					>
+						{#each availableYears as year}
+							<option value={year}>{year}</option
+						>{/each}
+					</select>
+
+					{#if isSeasonReady}
+						<div class="flex items-center gap-2 text-emerald-400 text-sm">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M5 13l4 4L19 7"
+								/>
+							</svg>
+							<span>Downloaded</span>
+						</div>
+					{:else if downloadState?.status === 'downloading'}
+						<div class="flex items-center gap-2 text-blue-400 text-sm">
+							<svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+								<circle
+									class="opacity-25"
+									cx="12"
+									cy="12"
+									r="10"
+									stroke="currentColor"
+									stroke-width="4"
+								></circle>
+								<path
+									class="opacity-75"
+									fill="currentColor"
+									d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+								></path>
+							</svg>
+							<span>Downloading {Math.round(downloadState.progress * 100)}%</span>
+						</div>
+					{:else if downloadState?.status === 'error'}
+						<div class="flex items-center gap-2 text-red-400 text-sm">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M6 18L18 6M6 6l12 12"
+								/>
+							</svg>
+							<span>Error: {downloadState.error}</span>
+						</div>
+					{:else}
+						<button
+							onclick={downloadSelectedSeason}
+							class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+							disabled={!selectedYear}
+						>
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+								/>
+							</svg>
+							Download Season
+						</button>
+					{/if}
+				</div>
+			{/if}
 		</section>
 
-		{#if gameMode === 'quick'}
-			<!-- Team Selection for Quick Match -->
-			<section class="bg-zinc-900 rounded-lg p-4 sm:p-6">
-				<h2 class="text-base sm:text-lg lg:text-xl font-semibold mb-3 sm:mb-4">Select Teams</h2>
+		<!-- Team Selection -->
+		<section class="bg-zinc-900 rounded-lg p-4 sm:p-6">
+			<h2 class="text-base sm:text-lg lg:text-xl font-semibold mb-3 sm:mb-4">Select Teams</h2>
+
+			{#if !isSeasonReady}
+				<div class="text-center py-8 sm:py-12">
+					<svg class="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							stroke-width="2"
+							d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+						/>
+					</svg>
+					<p class="text-zinc-400 text-sm sm:text-base">Download a season to select teams</p>
+				</div>
+			{:else}
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+					<!-- Away Team -->
 					<div>
 						<h3 class="text-base sm:text-lg mb-2 sm:mb-3 text-zinc-300">Away Team</h3>
-						<p class="text-zinc-500 text-xs sm:text-sm">Team selection coming soon...</p>
+						<select
+							bind:value={selectedAwayTeam}
+							class="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 sm:px-4 text-white text-sm sm:text-base"
+						>
+							<option value="">-- Select team --</option
+							>
+							{#each teams as team}
+								<option value={team.id}>{team.city} {team.nickname}</option
+							>{/each}
+						</select>
+						{#if selectedAwayTeam}
+							<p class="mt-2 text-xs sm:text-sm text-zinc-400">
+								{getTeamDisplayName(selectedAwayTeam)}
+							</p>
+						{/if}
 					</div>
+
+					<!-- Home Team -->
 					<div>
 						<h3 class="text-base sm:text-lg mb-2 sm:mb-3 text-zinc-300">Home Team</h3>
-						<p class="text-zinc-500 text-xs sm:text-sm">Team selection coming soon...</p>
+						<select
+							bind:value={selectedHomeTeam}
+							class="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 sm:px-4 text-white text-sm sm:text-base"
+						>
+							<option value="">-- Select team --</option
+							>
+							{#each teams as team}
+								<option value={team.id}>{team.city} {team.nickname}</option
+							>{/each}
+						</select>
+						{#if selectedHomeTeam}
+							<p class="mt-2 text-xs sm:text-sm text-zinc-400">
+								{getTeamDisplayName(selectedHomeTeam)}
+							</p>
+						{/if}
 					</div>
 				</div>
-			</section>
-		{:else}
-			<!-- Historical Game Info -->
-			<section class="bg-zinc-900 rounded-lg p-4 sm:p-6">
-				<h2 class="text-base sm:text-lg lg:text-xl font-semibold mb-3 sm:mb-4">Historical Games</h2>
-				<p class="text-zinc-400 mb-3 sm:mb-4 text-sm sm:text-base">
-					Browse the {selectedYear} schedule and select a game to replay with actual historical lineups.
-				</p>
-				<button
-					class="px-3 py-2 sm:px-4 sm:py-2 bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 text-sm sm:text-base"
-					onclick={() => goto(`/schedule?year=${selectedYear}`)}
-				>
-					View {selectedYear} Schedule
-				</button>
-			</section>
-		{/if}
+
+				{#if selectedAwayTeam && selectedHomeTeam && selectedAwayTeam === selectedHomeTeam}
+					<p class="mt-4 text-sm text-amber-400">Please select different teams for away and home.</p>
+				{/if}
+			{/if}
+		</section>
 
 		<!-- Start Button -->
 		<section class="text-center">
 			<button
-				disabled={gameMode === 'historical'}
-				class="px-6 py-3 sm:px-8 sm:py-3 bg-green-600 text-white font-semibold rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-lg"
+				disabled={!canStartGame}
+				class="px-6 py-3 sm:px-8 sm:py-3 bg-green-600 text-white font-semibold rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-lg transition-colors"
 				onclick={startGame}
 			>
 				Start Game
 			</button>
+			{#if canStartGame}
+				<p class="mt-2 text-xs sm:text-sm text-zinc-400">
+					{getTeamDisplayName(selectedAwayTeam!)} @ {getTeamDisplayName(selectedHomeTeam!)} ({selectedYear})
+				</p>
+			{/if}
 		</section>
 
 		<!-- Info Section -->

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { page } from '$app/stores';
 	import { MatchupModel } from '@bb/model';
 	import { loadSeason } from '$lib/game/season-loader.js';
 	import { GameEngine } from '$lib/game/engine.js';
@@ -37,6 +38,9 @@
 	// Engine
 	let engine = $state<GameEngine | null>(null);
 	let season = $state<any>(null); // Store season for player lookups
+	let awayTeamId = $state<string | null>(null);
+	let homeTeamId = $state<string | null>(null);
+	let gameYear = $state<number>(1976);
 
 	// Lineup display
 	let awayLineupDisplay = $state<Array<{ name: string; isCurrent: boolean; position: string }>>([]);
@@ -46,6 +50,19 @@
 
 	// Toast state
 	let toast = $state<{ message: string; visible: boolean }>({ message: '', visible: false });
+
+	// Team display names (derived from season data and team IDs)
+	const awayTeamName = $derived(
+		awayTeamId && season?.teams[awayTeamId]
+			? `${season.teams[awayTeamId].city} ${season.teams[awayTeamId].nickname}`
+			: awayTeamId ?? 'Away'
+	);
+	const homeTeamName = $derived(
+		homeTeamId && season?.teams[homeTeamId]
+			? `${season.teams[homeTeamId].city} ${season.teams[homeTeamId].nickname}`
+			: homeTeamId ?? 'Home'
+	);
+
 
 	// Play-by-play modal state
 	let showPlayByPlay = $state(false);
@@ -129,21 +146,61 @@
 			const prefs = loadPrefs();
 			simSpeed = prefs.simSpeed;
 
+			// Read URL parameters
+			const urlParams = $page.url.searchParams;
+			const yearParam = urlParams.get('year');
+			const awayParam = urlParams.get('away');
+			const homeParam = urlParams.get('home');
+
+			// Set game year (default to 1976 if not specified)
+			gameYear = yearParam ? parseInt(yearParam, 10) : 1976;
+			awayTeamId = awayParam;
+			homeTeamId = homeParam;
+
+			// Validate that we have team IDs
+			if (!awayTeamId || !homeTeamId) {
+				currentBatter = 'Missing team selection';
+				currentPitcher = 'Please select teams from the home page';
+				return;
+			}
+
 			try {
-				season = await loadSeason(1976);
+				season = await loadSeason(gameYear);
+
+				// Validate that teams exist in the season
+				if (!season.teams[awayTeamId]) {
+					currentBatter = `Invalid away team: ${awayTeamId}`;
+					currentPitcher = 'Please select a valid team from the home page';
+					return;
+				}
+				if (!season.teams[homeTeamId]) {
+					currentBatter = `Invalid home team: ${homeTeamId}`;
+					currentPitcher = 'Please select a valid team from the home page';
+					return;
+				}
 
 				// Try to restore from saved state
 				const savedState = await loadGameState();
 				if (savedState) {
-					// Restore the game engine from saved state
-					engine = GameEngine.restore(savedState, season);
-					showToast('Game restored!');
-			} else {
-				// Start a new game
-				engine = new GameEngine(season, 'CIN', 'HOU');
-			}
+					// Check if saved state matches current teams
+					if (
+						savedState.meta?.awayTeam === awayTeamId &&
+						savedState.meta?.homeTeam === homeTeamId &&
+						savedState.meta?.season === gameYear
+					) {
+						// Restore the game engine from saved state
+						engine = GameEngine.restore(savedState, season);
+						showToast('Game restored!');
+					} else {
+						// Saved state is for a different game, start fresh
+						engine = new GameEngine(season, awayTeamId, homeTeamId);
+					}
+				} else {
+					// Start a new game
+					engine = new GameEngine(season, awayTeamId, homeTeamId);
+				}
 
-			updateFromEngine();
+				updateFromEngine();
 
 			// Save state on visibility change (user leaves/returns to tab)
 			if (browser) {
@@ -188,13 +245,15 @@
 	});
 
 	// Scroll play-by-play to bottom when new plays are added (show newest at bottom above controls)
-	$effect(async () => {
+	$effect(() => {
 		plays.length; // Track plays length
-		await tick();
-		const container = document.getElementById('play-by-play-container');
-		if (container) {
-			container.scrollTop = container.scrollHeight;
-		}
+		(async () => {
+			await tick();
+			const container = document.getElementById('play-by-play-container');
+			if (container) {
+				container.scrollTop = container.scrollHeight;
+			}
+		})();
 	});
 
 	function updateFromEngine() {
@@ -376,9 +435,9 @@
 		currentBatter = 'Ready to play!';
 		currentPitcher = 'Loading...';
 
-		// Create a new game engine
-		if (season) {
-			engine = new GameEngine(season, 'CIN', 'HOU');
+		// Create a new game engine with current teams
+		if (season && awayTeamId && homeTeamId) {
+			engine = new GameEngine(season, awayTeamId, homeTeamId);
 			updateFromEngine();
 		}
 	}
@@ -454,10 +513,10 @@
 			return null;
 		}
 
-		const awayTeam = season?.teams['CIN'];
-		const homeTeam = season?.teams['HOU'];
-		const awayName = awayTeam ? `${awayTeam.city} ${awayTeam.nickname}` : 'Reds';
-		const homeName = homeTeam ? `${homeTeam.city} ${homeTeam.nickname}` : 'Astros';
+		const awayTeam = season?.teams[awayTeamId!];
+		const homeTeam = season?.teams[homeTeamId!];
+		const awayName = awayTeam ? `${awayTeam.city} ${awayTeam.nickname}` : awayTeamId ?? 'Away';
+		const homeName = homeTeam ? `${homeTeam.city} ${homeTeam.nickname}` : homeTeamId ?? 'Home';
 
 		return `${awayName} ${awayScore}, ${homeName} ${homeScore}`;
 	}
@@ -535,9 +594,9 @@
 
 			<!-- Game Info -->
 			<div class="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-slate-400">
-				<span>1976 Season</span>
+				<span>{gameYear} Season</span>
 				<span class="text-slate-600">|</span>
-				<span>Reds vs Astros</span>
+				<span>{awayTeamName} vs {homeTeamName}</span>
 			</div>
 		</div>
 	</header>
@@ -558,10 +617,10 @@
 					{runnerNames}
 					{currentBatter}
 					{currentPitcher}
-					awayTeam="CIN"
-					homeTeam="HOU"
-					awayTeamFull="Cincinnati Reds"
-					homeTeamFull="Houston Astros"
+					awayTeam={awayTeamId ?? 'Away'}
+					homeTeam={homeTeamId ?? 'Home'}
+					awayTeamFull={awayTeamName}
+					homeTeamFull={homeTeamName}
 					{plays}
 				/>
 			</div>
@@ -746,7 +805,7 @@
 			<div class="bg-slate-900 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 max-w-lg w-full mx-0 sm:mx-4 border border-slate-700 shadow-2xl">
 				<div class="text-center">
 					<div class="text-2xl sm:text-3xl lg:text-4xl font-bold mb-1 sm:mb-2">🎉 GAME OVER</div>
-					<div class="text-xs sm:text-sm lg:text-base text-slate-400 mb-2 sm:mb-3 lg:mb-4">1976 Season - Reds vs Astros</div>
+					<div class="text-xs sm:text-sm lg:text-base text-slate-400 mb-2 sm:mb-3 lg:mb-4">{gameYear} Season - {awayTeamName} vs {homeTeamName}</div>
 					<div class="text-sm font-medium text-emerald-400 mb-3 sm:mb-4 lg:mb-6">
 						{isTopInning ? inning - 1 : inning} {isTopInning && inning - 1 === 1 || !isTopInning && inning === 1 ? 'inning' : 'innings'}
 					</div>
