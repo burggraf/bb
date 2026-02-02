@@ -740,9 +740,9 @@ export class GameEngine {
 		if (!currentBatter) return false;
 
 		// Season-based frequency control: target PH rate divided by total PAs per game
-		// Multiplied by 15 to account for shouldPinchHit rejecting ~93% of candidates
-		// 1976: (2.8 PH/game / 70 PAs) * 15 = ~60% should consider PH
-		const phConsiderationRate = (this.season.norms.substitutions.pinchHitsPerGame / 70) * 15;
+		// Multiplied by 10 to account for shouldPinchHit rejecting ~90% of candidates
+		// 1976: (2.8 PH/game / 70 PAs) * 10 = ~40% should consider PH
+		const phConsiderationRate = (this.season.norms.substitutions.pinchHitsPerGame / 70) * 10;
 		const shouldConsiderPH = Math.random() < phConsiderationRate;
 		if (!shouldConsiderPH) return false;
 
