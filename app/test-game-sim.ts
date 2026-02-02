@@ -22,7 +22,8 @@ async function loadSeason(year: number): Promise<SeasonPackage> {
 	return JSON.parse(data) as SeasonPackage;
 }
 
-// All 17 possible outcomes
+// All 16 possible outcomes (unknownOut is not a real outcome - it's distributed
+// to actual trajectory types during data export via distributeUnknownTrajectory)
 const ALL_OUTCOMES = [
 	'single',
 	'double',
@@ -40,7 +41,6 @@ const ALL_OUTCOMES = [
 	'fieldersChoice',
 	'reachedOnError',
 	'catcherInterference',
-	'unknownOut', // Not a real outcome but might appear in data
 ] as const;
 
 // Format name from "Last, First" to "First Last"
