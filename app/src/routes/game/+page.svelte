@@ -6,6 +6,7 @@
 	import { GameEngine } from '$lib/game/engine.js';
 	import type { GameState, PlayEvent } from '$lib/game/types.js';
 	import GameScoreboard from '$lib/components/GameScoreboard.svelte';
+	import { tick } from 'svelte';
 
 	// Constants for localStorage
 	const STORAGE_KEY = 'baseball-game-state';
@@ -182,6 +183,16 @@
 	// Auto-save preferences whenever simSpeed changes
 	$effect(() => {
 		savePrefs();
+	});
+
+	// Scroll play-by-play to bottom when new plays are added (show newest at bottom above controls)
+	$effect(async () => {
+		plays.length; // Track plays length
+		await tick();
+		const container = document.getElementById('play-by-play-container');
+		if (container) {
+			container.scrollTop = container.scrollHeight;
+		}
 	});
 
 	function updateFromEngine() {
@@ -469,7 +480,7 @@
 	<title>Game - Baseball Sim</title>
 </svelte:head>
 
-<div class="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+<div class="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden">
 	<!-- Header -->
 	<header class="flex-shrink-0 bg-slate-950/50 border-b border-slate-700/50">
 		<div class="flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3 gap-2">
@@ -493,7 +504,7 @@
 	<!-- Main Content -->
 	<main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
 		<!-- Left Section: Field + Matchup -->
-		<div class="flex-1 flex flex-col p-3 sm:p-4 lg:p-6 gap-3 sm:gap-4 lg:gap-6 overflow-y-auto">
+		<div class="flex-1 flex flex-col p-3 sm:p-4 lg:p-6 gap-3 sm:gap-4 lg:gap-6 overflow-y-auto min-h-0">
 			<!-- Scoreboard Display -->
 			<div class="flex items-center justify-center">
 				<GameScoreboard
@@ -559,17 +570,17 @@
 		</div>
 
 		<!-- Right Section: Play-by-Play + Controls -->
-		<div class="w-full lg:w-96 flex-shrink-0 flex flex-col p-3 sm:p-4 lg:p-6 gap-3 sm:gap-4 lg:gap-6 overflow-y-auto lg:overflow-hidden bg-slate-950/30 border-t lg:border-t-0 lg:border-l border-slate-700/30 max-h-[50vh] lg:max-h-none">
+		<div class="w-full lg:w-96 flex-shrink-0 flex flex-col p-3 sm:p-4 lg:p-6 gap-3 sm:gap-4 lg:gap-6 overflow-hidden bg-slate-950/30 border-t lg:border-t-0 lg:border-l border-slate-700/30 min-h-0">
 			<!-- Play-by-Play Feed -->
-			<div class="flex-1 flex flex-col overflow-hidden">
-				<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3">Play-by-Play</div>
+			<div class="flex-1 flex flex-col min-h-0">
+				<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex-shrink-0">Play-by-Play</div>
 				{#if plays.length > 0}
-					<div class="flex-1 overflow-y-auto space-y-1.5 sm:space-y-2 pr-1 sm:pr-2" style="max-height: 200px; lg:max-height: none;">
+					<div class="flex-1 overflow-y-auto space-y-1.5 sm:space-y-2 pr-1 sm:pr-2 min-h-0" id="play-by-play-container">
 						{#each plays.slice().reverse() as play, index}
-							{@const reversedPlays = plays.slice().reverse()}
-							{@const playNumber = reversedPlays.slice(0, index).filter(p => !p.isSummary).length + 1}
+							{@const playNumber = index + 1}
 							{@const runnerInfo = formatRunnerInfo(play)}
-							{@const scoreAtPlay = getScoreAtPlay(index, plays)}
+							{@const reversedPlays = plays.slice().reverse()}
+							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, false)}
 							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border {play.isSummary
 								? 'bg-amber-900/30 border-amber-700/40'
@@ -596,14 +607,14 @@
 						{/each}
 					</div>
 				{:else}
-					<div class="flex-1 flex items-center justify-center">
-						<div class="text-xs sm:text-sm text-slate-500 text-center py-4 sm:py-8">Game starting...</div>
+					<div class="flex-1 flex items-center justify-center min-h-0">
+						<div class="text-xs sm:text-sm text-slate-500 text-center">Game starting...</div>
 					</div>
 				{/if}
 			</div>
 
 			<!-- Controls -->
-			<div class="flex-shrink-0 space-y-2 sm:space-y-3">
+			<div class="flex-shrink-0 space-y-2 sm:space-y-3 pt-2 border-t border-slate-700/30">
 				<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider">Controls</div>
 
 				<!-- Primary Buttons -->
@@ -782,9 +793,9 @@
 				{#if plays.length > 0}
 					<div class="flex-1 overflow-y-auto space-y-2 pr-2">
 						{#each plays.slice().reverse() as play, index}
-							{@const reversedPlays = plays.slice().reverse()}
-							{@const playNumber = reversedPlays.slice(0, index).filter(p => !p.isSummary).length + 1}
+							{@const playNumber = index + 1}
 							{@const runnerInfo = formatRunnerInfo(play)}
+							{@const reversedPlays = plays.slice().reverse()}
 							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, false)}
 							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-3 sm:px-4 py-2 sm:py-3 border {play.isSummary
