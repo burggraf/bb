@@ -634,6 +634,19 @@ export class GameEngine {
 			// Apply pitching change
 			pitchingTeam.pitcher = pitchingDecision.newPitcher;
 
+			// Update the batting order to replace the old pitcher with the new pitcher
+			// Find the old pitcher in the batting order (position 1 = pitcher)
+			const pitcherSlotIndex = pitchingTeam.players.findIndex(p => p.position === 1);
+			if (pitcherSlotIndex !== -1) {
+				pitchingTeam.players[pitcherSlotIndex] = {
+					playerId: pitchingDecision.newPitcher,
+					position: 1
+				};
+			}
+
+			// Mark the old pitcher as removed so they can't return
+			this.removedPlayers.add(pitcherId);
+
 			// Update stamina tracking - create role for new pitcher
 			const newPitcherStats = this.season.pitchers[pitchingDecision.newPitcher];
 			const newPitcherRole: PitcherRole = {
