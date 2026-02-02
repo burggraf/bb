@@ -821,10 +821,8 @@ export class GameEngine {
 							// Pinch hitter stays in at their defensive position
 							battingTeam.players[batterIndex] = { playerId: phDecision.pinchHitterId, position: defensivePosition };
 
-							// Add note about defensive position change if different
-							if (defensivePosition !== replacedPosition) {
-								description += ` (now ${this.getPositionName(defensivePosition)})`;
-							}
+							// Always show defensive position for clarity
+							description += ` (stays in as ${this.getPositionName(defensivePosition)})`;
 						}
 
 						// Record the substitution as a summary entry
