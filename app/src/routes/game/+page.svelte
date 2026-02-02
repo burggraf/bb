@@ -39,8 +39,10 @@
 	let season = $state<any>(null); // Store season for player lookups
 
 	// Lineup display
-	let awayLineupDisplay = $state<Array<{ name: string; isCurrent: boolean }>>([]);
-	let homeLineupDisplay = $state<Array<{ name: string; isCurrent: boolean }>>([]);
+	let awayLineupDisplay = $state<Array<{ name: string; isCurrent: boolean; position: string }>>([]);
+	let homeLineupDisplay = $state<Array<{ name: string; isCurrent: boolean; position: string }>>([]);
+	let awayPitcherDisplay = $state('Loading...');
+	let homePitcherDisplay = $state('Loading...');
 
 	// Toast state
 	let toast = $state<{ message: string; visible: boolean }>({ message: '', visible: false });
@@ -238,6 +240,9 @@
 			name: slot.playerId && season?.batters[slot.playerId]
 				? season.batters[slot.playerId].name
 				: 'Unknown',
+			position: slot.playerId && season?.batters[slot.playerId]
+				? getPositionAbbrev(season.batters[slot.playerId].primaryPosition)
+				: '?',
 			isCurrent: i === state.awayLineup.currentBatterIndex
 		}));
 
@@ -245,8 +250,27 @@
 			name: slot.playerId && season?.batters[slot.playerId]
 				? season.batters[slot.playerId].name
 				: 'Unknown',
+			position: slot.playerId && season?.batters[slot.playerId]
+				? getPositionAbbrev(season.batters[slot.playerId].primaryPosition)
+				: '?',
 			isCurrent: i === state.homeLineup.currentBatterIndex
 		}));
+
+		// Update current pitchers for display
+		// Show the opponent's pitcher (who's pitching against this lineup)
+		const awayPitcherId = state.homeLineup.pitcher; // Home pitcher pitches against away
+		const awayPitcher = awayPitcherId && season?.pitchers[awayPitcherId]
+			? formatName(season.pitchers[awayPitcherId].name)
+			: 'Unknown';
+
+		const homePitcherId = state.awayLineup.pitcher; // Away pitcher pitches against home
+		const homePitcher = homePitcherId && season?.pitchers[homePitcherId]
+			? formatName(season.pitchers[homePitcherId].name)
+			: 'Unknown';
+
+		// Update display with pitcher info
+		awayPitcherDisplay = awayPitcher;
+		homePitcherDisplay = homePitcher;
 	}
 
 	function simulatePA() {
@@ -445,6 +469,23 @@
 		return `${name.slice(commaIndex + 1).trim()} ${name.slice(0, commaIndex).trim()}`;
 	}
 
+	// Convert position number to abbreviation (1=P, 2=C, 3=1B, 4=2B, 5=3B, 6=SS, 7=LF, 8=CF, 9=RF, 10=DH)
+	function getPositionAbbrev(position: number): string {
+		const positions: Record<number, string> = {
+			1: 'P',
+			2: 'C',
+			3: '1B',
+			4: '2B',
+			5: '3B',
+			6: 'SS',
+			7: 'LF',
+			8: 'CF',
+			9: 'RF',
+			10: 'DH'
+		};
+		return positions[position] ?? '?';
+	}
+
 	// Calculate running score at a specific play index
 	// If isReversed=true: assumes plays are in reverse order (newest first), calculates score from playIndex to end
 	// If isReversed=false: assumes plays are in chronological order (oldest first), calculates score from start to playIndex
@@ -536,6 +577,7 @@
 								? 'bg-blue-600/30 border border-blue-500/50'
 								: ''}">
 								<span class="text-[10px] sm:text-xs w-4 text-slate-500">{i + 1}</span>
+								<span class="text-[10px] sm:text-xs w-5 text-slate-400">{player.position}</span>
 								<span class="text-xs sm:text-sm {player.isCurrent
 									? 'text-white font-medium'
 									: 'text-slate-300'} truncate">{player.name}</span>
@@ -544,6 +586,10 @@
 								{/if}
 							</div>
 						{/each}
+					</div>
+					<!-- Current Pitcher -->
+					<div class="mt-3 pt-2 border-t border-slate-700/30">
+						<div class="text-[10px] sm:text-xs text-slate-500">P: {awayPitcherDisplay}</div>
 					</div>
 				</div>
 
@@ -556,6 +602,7 @@
 								? 'bg-blue-600/30 border border-blue-500/50'
 								: ''}">
 								<span class="text-[10px] sm:text-xs w-4 text-slate-500">{i + 1}</span>
+								<span class="text-[10px] sm:text-xs w-5 text-slate-400">{player.position}</span>
 								<span class="text-xs sm:text-sm {player.isCurrent
 									? 'text-white font-medium'
 									: 'text-slate-300'} truncate">{player.name}</span>
@@ -564,6 +611,10 @@
 								{/if}
 							</div>
 						{/each}
+					</div>
+					<!-- Current Pitcher -->
+					<div class="mt-3 pt-2 border-t border-slate-700/30">
+						<div class="text-[10px] sm:text-xs text-slate-500">P: {homePitcherDisplay}</div>
 					</div>
 				</div>
 			</div>

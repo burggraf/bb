@@ -9,7 +9,6 @@ import {
 	type LineupSlot,
 	shouldPullPitcher,
 	shouldPinchHit,
-	type PitchCountOptions,
 	type BatterStats as ModelBatterStats,
 	type PitcherStats as ModelPitcherStats
 } from '@bb/model';
@@ -600,14 +599,6 @@ export class GameEngine {
 		} else {
 			this.state.homeLineup.pitcher = starterId;
 		}
-	}
-
-	/**
-	 * Position number to name mapping
-	 */
-	private getPositionName(position: number): string {
-		const positionNames = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
-		return positionNames[position] || `Pos${position}`;
 	}
 
 	/**
