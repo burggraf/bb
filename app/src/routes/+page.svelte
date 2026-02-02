@@ -166,6 +166,10 @@
 		const allTeams = Object.values(season.teams);
 		const filteredTeams = allTeams
 			.filter((team) => teamIdsWithPlayers.has(team.id))
+			.filter((team) => {
+				// Exclude all-star teams and teams without a valid league
+				return team.league === 'AL' || team.league === 'NL';
+			})
 			.map((team) => {
 				// Apply historical name overrides for the season year
 				const historicalName = getHistoricalTeamName(team.id, season.meta.year);
