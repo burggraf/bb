@@ -532,42 +532,6 @@ async function runGameTests(numGames: number = 10, verbose: boolean = false): Pr
 	console.log(`  Half-innings with 3 outs: ${halfInningsWith3Outs}`);
 	console.log(`  Half-innings with wrong outs: ${totalHalfInnings - halfInningsWith3Outs}`);
 
-	// Sample play-by-play from first game (skip if verbose, since we already showed all games)
-	if (!verbose) {
-		console.log(`\n📝 Sample Play-by-Play (Game 1):`);
-		console.log('─'.repeat(60));
-		const firstEngine = new GameEngine(season, 'CIN', 'HOU');
-		while (!firstEngine.isComplete()) {
-			firstEngine.simulatePlateAppearance();
-		}
-		const state = firstEngine.getState();
-		const plays = [...state.plays].reverse().filter(p => !p.isSummary);
-		plays.slice(0, 10).forEach((play, i) => {
-			console.log(`  ${i + 1}. ${play.description}`);
-		});
-		if (plays.length > 10) {
-			console.log(`  ... (${plays.length - 10} more plays)`);
-		}
-
-		// Print one full game if there were errors
-		if (allErrors.length > 0 && results.length > 0) {
-			const errorGameIndex = results.findIndex(r => !r.isValid);
-			if (errorGameIndex >= 0) {
-				console.log(`\n🔍 Full Play-by-Play for Game ${errorGameIndex + 1} (had errors):`);
-				console.log('='.repeat(60));
-
-				// Use the tracked teams for this game
-				const teams = gameTeams[errorGameIndex];
-				if (teams) {
-					const errorEngine = new GameEngine(season, teams.away, teams.home);
-					while (!errorEngine.isComplete()) {
-						errorEngine.simulatePlateAppearance();
-					}
-					printGamePlayByPlay(errorEngine, errorGameIndex + 1, teams.away, teams.home, season.teams);
-				}
-			}
-		}
-	}
 
 	console.log(`\n${'='.repeat(60)}\n`);
 
