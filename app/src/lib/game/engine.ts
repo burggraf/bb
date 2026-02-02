@@ -96,40 +96,141 @@ function toManagerialGameState(state: GameState) {
 }
 
 // Generate lineup from batters on the specified team
+// For NL games (pre-2022), pitcher bats. For AL games (post-1973), DH is used.
 function generateLineup(
 	batters: Record<string, BatterStats>,
 	pitchers: Record<string, PitcherStats>,
 	teamId: string
 ): LineupState {
-	// Filter batters by teamId
-	const teamBatters = Object.values(batters)
-		.filter((b) => b.teamId === teamId)
-		.sort((a, b) => {
-			// Sort by OBP (simplified)
-			const aOBP =
-				a.rates.vsRHP.walk +
-				a.rates.vsRHP.single +
-				a.rates.vsRHP.double +
-				a.rates.vsRHP.triple +
-				a.rates.vsRHP.homeRun;
-			const bOBP =
-				b.rates.vsRHP.walk +
-				b.rates.vsRHP.single +
-				b.rates.vsRHP.double +
-				b.rates.vsRHP.triple +
-				b.rates.vsRHP.homeRun;
-			return bOBP - aOBP;
-		})
-		.slice(0, 9);
+	// Filter batters by teamId (exclude pitchers - position 1)
+	const positionPlayers = Object.values(batters).filter((b) => b.teamId === teamId && b.primaryPosition !== 1);
 
-	// Select a starting pitcher (pick first pitcher for team - V1 simplification)
-	// V2 will implement proper rotation ordering
+	// Group batters by primary position
+	const byPosition: Record<number, BatterStats[]> = {
+		2: [], // C
+		3: [], // 1B
+		4: [], // 2B
+		5: [], // 3B
+		6: [], // SS
+		7: [], // LF
+		8: [], // CF
+		9: [], // RF
+	};
+
+	for (const batter of positionPlayers) {
+		const pos = batter.primaryPosition;
+		if (pos >= 2 && pos <= 9) {
+			byPosition[pos].push(batter);
+		}
+	}
+
+	// Calculate OBP for sorting
+	const calculateOBP = (b: BatterStats): number => {
+		const vsR = b.rates.vsRHP;
+		return vsR.walk + vsR.single + vsR.double + vsR.triple + vsR.homeRun;
+	};
+
+	// Select best batter at each position (by OBP)
+	const bestAtPosition: Record<number, BatterStats> = {};
+	for (const pos of [2, 3, 4, 5, 6, 7, 8, 9]) {
+		const candidates = byPosition[pos];
+		if (candidates.length > 0) {
+			// Sort by OBP and take the best
+			candidates.sort((a, b) => calculateOBP(b) - calculateOBP(a));
+			bestAtPosition[pos] = candidates[0]!;
+		}
+	}
+
+	// Check if we have all 8 position players
+	const missingPositions = [2, 3, 4, 5, 6, 7, 8, 9].filter((pos) => !bestAtPosition[pos]);
+	if (missingPositions.length > 0) {
+		console.warn(`Missing players at positions ${missingPositions.map(getPositionName).join(', ')} for team ${teamId}`);
+	}
+
+	// Build lineup slots with proper fielding positions
+	const lineupPlayers: Array<{ batter: BatterStats; battingOrder: number; fieldingPosition: number }> = [];
+
+	// Traditional batting order for NL (pitcher bats 8th or 9th)
+	// Using a simplified traditional order:
+	// 1: Leadoff (high OBP) - typically CF or SS
+	// 2: Contact - good bat control - typically 2B or 3B
+	// 3: Best hitter - typically RF or LF
+	// 4: Power - cleanup - typically 1B or LF
+	// 5: Power - typically RF or 3B
+	// 6: Corner OF/IF - typically LF or 1B
+	// 7: Middle IF - typically 2B or SS
+	// 8: Pitcher (NL) or weak hitter
+	// 9: C (or pitcher if NL)
+
+	// For now, use a simple traditional order mapping
+	// Batting order -> Fielding position
+	const traditionalOrder: Array<{ battingOrder: number; preferredPosition: number; fallbackPositions: number[] }> = [
+		{ battingOrder: 1, preferredPosition: 8, fallbackPositions: [6, 7, 9] },  // CF (leadoff type)
+		{ battingOrder: 2, preferredPosition: 4, fallbackPositions: [5, 6] },     // 2B (contact)
+		{ battingOrder: 3, preferredPosition: 9, fallbackPositions: [7, 3] },     // RF (best hitter)
+		{ battingOrder: 4, preferredPosition: 3, fallbackPositions: [7, 9] },     // 1B (cleanup)
+		{ battingOrder: 5, preferredPosition: 5, fallbackPositions: [7, 9] },     // 3B (power)
+		{ battingOrder: 6, preferredPosition: 7, fallbackPositions: [9, 3] },     // LF
+		{ battingOrder: 7, preferredPosition: 6, fallbackPositions: [4, 5] },     // SS
+		{ battingOrder: 8, preferredPosition: 2, fallbackPositions: [3] },        // C
+		{ battingOrder: 9, preferredPosition: 1, fallbackPositions: [] },         // P (will be added separately)
+	];
+
+	// Assign position players to batting order slots
+	const usedPositions = new Set<number>();
+	for (const slot of traditionalOrder.slice(0, 8)) {
+		let assigned = bestAtPosition[slot.preferredPosition];
+		const preferredPos = slot.preferredPosition;
+
+		// If preferred position already used, try fallbacks
+		if (assigned && usedPositions.has(preferredPos)) {
+			assigned = undefined;
+			for (const fallbackPos of slot.fallbackPositions) {
+				if (bestAtPosition[fallbackPos] && !usedPositions.has(fallbackPos)) {
+					assigned = bestAtPosition[fallbackPos];
+					break;
+				}
+			}
+		}
+
+		// If still not assigned, find any available position
+		if (!assigned) {
+			for (const pos of [2, 3, 4, 5, 6, 7, 8, 9]) {
+				if (bestAtPosition[pos] && !usedPositions.has(pos)) {
+					assigned = bestAtPosition[pos];
+					break;
+				}
+			}
+		}
+
+		if (assigned) {
+			lineupPlayers.push({
+				batter: assigned,
+				battingOrder: slot.battingOrder,
+				fieldingPosition: assigned.primaryPosition
+			});
+			usedPositions.add(assigned.primaryPosition);
+		}
+	}
+
+	// Add pitcher in the 9th spot for NL games
 	const teamPitchers = Object.values(pitchers).filter((p) => p.teamId === teamId);
 	const startingPitcher = teamPitchers[0]?.id ?? null;
 
+	if (startingPitcher) {
+		lineupPlayers.push({
+			batter: { id: startingPitcher, name: '', bats: 'R', teamId, primaryPosition: 1, positionEligibility: {}, rates: batters[startingPitcher]?.rates ?? { vsLHP: {} as any, vsRHP: {} as any } },
+			battingOrder: 9,
+			fieldingPosition: 1 // Pitcher
+		});
+	}
+
+	// Sort by batting order
+	lineupPlayers.sort((a, b) => a.battingOrder - b.battingOrder);
+
 	return {
 		teamId,
-		players: teamBatters.map((b, i) => ({ playerId: b.id, position: i + 1 })),
+		players: lineupPlayers.map((p) => ({ playerId: p.batter.id, position: p.fieldingPosition })),
 		currentBatterIndex: 0,
 		pitcher: startingPitcher,
 	};
