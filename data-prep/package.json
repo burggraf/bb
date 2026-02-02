@@ -5,7 +5,9 @@
   "scripts": {
     "explore": "tsx src/explore-schema.ts",
     "extract": "tsx src/extract-season.ts",
-    "stats": "tsx src/calculate-stats.ts"
+    "stats": "tsx src/calculate-stats.ts",
+    "export-all": "tsx src/export-all-seasons.ts",
+    "export-range": "tsx src/export-all-seasons.ts"
   },
   "dependencies": {
     "duckdb": "^1.1.3",

@@ -21,4 +21,6 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-static/seasons/*.json
+static/seasons/19*.json
+static/seasons/20*.json
+
