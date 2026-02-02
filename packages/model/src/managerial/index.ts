@@ -27,7 +27,8 @@ export {
 	shouldPullPitcher,
 	selectReliever,
 	calculateLeverageIndex,
-	reduceStamina
+	reduceStamina,
+	type PitchCountOptions
 } from './pitching.js';
 
 // Substitutions

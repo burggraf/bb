@@ -5,44 +5,72 @@
 import type { GameState, PitcherRole, BullpenState, PitchingDecision } from './types.js';
 
 /**
+ * Options for customizing pitch count limits by era
+ */
+export interface PitchCountOptions {
+	/** Hard limit after which pitcher must be pulled */
+	hardLimit: number;
+	/** Typical limit for starting pitchers */
+	typicalLimit: number;
+	/** Pitch count where fatigue begins to set in */
+	fatigueThreshold: number;
+}
+
+/**
+ * Default modern-era pitch count limits (used if no options provided)
+ */
+const DEFAULT_PITCH_COUNT_OPTIONS: PitchCountOptions = {
+	hardLimit: 110,
+	typicalLimit: 100,
+	fatigueThreshold: 85,
+};
+
+/**
  * Decide whether to pull the current pitcher
  */
 export function shouldPullPitcher(
 	gameState: GameState,
 	pitcher: PitcherRole,
 	bullpen: BullpenState,
-	randomness = 0.1
+	randomness = 0.1,
+	pitchCountOptions?: PitchCountOptions
 ): PitchingDecision {
 	const { inning, outs, bases, scoreDiff } = gameState;
 
+	// Use provided options or defaults
+	const limits = pitchCountOptions || DEFAULT_PITCH_COUNT_OPTIONS;
+
 	// Hard limits
-	if (pitcher.pitchesThrown >= 110) {
-		return { shouldChange: true, reason: 'Pitch count limit (110)' };
+	if (pitcher.pitchesThrown >= limits.hardLimit) {
+		return { shouldChange: true, reason: `Pitch count limit (${limits.hardLimit})` };
 	}
 
 	if (pitcher.stamina <= 20) {
 		return { shouldChange: true, reason: 'Fatigue' };
 	}
 
-	// Soft limits with randomness
-	let pullThreshold = 100;
+	// Soft limits with randomness - scale based on era-appropriate limits
+	const typicalLimit = limits.typicalLimit;
+	const fatigueThreshold = limits.fatigueThreshold;
+
+	let pullThreshold = typicalLimit - 10; // Start pulling 10 pitches before typical limit
 	let pullChance = 0;
 
-	// Through 6th: 85 pitches
-	if (inning <= 6 && pitcher.pitchesThrown >= 85) {
-		pullThreshold = 85;
+	// Through 6th: fatigue threshold
+	if (inning <= 6 && pitcher.pitchesThrown >= fatigueThreshold) {
+		pullThreshold = fatigueThreshold;
 		pullChance = 0.3;
 	}
 
-	// 7th inning: 90 pitches
-	if (inning === 7 && pitcher.pitchesThrown >= 90) {
-		pullThreshold = 90;
+	// 7th inning: fatigue threshold + 5
+	if (inning === 7 && pitcher.pitchesThrown >= fatigueThreshold + 5) {
+		pullThreshold = fatigueThreshold + 5;
 		pullChance = 0.5;
 	}
 
-	// 8th inning+: 95 pitches
-	if (inning >= 8 && pitcher.pitchesThrown >= 95) {
-		pullThreshold = 95;
+	// 8th inning+: fatigue threshold + 10
+	if (inning >= 8 && pitcher.pitchesThrown >= fatigueThreshold + 10) {
+		pullThreshold = fatigueThreshold + 10;
 		pullChance = 0.7;
 	}
 
@@ -61,7 +89,7 @@ export function shouldPullPitcher(
 
 	// Situation-based: high leverage, starter tired
 	const leverage = calculateLeverageIndex(gameState);
-	if (leverage > 2.5 && pitcher.pitchesThrown >= 75) {
+	if (leverage > 2.5 && pitcher.pitchesThrown >= fatigueThreshold - 10) {
 		if (Math.random() < 0.7 + randomness) {
 			const newPitcher = selectReliever(gameState, bullpen);
 			return {

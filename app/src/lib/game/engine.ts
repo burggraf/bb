@@ -8,6 +8,8 @@ import {
 	generateLineup as generateManagerialLineup,
 	type LineupSlot,
 	shouldPullPitcher,
+	shouldPinchHit,
+	type PitchCountOptions,
 	type BatterStats as ModelBatterStats,
 	type PitcherStats as ModelPitcherStats
 } from '@bb/model';
@@ -354,6 +356,10 @@ export class GameEngine {
 	// Track pitcher stamina and bullpen state
 	private pitcherStamina: Map<string, PitcherRole>;
 	private bullpenStates: Map<string, BullpenState>;
+	// Track used pinch hitters (so they don't enter multiple times)
+	private usedPinchHitters: Set<string>;
+	// Track removed players (cannot return to game)
+	private removedPlayers: Set<string>;
 
 	constructor(
 		season: SeasonPackage,
@@ -363,7 +369,7 @@ export class GameEngine {
 	) {
 		this.model = new MatchupModel();
 		this.season = season;
-		this.managerialOptions = managerial ?? { enabled: false };
+		this.managerialOptions = { enabled: true, randomness: 0.1, ...managerial };
 
 		// Generate lineups
 		let awayLineup: LineupState;
@@ -431,11 +437,22 @@ export class GameEngine {
 		// Initialize bullpen tracking
 		this.pitcherStamina = new Map();
 		this.bullpenStates = new Map();
+		this.usedPinchHitters = new Set();
+		this.removedPlayers = new Set();
 		this.initializeBullpen(awayTeam);
 		this.initializeBullpen(homeTeam);
 
 		// Record starting lineups
 		this.recordStartingLineups();
+	}
+
+	/**
+	 * Format name from "Last, First" to "First Last"
+	 */
+	private formatName(name: string): string {
+		const commaIndex = name.indexOf(',');
+		if (commaIndex === -1) return name;
+		return `${name.slice(commaIndex + 1).trim()} ${name.slice(0, commaIndex).trim()}`;
 	}
 
 	/**
@@ -458,7 +475,7 @@ export class GameEngine {
 				const player = season.batters[slot.playerId];
 				awayLineupPlayers.push({
 					playerId: slot.playerId,
-					playerName: player?.name ?? 'Unknown',
+					playerName: this.formatName(player?.name ?? 'Unknown'),
 					battingOrder: i + 1,
 					fieldingPosition: slot.position
 				});
@@ -475,11 +492,12 @@ export class GameEngine {
 			batterId: '',
 			batterName: '',
 			pitcherId: awayPitcherId ?? '',
-			pitcherName: awayPitcher?.name ?? 'Unknown',
-			description: `${awayName} starting lineup: ${awayLineupPlayers.map((p) => `${p.playerName} (${this.getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${awayPitcher?.name ?? 'Unknown'}`,
+			pitcherName: this.formatName(awayPitcher?.name ?? 'Unknown'),
+			description: `${awayName} starting lineup: ${awayLineupPlayers.map((p) => `${p.playerName} (${this.getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${this.formatName(awayPitcher?.name ?? 'Unknown')}`,
 			runsScored: 0,
 			eventType: 'startingLineup',
-			lineup: awayLineupPlayers
+			lineup: awayLineupPlayers,
+			isSummary: true
 		});
 
 		// Record home lineup
@@ -490,7 +508,7 @@ export class GameEngine {
 				const player = season.batters[slot.playerId];
 				homeLineupPlayers.push({
 					playerId: slot.playerId,
-					playerName: player?.name ?? 'Unknown',
+					playerName: this.formatName(player?.name ?? 'Unknown'),
 					battingOrder: i + 1,
 					fieldingPosition: slot.position
 				});
@@ -507,11 +525,12 @@ export class GameEngine {
 			batterId: '',
 			batterName: '',
 			pitcherId: homePitcherId ?? '',
-			pitcherName: homePitcher?.name ?? 'Unknown',
-			description: `${homeName} starting lineup: ${homeLineupPlayers.map((p) => `${p.playerName} (${this.getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${homePitcher?.name ?? 'Unknown'}`,
+			pitcherName: this.formatName(homePitcher?.name ?? 'Unknown'),
+			description: `${homeName} starting lineup: ${homeLineupPlayers.map((p) => `${p.playerName} (${this.getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${this.formatName(homePitcher?.name ?? 'Unknown')}`,
 			runsScored: 0,
 			eventType: 'startingLineup',
-			lineup: homeLineupPlayers
+			lineup: homeLineupPlayers,
+			isSummary: true
 		});
 	}
 
@@ -535,8 +554,6 @@ export class GameEngine {
 
 		// First pitcher is the starter
 		const starterId = teamPitchers[0]!.id;
-		this.state.awayLineup.pitcher = starterId;
-		this.state.homeLineup.pitcher = starterId;
 
 		// Create pitcher role for starter
 		const starter: PitcherRole = {
@@ -569,6 +586,79 @@ export class GameEngine {
 		}
 	}
 
+	/**
+	 * Position number to name mapping
+	 */
+	private getPositionName(position: number): string {
+		const positionNames = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
+		return positionNames[position] || `Pos${position}`;
+	}
+
+	/**
+	 * Check if a player can play a specific position
+	 * Rules:
+	 * - Pitchers (1) only play pitcher
+	 * - Catchers (2) primarily catch, but can play 1B in emergencies
+	 * - Infielders (3, 4, 5, 6) can play any infield position
+	 * - Outfielders (7, 8, 9) can play any outfield position
+	 * - Some players have multi-position eligibility from the data
+	 */
+	private canPlayPosition(playerId: string, position: number): boolean {
+		const player = this.season.batters[playerId];
+		if (!player) return false;
+
+		// Check explicit position eligibility
+		if (player.positionEligibility[position]) return true;
+
+		const primary = player.primaryPosition;
+
+		// Position group rules
+		const isPitcher = primary === 1;
+		const isCatcher = primary === 2;
+		const isInfield = [3, 4, 5, 6].includes(primary);
+		const isOutfield = [7, 8, 9].includes(primary);
+
+		// Pitchers only pitch
+		if (isPitcher) return position === 1;
+
+		// Catchers primarily catch, can play 1B
+		if (isCatcher) return position === 2 || position === 3;
+
+		// Infielders can play any infield position
+		if (isInfield && [3, 4, 5, 6].includes(position)) return true;
+
+		// Outfielders can play any outfield position
+		if (isOutfield && [7, 8, 9].includes(position)) return true;
+
+		return false;
+	}
+
+	/**
+	 * Find a suitable defensive replacement position for a pinch hitter
+	 * Returns the position the pinch hitter should take
+	 */
+	private findDefensivePositionForPH(phPlayerId: string, replacedPlayerPosition: number): number | null {
+		// If pinch hitter can play the position they're replacing, use that
+		if (this.canPlayPosition(phPlayerId, replacedPlayerPosition)) {
+			return replacedPlayerPosition;
+		}
+
+		// Otherwise, find a suitable position based on their eligibility
+		const player = this.season.batters[phPlayerId];
+		if (!player) return null;
+
+		// Check their position eligibility in order of preference
+		const positions = [7, 8, 9, 6, 5, 4, 3, 2]; // OF then IF
+		for (const pos of positions) {
+			if (player.positionEligibility[pos]) {
+				return pos;
+			}
+		}
+
+		// Fall back to primary position
+		return player.primaryPosition;
+	}
+
 	getState(): Readonly<GameState> {
 		return this.state;
 	}
@@ -596,11 +686,19 @@ export class GameEngine {
 		// Check for pitching change
 		const mgrState = toManagerialGameState(this.state);
 
+		// Get era-appropriate pitch count limits from season norms
+		const pitchCountOptions: PitchCountOptions = {
+			hardLimit: this.season.norms.pitching.starterPitches.hardLimit,
+			typicalLimit: this.season.norms.pitching.starterPitches.typicalLimit,
+			fatigueThreshold: this.season.norms.pitching.starterPitches.fatigueThreshold,
+		};
+
 		const pitchingDecision = shouldPullPitcher(
 			mgrState,
 			pitcherRole,
 			bullpen,
-			this.managerialOptions.randomness ?? 0.1
+			this.managerialOptions.randomness ?? 0.1,
+			pitchCountOptions
 		);
 
 		if (pitchingDecision.shouldChange && pitchingDecision.newPitcher) {
@@ -616,7 +714,7 @@ export class GameEngine {
 			};
 			this.pitcherStamina.set(pitchingDecision.newPitcher, newPitcherRole);
 
-			// Record the substitution as a play
+			// Record the substitution as a summary entry
 			const newPitcher = this.season.pitchers[pitchingDecision.newPitcher];
 			this.state.plays.unshift({
 				inning: this.state.inning,
@@ -625,14 +723,130 @@ export class GameEngine {
 				batterId: '',
 				batterName: '',
 				pitcherId: pitchingDecision.newPitcher,
-				pitcherName: newPitcher ? newPitcher.name : 'Unknown',
-				description: `Pitching change: ${newPitcher?.name ?? 'Unknown'} replaces ${pitcher.name}`,
+				pitcherName: this.formatName(newPitcher ? newPitcher.name : 'Unknown'),
+				description: `Pitching change: ${this.formatName(newPitcher?.name ?? 'Unknown')} replaces ${this.formatName(pitcher.name)}`,
 				runsScored: 0,
 				eventType: 'pitchingChange',
-				substitutedPlayer: pitcherId
+				substitutedPlayer: pitcherId,
+				isSummary: true
 			});
 
 			return true;
+		}
+
+		// Check for pinch hit opportunity
+		const currentBatterId = getNextBatter(battingTeam, this.season);
+		const currentBatter = this.season.batters[currentBatterId];
+		if (!currentBatter) return false;
+
+		// Get available bench players
+		const currentLineupPlayerIds = battingTeam.players.map(p => p.playerId).filter((id): id is string => id !== null);
+		const allTeamBatters = Object.values(this.season.batters)
+			.filter(b => b.teamId === battingTeam.teamId)
+			.map(toModelBatter);
+		const availableBench = allTeamBatters.filter(b =>
+			!currentLineupPlayerIds.includes(b.id) &&
+			!this.usedPinchHitters.has(b.id) &&
+			!this.removedPlayers.has(b.id)
+		);
+
+		if (availableBench.length > 0) {
+			const opposingPitcher = this.season.pitchers[pitchingTeam.pitcher!];
+			if (opposingPitcher) {
+				const phDecision = shouldPinchHit(
+					mgrState,
+					toModelBatter(currentBatter),
+					availableBench,
+					toModelPitcher(opposingPitcher),
+					this.managerialOptions.randomness ?? 0.15
+				);
+
+				if (phDecision.shouldPinchHit && phDecision.pinchHitterId) {
+					// Find the batter's position in the lineup
+					const batterIndex = battingTeam.players.findIndex(p => p.playerId === currentBatterId);
+					if (batterIndex !== -1) {
+						const replacedPosition = battingTeam.players[batterIndex].position;
+						const pinchHitter = this.season.batters[phDecision.pinchHitterId];
+
+						// Mark replaced player as removed (can't return)
+						this.removedPlayers.add(currentBatterId);
+						this.usedPinchHitters.add(phDecision.pinchHitterId);
+
+						// Check if we're pinch hitting for a pitcher (position 1)
+						const isPitcherPH = replacedPosition === 1;
+
+						// Find what position the pinch hitter will play defensively
+						const defensivePosition = this.findDefensivePositionForPH(phDecision.pinchHitterId, replacedPosition);
+
+						if (defensivePosition === null) {
+							// Pinch hitter can't play any position - skip this substitution
+							return false;
+						}
+
+						let description = `Pinch hit: ${this.formatName(pinchHitter?.name ?? 'Unknown')} pinch hits for ${this.formatName(currentBatter.name)}`;
+
+						// If pinch hitting for pitcher, we also need a new pitcher (double switch)
+						if (isPitcherPH) {
+							// Get a reliever from the bullpen
+							const bullpen = this.bullpenStates.get(battingTeam.teamId);
+							if (bullpen && bullpen.relievers.length > 0) {
+								const newPitcherId = bullpen.relievers[0].pitcherId;
+								const newPitcher = this.season.pitchers[newPitcherId];
+
+								// Mark old pitcher as removed
+								this.removedPlayers.add(currentBatterId);
+
+								// Update lineup with pinch hitter at their defensive position
+								battingTeam.players[batterIndex] = { playerId: phDecision.pinchHitterId, position: defensivePosition };
+
+								// Bring in new pitcher
+								battingTeam.pitcher = newPitcherId;
+
+								// Create pitcher role
+								const newPitcherRole: PitcherRole = {
+									pitcherId: newPitcherId,
+									role: 'reliever',
+									stamina: 100,
+									pitchesThrown: 0
+								};
+								this.pitcherStamina.set(newPitcherId, newPitcherRole);
+
+								description += `; ${this.formatName(newPitcher?.name ?? 'Unknown')} pitches`;
+							} else {
+								// No relievers available - can't pinch hit for pitcher
+								return false;
+							}
+						} else {
+							// Pinch hitting for position player
+							// Pinch hitter stays in at their defensive position
+							battingTeam.players[batterIndex] = { playerId: phDecision.pinchHitterId, position: defensivePosition };
+
+							// Add note about defensive position change if different
+							if (defensivePosition !== replacedPosition) {
+								description += ` (now ${this.getPositionName(defensivePosition)})`;
+							}
+						}
+
+						// Record the substitution as a summary entry
+						this.state.plays.unshift({
+							inning: this.state.inning,
+							isTopInning: this.state.isTopInning,
+							outcome: 'out' as Outcome,
+							batterId: phDecision.pinchHitterId,
+							batterName: this.formatName(pinchHitter?.name ?? 'Unknown'),
+							pitcherId: '',
+							pitcherName: '',
+							description,
+							runsScored: 0,
+							eventType: 'pinchHit',
+							substitutedPlayer: currentBatterId,
+							isSummary: true
+						});
+
+						return true;
+					}
+				}
+			}
 		}
 
 		return false;
@@ -903,9 +1117,11 @@ export class GameEngine {
 	private trackPitchCount(pitcherId: string): void {
 		const pitcherRole = this.pitcherStamina.get(pitcherId);
 		if (pitcherRole) {
-			pitcherRole.pitchesThrown += 1;
-			// Reduce stamina slightly with each pitch
-			pitcherRole.stamina = Math.max(0, pitcherRole.stamina - 0.2);
+			// Average pitches per PA is around 4-5, with some variation
+			const pitchesInPA = Math.floor(Math.random() * 4) + 3; // 3-6 pitches
+			pitcherRole.pitchesThrown += pitchesInPA;
+			// Reduce stamina based on pitches thrown
+			pitcherRole.stamina = Math.max(0, pitcherRole.stamina - (pitchesInPA * 0.3));
 		}
 	}
 

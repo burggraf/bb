@@ -69,6 +69,165 @@ const TRAJECTORY_DISTRIBUTION = {
 };
 
 /**
+ * Season-wide norms for era-appropriate managerial decisions.
+ * These norms evolve over baseball history.
+ */
+export interface SeasonNorms {
+  year: number;
+  era: string;
+  pitching: {
+    /** Typical pitch count range for starting pitchers */
+    starterPitches: {
+      /** Pitch count where starters typically begin to get fatigued */
+      fatigueThreshold: number;
+      /** Typical pitch count limit for starters */
+      typicalLimit: number;
+      /** Absolute upper limit for starting pitchers */
+      hardLimit: number;
+    };
+    /** Typical pitch count range for relief pitchers */
+    relieverPitches: {
+      /** Maximum pitches for a reliever in a single appearance */
+      maxPitches: number;
+      /** Typical pitches for a one-inning reliever */
+      typicalPitches: number;
+    };
+  };
+}
+
+/**
+ * Get era-appropriate season norms based on historical baseball research.
+ *
+ * Complete game rates and pitch count management evolved significantly:
+ * - 1910s-1940s: Complete games common, 150+ pitches typical
+ * - 1950s-1970s: Complete games declining, but still common
+ * - 1980s-1990s: Bullpens专业化, pitch counts monitored more closely
+ * - 2000s-present: 100-pitch limit standard, strict management
+ */
+function getSeasonNorms(year: number): SeasonNorms {
+  if (year >= 2010) {
+    // Modern era: Strict pitch limits, 100-pitch standard
+    return {
+      year,
+      era: 'modern',
+      pitching: {
+        starterPitches: {
+          fatigueThreshold: 85,
+          typicalLimit: 100,
+          hardLimit: 110,
+        },
+        relieverPitches: {
+          maxPitches: 35,
+          typicalPitches: 15,
+        },
+      },
+    };
+  } else if (year >= 2000) {
+    // Early 2000s: Pitch count monitoring becoming standard
+    return {
+      year,
+      era: 'early-modern',
+      pitching: {
+        starterPitches: {
+          fatigueThreshold: 90,
+          typicalLimit: 105,
+          hardLimit: 120,
+        },
+        relieverPitches: {
+          maxPitches: 40,
+          typicalPitches: 18,
+        },
+      },
+    };
+  } else if (year >= 1980) {
+    // 1980s-1990s: Bullpens becoming more specialized
+    return {
+      year,
+      era: 'bullpen-specialization',
+      pitching: {
+        starterPitches: {
+          fatigueThreshold: 95,
+          typicalLimit: 115,
+          hardLimit: 130,
+        },
+        relieverPitches: {
+          maxPitches: 45,
+          typicalPitches: 20,
+        },
+      },
+    };
+  } else if (year >= 1960) {
+    // 1960s-1970s: Complete games declining, but starters still go deep
+    return {
+      year,
+      era: 'expansion-era',
+      pitching: {
+        starterPitches: {
+          fatigueThreshold: 100,
+          typicalLimit: 120,
+          hardLimit: 140,
+        },
+        relieverPitches: {
+          maxPitches: 50,
+          typicalPitches: 22,
+        },
+      },
+    };
+  } else if (year >= 1940) {
+    // 1940s-1950s: Integration era, starters still go deep
+    return {
+      year,
+      era: 'integration',
+      pitching: {
+        starterPitches: {
+          fatigueThreshold: 105,
+          typicalLimit: 125,
+          hardLimit: 150,
+        },
+        relieverPitches: {
+          maxPitches: 60,
+          typicalPitches: 25,
+        },
+      },
+    };
+  } else if (year >= 1920) {
+    // 1920s-1930s: Lively ball era, complete games common
+    return {
+      year,
+      era: 'lively-ball',
+      pitching: {
+        starterPitches: {
+          fatigueThreshold: 110,
+          typicalLimit: 130,
+          hardLimit: 160,
+        },
+        relieverPitches: {
+          maxPitches: 70,
+          typicalPitches: 30,
+        },
+      },
+    };
+  } else {
+    // Deadball and early baseball: Complete games very common
+    return {
+      year,
+      era: 'deadball',
+      pitching: {
+        starterPitches: {
+          fatigueThreshold: 120,
+          typicalLimit: 150,
+          hardLimit: 175,
+        },
+        relieverPitches: {
+          maxPitches: 80,
+          typicalPitches: 35,
+        },
+      },
+    };
+  }
+}
+
+/**
  * Distribute unknown outs across trajectory types using modern distribution.
  */
 function imputeUnknownOuts(
@@ -457,17 +616,37 @@ ORDER BY date;
 `;
 }
 
+function getBatterPositionsSQL(year: number): string {
+  return `
+SELECT
+  gfa.player_id,
+  gfa.fielding_position,
+  COUNT(*) AS appearances
+FROM game.game_fielding_appearances gfa
+JOIN game.games g ON gfa.game_id = g.game_id
+WHERE EXTRACT(YEAR FROM g.date) = ${year}
+GROUP BY gfa.player_id, gfa.fielding_position
+ORDER BY gfa.player_id, appearances DESC;
+`;
+}
+
 export interface SeasonPackage {
   meta: {
     year: number;
     generatedAt: string;
     version: string;
   };
+  /** Season-wide norms for era-appropriate managerial decisions */
+  norms: SeasonNorms;
   batters: Record<string, {
     id: string;
     name: string;
     bats: 'L' | 'R' | 'S';
     teamId: string;
+    /** Positions player can play (1=P, 2=C, 3=1B, 4=2B, 5=3B, 6=SS, 7=LF, 8=CF, 9=RF, 10=DH) */
+    primaryPosition: number;
+    /** All positions played, with appearance counts */
+    positionEligibility: Record<number, number>;
     rates: {
       vsLHP: EventRates;
       vsRHP: EventRates;
@@ -581,6 +760,43 @@ function calcRate(count: number, pa: number): number {
 export async function exportSeason(year: number, dbPath: string, outputPath: string): Promise<SeasonPackage> {
   console.log(`📦 Exporting ${year} season to ${outputPath}...\n`);
 
+  // Extract batter positions first
+  console.log('  📋 Batter positions...');
+  const positionsResult = runDuckDB(getBatterPositionsSQL(year), dbPath);
+  const positionsRaw = parseCSV(positionsResult);
+  const positionMap = new Map<string, { primaryPosition: number; positionEligibility: Record<number, number> }>();
+
+  // Aggregate positions by player
+  const playerPositions = new Map<string, Array<{ position: number; appearances: number }>>();
+  for (const row of positionsRaw) {
+    const playerId = row.player_id;
+    const position = parseNumber(row.fielding_position);
+    const appearances = parseNumber(row.appearances);
+
+    if (!playerPositions.has(playerId)) {
+      playerPositions.set(playerId, []);
+    }
+    playerPositions.get(playerId)!.push({ position, appearances });
+  }
+
+  // Determine primary position and build eligibility map
+  for (const [playerId, positions] of playerPositions) {
+    // Sort by appearances, excluding DH (position 10) from primary consideration
+    const sorted = positions.sort((a, b) => b.appearances - a.appearances);
+    const primary = sorted.find(p => p.position !== 10) || sorted[0];
+
+    const eligibility: Record<number, number> = {};
+    for (const pos of sorted) {
+      eligibility[pos.position] = pos.appearances;
+    }
+
+    positionMap.set(playerId, {
+      primaryPosition: primary.position,
+      positionEligibility: eligibility
+    });
+  }
+  console.log(`    ✓ ${positionMap.size} players with position data`);
+
   // Extract batters
   console.log('  📊 Batters...');
   const battersResult = runDuckDB(getBatterStatsSQL(year), dbPath);
@@ -591,11 +807,26 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     const paL = parseNumber(row.pa_vs_l);
     const paR = parseNumber(row.pa_vs_r);
 
+    // Get position data
+    const posData = positionMap.get(row.batter_id);
+    let primaryPosition = 9; // Default to RF
+    let positionEligibility: Record<number, number> = {};
+
+    if (posData) {
+      primaryPosition = posData.primaryPosition;
+      positionEligibility = posData.positionEligibility;
+    } else {
+      // No position data - default to RF
+      positionEligibility = { 9: 1 };
+    }
+
     batters[row.batter_id] = {
       id: row.batter_id,
       name: row.name,
-      bats: row.bats === 'B' ? 'S' : row.bats, // Convert 'B' (both) to 'S' (switch)
+      bats: row.bats === 'B' ? 'S' : row.bats,
       teamId: row.primary_team_id,
+      primaryPosition,
+      positionEligibility,
       rates: {
         vsLHP: calcEventRates({
           singles: parseNumber(row.singles_vs_l),
@@ -798,6 +1029,11 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   }
   console.log(`    ✓ ${games.length} games`);
 
+  // Get era-appropriate norms
+  console.log('  📋 Season norms...');
+  const norms = getSeasonNorms(year);
+  console.log(`    ✓ Era: ${norms.era}, Starter limit: ${norms.pitching.starterPitches.typicalLimit} pitches`);
+
   // Create season package
   const season: SeasonPackage = {
     meta: {
@@ -805,6 +1041,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       generatedAt: new Date().toISOString(),
       version: '2.0.0',
     },
+    norms,
     batters,
     pitchers,
     league,

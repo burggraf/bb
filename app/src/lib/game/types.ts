@@ -61,6 +61,10 @@ export interface BatterStats {
 	name: string;
 	bats: 'L' | 'R' | 'S';
 	teamId: string;
+	/** Primary position (1=P, 2=C, 3=1B, 4=2B, 5=3B, 6=SS, 7=LF, 8=CF, 9=RF, 10=DH) */
+	primaryPosition: number;
+	/** All positions player can play, with appearance counts */
+	positionEligibility: Record<number, number>;
 	rates: SplitRates;
 }
 
@@ -95,12 +99,41 @@ export interface Game {
 	useDH: boolean;
 }
 
+/**
+ * Season-wide norms for era-appropriate managerial decisions.
+ * These norms evolve over baseball history.
+ */
+export interface SeasonNorms {
+	year: number;
+	era: string;
+	pitching: {
+		/** Typical pitch count range for starting pitchers */
+		starterPitches: {
+			/** Pitch count where starters typically begin to get fatigued */
+			fatigueThreshold: number;
+			/** Typical pitch count limit for starters */
+			typicalLimit: number;
+			/** Absolute upper limit for starting pitchers */
+			hardLimit: number;
+		};
+		/** Typical pitch count range for relief pitchers */
+		relieverPitches: {
+			/** Maximum pitches for a reliever in a single appearance */
+			maxPitches: number;
+			/** Typical pitches for a one-inning reliever */
+			typicalPitches: number;
+		};
+	};
+}
+
 export interface SeasonPackage {
 	meta: {
 		year: number;
 		generatedAt: string;
 		version: string;
 	};
+	/** Season-wide norms for era-appropriate managerial decisions */
+	norms: SeasonNorms;
 	batters: Record<string, BatterStats>;
 	pitchers: Record<string, PitcherStats>;
 	league: {

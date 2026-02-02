@@ -353,6 +353,11 @@ class GameValidator {
 	private validatePlayDescription(play: PlayEvent, index: number, errors: string[], warnings: string[]): void {
 		const desc = play.description.toLowerCase();
 
+		// Skip lineup and pitching change events - they're informational, not plays
+		if (play.eventType === 'startingLineup' || play.eventType === 'pitchingChange') {
+			return;
+		}
+
 		// Check for common formatting issues
 		if (desc.includes('  ')) {
 			warnings.push(`Play ${index}: Double spaces in description: "${play.description}"`);
