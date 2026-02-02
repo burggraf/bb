@@ -168,7 +168,8 @@
 			.filter((team) => teamIdsWithPlayers.has(team.id))
 			.filter((team) => {
 				// Exclude all-star teams and teams without a valid league
-				return team.league === 'AL' || team.league === 'NL';
+				// Handle teams that switched leagues (e.g., "AL;NL")
+				return team.league.includes('AL') || team.league.includes('NL');
 			})
 			.map((team) => {
 				// Apply historical name overrides for the season year
