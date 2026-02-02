@@ -257,15 +257,15 @@
 		}));
 
 		// Update current pitchers for display
-		// Show the opponent's pitcher (who's pitching against this lineup)
-		const awayPitcherId = state.homeLineup.pitcher; // Home pitcher pitches against away
+		// Show each team's own pitcher (away pitcher on left, home pitcher on right)
+		const awayPitcherId = state.awayLineup.pitcher;
 		const awayPitcher = awayPitcherId && season?.pitchers[awayPitcherId]
-			? formatName(season.pitchers[awayPitcherId].name)
+			? season.pitchers[awayPitcherId].name
 			: 'Unknown';
 
-		const homePitcherId = state.awayLineup.pitcher; // Away pitcher pitches against home
+		const homePitcherId = state.homeLineup.pitcher;
 		const homePitcher = homePitcherId && season?.pitchers[homePitcherId]
-			? formatName(season.pitchers[homePitcherId].name)
+			? season.pitchers[homePitcherId].name
 			: 'Unknown';
 
 		// Update display with pitcher info
@@ -588,8 +588,10 @@
 						{/each}
 					</div>
 					<!-- Current Pitcher -->
-					<div class="mt-3 pt-2 border-t border-slate-700/30">
-						<div class="text-[10px] sm:text-xs text-slate-500">P: {awayPitcherDisplay}</div>
+					<div class="flex items-center gap-2 py-1 px-2 rounded border-t border-slate-700/30 mt-1 pt-2">
+						<span class="text-[10px] sm:text-xs w-4 text-slate-500"></span>
+						<span class="text-[10px] sm:text-xs w-5 text-slate-400">P</span>
+						<span class="text-xs sm:text-sm text-slate-300 truncate">{awayPitcherDisplay}</span>
 					</div>
 				</div>
 
@@ -613,8 +615,10 @@
 						{/each}
 					</div>
 					<!-- Current Pitcher -->
-					<div class="mt-3 pt-2 border-t border-slate-700/30">
-						<div class="text-[10px] sm:text-xs text-slate-500">P: {homePitcherDisplay}</div>
+					<div class="flex items-center gap-2 py-1 px-2 rounded border-t border-slate-700/30 mt-1 pt-2">
+						<span class="text-[10px] sm:text-xs w-4 text-slate-500"></span>
+						<span class="text-[10px] sm:text-xs w-5 text-slate-400">P</span>
+						<span class="text-xs sm:text-sm text-slate-300 truncate">{homePitcherDisplay}</span>
 					</div>
 				</div>
 			</div>
