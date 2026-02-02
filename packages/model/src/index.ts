@@ -34,3 +34,32 @@ export {
   normalizeRates,
   roundRates,
 } from './utils.js';
+
+// Managerial system
+export { generateLineup } from './managerial/lineup.js';
+export {
+	applyPlatoonAdvantage,
+	addNoise,
+	isPlatoonDisadvantage,
+	getPlatoonRates
+} from './managerial/platoon.js';
+export {
+	shouldPullPitcher,
+	selectReliever,
+	calculateLeverageIndex,
+	reduceStamina
+} from './managerial/pitching.js';
+export {
+	shouldPinchHit,
+	isAvailableOnBench,
+	getAvailableBench
+} from './managerial/substitutions.js';
+export type {
+	LineupOptions,
+	LineupSlot,
+	PitcherRole,
+	BullpenState,
+	GameState,
+	PitchingDecision,
+	PinchHitDecision
+} from './managerial/index.js';
