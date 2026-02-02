@@ -735,9 +735,15 @@ export class GameEngine {
 		}
 
 		// Check for pinch hit opportunity
-		const currentBatterId = getNextBatter(battingTeam, this.season);
+		const currentBatterId = getNextBatter(battingTeam, this.season.batters);
 		const currentBatter = this.season.batters[currentBatterId];
 		if (!currentBatter) return false;
+
+		// Pinch hit frequency is controlled via relaxedThresholds in shouldPinchHit
+		// The season norm provides the target PH rate, but actual decisions use the relaxed mode
+		// which lowers leverage thresholds and increases probability of PH
+
+		// Get available bench players
 
 		// Get available bench players
 		const currentLineupPlayerIds = battingTeam.players.map(p => p.playerId).filter((id): id is string => id !== null);
@@ -758,7 +764,7 @@ export class GameEngine {
 					toModelBatter(currentBatter),
 					availableBench,
 					toModelPitcher(opposingPitcher),
-					this.managerialOptions.randomness ?? 0.15
+					{ randomness: this.managerialOptions.randomness ?? 0.15, relaxedThresholds: true }
 				);
 
 				if (phDecision.shouldPinchHit && phDecision.pinchHitterId) {

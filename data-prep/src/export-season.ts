@@ -93,6 +93,13 @@ export interface SeasonNorms {
       typicalPitches: number;
     };
   };
+  /** How often pinch hitters are used per game (both teams combined) */
+  substitutions: {
+    /** Average pinch hit appearances per game */
+    pinchHitsPerGame: number;
+    /** Average defensive substitution appearances per game */
+    defensiveReplacementsPerGame: number;
+  };
 }
 
 /**
@@ -106,7 +113,7 @@ export interface SeasonNorms {
  */
 function getSeasonNorms(year: number): SeasonNorms {
   if (year >= 2010) {
-    // Modern era: Strict pitch limits, 100-pitch standard
+    // Modern era: Strict pitch limits, 100-pitch standard, high bullpen usage
     return {
       year,
       era: 'modern',
@@ -120,6 +127,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 35,
           typicalPitches: 15,
         },
+      },
+      substitutions: {
+        pinchHitsPerGame: 9.3,
+        defensiveReplacementsPerGame: 2.75,
       },
     };
   } else if (year >= 2000) {
@@ -138,6 +149,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 18,
         },
       },
+      substitutions: {
+        pinchHitsPerGame: 9.0,
+        defensiveReplacementsPerGame: 2.6,
+      },
     };
   } else if (year >= 1980) {
     // 1980s-1990s: Bullpens becoming more specialized
@@ -154,6 +169,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 45,
           typicalPitches: 20,
         },
+      },
+      substitutions: {
+        pinchHitsPerGame: 7.5,
+        defensiveReplacementsPerGame: 2.4,
       },
     };
   } else if (year >= 1960) {
@@ -172,6 +191,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 22,
         },
       },
+      substitutions: {
+        pinchHitsPerGame: 7.0,
+        defensiveReplacementsPerGame: 2.4,
+      },
     };
   } else if (year >= 1940) {
     // 1940s-1950s: Integration era, starters still go deep
@@ -188,6 +211,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 60,
           typicalPitches: 25,
         },
+      },
+      substitutions: {
+        pinchHitsPerGame: 6.5,
+        defensiveReplacementsPerGame: 2.2,
       },
     };
   } else if (year >= 1920) {
@@ -206,6 +233,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 30,
         },
       },
+      substitutions: {
+        pinchHitsPerGame: 6.0,
+        defensiveReplacementsPerGame: 2.0,
+      },
     };
   } else {
     // Deadball and early baseball: Complete games very common
@@ -222,6 +253,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 80,
           typicalPitches: 35,
         },
+      },
+      substitutions: {
+        pinchHitsPerGame: 5.0,
+        defensiveReplacementsPerGame: 1.5,
       },
     };
   }

@@ -17,6 +17,15 @@ export interface PinchHitDecision {
 }
 
 /**
+ * Options for pinch-hit decision
+ */
+export interface PinchHitOptions {
+	randomness?: number;
+	/** Lower thresholds to increase PH frequency (for season-based frequency control) */
+	relaxedThresholds?: boolean;
+}
+
+/**
  * Decide whether to pinch-hit for the current batter
  */
 export function shouldPinchHit(
@@ -24,8 +33,11 @@ export function shouldPinchHit(
 	currentBatter: BatterStats,
 	bench: BatterStats[],
 	opposingPitcher: PitcherStats,
-	randomness = 0.15
+	options: number | PinchHitOptions = 0.15
 ): PinchHitDecision {
+	// Handle legacy API where randomness was passed as a number
+	const randomness = typeof options === 'number' ? options : (options.randomness ?? 0.15);
+	const relaxedThresholds = typeof options === 'object' ? options.relaxedThresholds ?? false : false;
 	const { inning, outs, bases, scoreDiff } = gameState;
 
 	// Early game: rarely PH
@@ -47,7 +59,11 @@ export function shouldPinchHit(
 
 	const hasDisadvantage = isPlatoonDisadvantage(batterHandedness, pitcherHandedness);
 
-	if (!hasDisadvantage && leverage < 2.0) {
+	// Relaxed thresholds: only require leverage >= 0.7 (vs 1.0) and no platoon requirement
+	const minLeverage = relaxedThresholds ? 0.7 : 1.0;
+	const platoonRequiredLeverage = relaxedThresholds ? 0.7 : 2.0;
+
+	if (!hasDisadvantage && leverage < platoonRequiredLeverage) {
 		// No platoon issue, moderate leverage - stick with current
 		return { shouldPinchHit: false };
 	}
@@ -64,19 +80,23 @@ export function shouldPinchHit(
 
 	// High leverage + platoon disadvantage
 	if (leverage >= 2.0 && hasDisadvantage) {
-		phChance = 0.8;
+		phChance = relaxedThresholds ? 0.95 : 0.8;
 	}
 	// High leverage only
 	else if (leverage >= 2.0) {
-		phChance = 0.5;
+		phChance = relaxedThresholds ? 0.85 : 0.5;
 	}
 	// Platoon disadvantage + medium leverage
 	else if (hasDisadvantage && leverage >= 1.3) {
-		phChance = 0.6;
+		phChance = relaxedThresholds ? 0.85 : 0.6;
 	}
 	// Late game close
 	else if (inning >= 8 && Math.abs(scoreDiff) <= 2) {
-		phChance = 0.4;
+		phChance = relaxedThresholds ? 0.70 : 0.4;
+	}
+	// Relaxed: lower leverage situations
+	else if (relaxedThresholds && leverage >= 0.7) {
+		phChance = 0.85; // 85% chance when relaxed and leverage >= 0.7
 	}
 
 	// Add randomness and apply

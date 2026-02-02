@@ -124,6 +124,13 @@ export interface SeasonNorms {
 			typicalPitches: number;
 		};
 	};
+	/** How often pinch hitters are used per game (both teams combined) */
+	substitutions: {
+		/** Average pinch hit appearances per game */
+		pinchHitsPerGame: number;
+		/** Average defensive substitution appearances per game */
+		defensiveReplacementsPerGame: number;
+	};
 }
 
 export interface SeasonPackage {
