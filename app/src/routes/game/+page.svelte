@@ -294,24 +294,30 @@
 			currentPitcher = lastPlay.pitcherName;
 		}
 
+		// Helper function to get player name from either batters or pitchers
+		function getPlayerName(playerId: string): string {
+			if (season?.batters[playerId]) return season.batters[playerId].name;
+			if (season?.pitchers[playerId]) return season.pitchers[playerId].name;
+			return 'Unknown';
+		}
+
+		// Helper function to get player position for display
+		function getPlayerPosition(playerId: string, slotPosition: number): string {
+			if (season?.batters[playerId]) return getPositionAbbrev(season.batters[playerId].primaryPosition);
+			// For pitchers, show P
+			return 'P';
+		}
+
 		// Update lineup displays
 		awayLineupDisplay = state.awayLineup.players.map((slot, i) => ({
-			name: slot.playerId && season?.batters[slot.playerId]
-				? season.batters[slot.playerId].name
-				: 'Unknown',
-			position: slot.playerId && season?.batters[slot.playerId]
-				? getPositionAbbrev(season.batters[slot.playerId].primaryPosition)
-				: '?',
+			name: slot.playerId ? getPlayerName(slot.playerId) : 'Unknown',
+			position: slot.playerId ? getPlayerPosition(slot.playerId, slot.position) : '?',
 			isCurrent: i === state.awayLineup.currentBatterIndex
 		}));
 
 		homeLineupDisplay = state.homeLineup.players.map((slot, i) => ({
-			name: slot.playerId && season?.batters[slot.playerId]
-				? season.batters[slot.playerId].name
-				: 'Unknown',
-			position: slot.playerId && season?.batters[slot.playerId]
-				? getPositionAbbrev(season.batters[slot.playerId].primaryPosition)
-				: '?',
+			name: slot.playerId ? getPlayerName(slot.playerId) : 'Unknown',
+			position: slot.playerId ? getPlayerPosition(slot.playerId, slot.position) : '?',
 			isCurrent: i === state.homeLineup.currentBatterIndex
 		}));
 
