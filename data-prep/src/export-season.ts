@@ -683,7 +683,7 @@ ORDER BY pitcher_throws;
 `;
 }
 
-function getTeamsSQL(): string {
+function getTeamsSQL(year: number): string {
   return `
 SELECT
   team_id,
@@ -691,7 +691,7 @@ SELECT
   city,
   nickname
 FROM dim.teams
-WHERE last_year >= 1970
+WHERE first_year <= ${year} AND last_year >= ${year}
 ORDER BY league, city;
 `;
 }
@@ -1270,7 +1270,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
 
   // Extract teams
   console.log('  🏟️  Teams...');
-  const teamsResult = runDuckDB(getTeamsSQL(), dbPath);
+  const teamsResult = runDuckDB(getTeamsSQL(year), dbPath);
   const teamsRaw = parseCSV(teamsResult);
   const teams: SeasonPackage['teams'] = {};
 

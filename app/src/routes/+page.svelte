@@ -61,9 +61,7 @@
 				// Load the season to get team info
 				try {
 					seasonData = await loadSeason(year);
-					teams = Object.values(seasonData.teams).sort((a, b) =>
-						a.city.localeCompare(b.city)
-					) as Team[];
+					teams = getTeamsWithPlayers(seasonData).sort(sortTeamsByLeague) as Team[];
 					isSeasonReady = true;
 				} catch (error) {
 					console.error('Failed to load season:', error);
@@ -85,7 +83,7 @@
 				}
 			});
 
-			teams = Object.values(seasonData.teams).sort((a, b) => a.city.localeCompare(b.city)) as Team[];
+			teams = getTeamsWithPlayers(seasonData).sort(sortTeamsByLeague) as Team[];
 			isSeasonReady = true;
 			downloadState = { status: 'complete', progress: 1, error: null };
 		} catch (error) {
@@ -116,7 +114,107 @@
 		const team = teams.find((t) => t.id === teamId);
 		return team ? `${team.city} ${team.nickname}` : teamId;
 	}
-</script>
+
+	// Historical team name overrides for anachronistic modern names in the database
+	// The year key represents when that name STARTED being used
+	function getHistoricalTeamName(teamId: string, year: number): { city: string; nickname: string } | null {
+		const overrides: Record<string, Record<number, { city: string; nickname: string }>> = {
+			CLE: {
+				2022: { city: 'Cleveland', nickname: 'Guardians' },
+				1915: { city: 'Cleveland', nickname: 'Indians' }
+			},
+			TBA: {
+				2008: { city: 'Tampa Bay', nickname: 'Rays' },
+				1998: { city: 'Tampa Bay', nickname: 'Devil Rays' }
+			},
+			MIA: {
+				2012: { city: 'Miami', nickname: 'Marlins' },
+				1993: { city: 'Florida', nickname: 'Marlins' }
+			}
+		};
+
+		const teamOverrides = overrides[teamId];
+		if (!teamOverrides) return null;
+
+		// Find the most recent name change that's <= the query year
+		const years = Object.keys(teamOverrides).map(Number).sort((a, b) => b - a);
+		for (const overrideYear of years) {
+			if (year >= overrideYear) {
+				return teamOverrides[overrideYear];
+			}
+		}
+
+		return null;
+	}
+
+	// Get teams that actually have players in this season (filter out teams from the database that didn't play)
+	function getTeamsWithPlayers(season: SeasonPackage): Team[] {
+		// Build a set of team IDs that have batters or pitchers
+		const teamIdsWithPlayers = new Set<string>();
+
+		for (const batter of Object.values(season.batters)) {
+			if (batter.teamId) {
+				teamIdsWithPlayers.add(batter.teamId);
+			}
+		}
+		for (const pitcher of Object.values(season.pitchers)) {
+			if (pitcher.teamId) {
+				teamIdsWithPlayers.add(pitcher.teamId);
+			}
+		}
+
+		const allTeams = Object.values(season.teams);
+		const filteredTeams = allTeams
+			.filter((team) => teamIdsWithPlayers.has(team.id))
+			.map((team) => {
+				// Apply historical name overrides for the season year
+				const historicalName = getHistoricalTeamName(team.id, season.meta.year);
+				if (historicalName) {
+					return { ...team, city: historicalName.city, nickname: historicalName.nickname };
+				}
+				return team;
+			});
+
+		console.log(`[Teams] Total teams in JSON: ${allTeams.length}, Teams with players: ${filteredTeams.length}`);
+		console.log(`[Teams] Team IDs with players:`, Array.from(teamIdsWithPlayers).sort());
+
+		return filteredTeams;
+	}
+
+	// Sort teams by league: AL first, NL second, then others alphabetically
+	function sortTeamsByLeague(a: Team, b: Team): number {
+		const leagueOrder = { AL: 1, NL: 2 };
+		const aLeagueOrder = leagueOrder[a.league as keyof typeof leagueOrder] ?? 3;
+		const bLeagueOrder = leagueOrder[b.league as keyof typeof leagueOrder] ?? 3;
+
+		if (aLeagueOrder !== bLeagueOrder) {
+			return aLeagueOrder - bLeagueOrder;
+		}
+
+		// Within same league, sort by city name
+		return a.city.localeCompare(b.city);
+	}
+
+	// Get league display name
+	function getLeagueDisplayName(league: string): string {
+		const leagueNames: Record<string, string> = {
+			AL: 'American League',
+			NL: 'National League'
+		};
+		return leagueNames[league] || league;
+	}
+
+	// Group teams by league
+	const teamsByLeague = $derived.by(() => {
+		const groups = new Map<string, Team[]>();
+		for (const team of teams) {
+			if (!groups.has(team.league)) {
+				groups.set(team.league, []);
+			}
+			groups.get(team.league)!.push(team);
+		}
+		return groups;
+	});</script>
 
 <svelte:head>
 	<title>Baseball Sim - Home</title>
@@ -246,11 +344,19 @@
 							bind:value={selectedAwayTeam}
 							class="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 sm:px-4 text-white text-sm sm:text-base"
 						>
-							<option value="">-- Select team --</option
-							>
-							{#each teams as team}
-								<option value={team.id}>{team.city} {team.nickname}</option
-							>{/each}
+							<option value="">-- Select team --</option>
+							{#each Array.from(teamsByLeague.entries()).sort(([aLeague], [bLeague]) => {
+								const leagueOrder = { AL: 1, NL: 2 };
+								const aOrder = leagueOrder[aLeague as keyof typeof leagueOrder] ?? 3;
+								const bOrder = leagueOrder[bLeague as keyof typeof leagueOrder] ?? 3;
+								return aOrder - bOrder;
+							}) as [league, leagueTeams]}
+								<optgroup label={getLeagueDisplayName(league)}>
+									{#each leagueTeams as team}
+										<option value={team.id}>{team.city} {team.nickname}</option>
+									{/each}
+								</optgroup>
+							{/each}
 						</select>
 						{#if selectedAwayTeam}
 							<p class="mt-2 text-xs sm:text-sm text-zinc-400">
@@ -266,11 +372,19 @@
 							bind:value={selectedHomeTeam}
 							class="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 sm:px-4 text-white text-sm sm:text-base"
 						>
-							<option value="">-- Select team --</option
-							>
-							{#each teams as team}
-								<option value={team.id}>{team.city} {team.nickname}</option
-							>{/each}
+							<option value="">-- Select team --</option>
+							{#each Array.from(teamsByLeague.entries()).sort(([aLeague], [bLeague]) => {
+								const leagueOrder = { AL: 1, NL: 2 };
+								const aOrder = leagueOrder[aLeague as keyof typeof leagueOrder] ?? 3;
+								const bOrder = leagueOrder[bLeague as keyof typeof leagueOrder] ?? 3;
+								return aOrder - bOrder;
+							}) as [league, leagueTeams]}
+								<optgroup label={getLeagueDisplayName(league)}>
+									{#each leagueTeams as team}
+										<option value={team.id}>{team.city} {team.nickname}</option>
+									{/each}
+								</optgroup>
+							{/each}
 						</select>
 						{#if selectedHomeTeam}
 							<p class="mt-2 text-xs sm:text-sm text-zinc-400">
