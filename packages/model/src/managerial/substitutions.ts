@@ -68,8 +68,8 @@ export function shouldPinchHit(
 		return { shouldPinchHit: false };
 	}
 
-	// Find better option on bench
-	const betterOption = findBestPinchHitter(bench, opposingPitcher, currentBatter);
+	// Find better option on bench (or any option if relaxed)
+	const betterOption = findBestPinchHitter(bench, opposingPitcher, currentBatter, relaxedThresholds);
 
 	if (!betterOption) {
 		return { shouldPinchHit: false };
@@ -80,23 +80,23 @@ export function shouldPinchHit(
 
 	// High leverage + platoon disadvantage
 	if (leverage >= 2.0 && hasDisadvantage) {
-		phChance = relaxedThresholds ? 0.95 : 0.8;
+		phChance = relaxedThresholds ? 1.0 : 0.8;
 	}
 	// High leverage only
 	else if (leverage >= 2.0) {
-		phChance = relaxedThresholds ? 0.85 : 0.5;
+		phChance = relaxedThresholds ? 0.95 : 0.5;
 	}
 	// Platoon disadvantage + medium leverage
 	else if (hasDisadvantage && leverage >= 1.3) {
-		phChance = relaxedThresholds ? 0.85 : 0.6;
+		phChance = relaxedThresholds ? 0.95 : 0.6;
 	}
 	// Late game close
 	else if (inning >= 8 && Math.abs(scoreDiff) <= 2) {
-		phChance = relaxedThresholds ? 0.70 : 0.4;
+		phChance = relaxedThresholds ? 0.90 : 0.4;
 	}
-	// Relaxed: lower leverage situations
-	else if (relaxedThresholds && leverage >= 0.7) {
-		phChance = 0.85; // 85% chance when relaxed and leverage >= 0.7
+	// Relaxed: 6th inning+ with leverage >= 0.5
+	else if (relaxedThresholds && leverage >= 0.5) {
+		phChance = 0.95;
 	}
 
 	// Add randomness and apply
@@ -120,32 +120,46 @@ export function shouldPinchHit(
 function findBestPinchHitter(
 	bench: BatterStats[],
 	opposingPitcher: PitcherStats,
-	currentBatter: BatterStats
+	currentBatter: BatterStats,
+	relaxedThresholds = false
 ): BatterStats | null {
 	if (bench.length === 0) return null;
 
 	const pitcherHandedness = opposingPitcher.handedness;
 
-	// Get relevant rates function
-	const getOBP = (b: BatterStats) => {
+	// Get relevant rates function - use OPS (OBP + SLG) for more comprehensive evaluation
+	const getOPS = (b: BatterStats) => {
 		const rates = pitcherHandedness === 'L' ? b.rates.vsLeft : b.rates.vsRight;
-		return rates.walk + rates.single + rates.double + rates.triple + rates.homeRun;
+		// OBP = (H + BB + HBP) / PA, but we use rates directly
+		const obp = rates.walk + rates.single + rates.double + rates.triple + rates.homeRun;
+		// SLG = (1B + 2B*2 + 3B*3 + HR*4) / AB, approximated with rates
+		const slg =
+			rates.single * 1 +
+			rates.double * 2 +
+			rates.triple * 3 +
+			rates.homeRun * 4;
+		return obp + slg; // Simple OPS approximation
 	};
 
-	const currentOBP = getOBP(currentBatter);
+	const currentOPS = getOPS(currentBatter);
 
 	// Find bench players with better matchup
 	const candidates = bench
-		.map((b) => ({
-			batter: b,
-			obp: getOBP(b),
-			improvement: 0
-		}))
-		.map((c) => ({
-			batter: c.batter,
-			improvement: c.obp - currentOBP
-		}))
-		.filter((c) => c.improvement > 0) // Must be better
+		.map((b) => {
+			const ops = getOPS(b);
+			return {
+				batter: b,
+				ops,
+				improvement: ops - currentOPS
+			};
+		})
+		.filter((c) => {
+			if (relaxedThresholds) {
+				// Relaxed: require better OPS or at least 90% of current OPS
+				return c.improvement > 0 || c.ops >= currentOPS * 0.9;
+			}
+			return c.improvement > 0; // Strict: must be better
+		})
 		.sort((a, b) => b.improvement - a.improvement);
 
 	if (candidates.length === 0) return null;

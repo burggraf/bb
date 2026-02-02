@@ -114,6 +114,7 @@ export interface SeasonNorms {
 function getSeasonNorms(year: number): SeasonNorms {
   if (year >= 2010) {
     // Modern era: Strict pitch limits, 100-pitch standard, high bullpen usage
+    // PH usage has declined due to expanded benches and more specialized bullpens
     return {
       year,
       era: 'modern',
@@ -129,7 +130,7 @@ function getSeasonNorms(year: number): SeasonNorms {
         },
       },
       substitutions: {
-        pinchHitsPerGame: 9.3,
+        pinchHitsPerGame: 2.0,
         defensiveReplacementsPerGame: 2.75,
       },
     };
@@ -150,7 +151,7 @@ function getSeasonNorms(year: number): SeasonNorms {
         },
       },
       substitutions: {
-        pinchHitsPerGame: 9.0,
+        pinchHitsPerGame: 2.8,
         defensiveReplacementsPerGame: 2.6,
       },
     };
@@ -171,7 +172,7 @@ function getSeasonNorms(year: number): SeasonNorms {
         },
       },
       substitutions: {
-        pinchHitsPerGame: 7.5,
+        pinchHitsPerGame: 3.0,
         defensiveReplacementsPerGame: 2.4,
       },
     };
@@ -192,7 +193,7 @@ function getSeasonNorms(year: number): SeasonNorms {
         },
       },
       substitutions: {
-        pinchHitsPerGame: 7.0,
+        pinchHitsPerGame: 2.8,
         defensiveReplacementsPerGame: 2.4,
       },
     };
@@ -213,7 +214,7 @@ function getSeasonNorms(year: number): SeasonNorms {
         },
       },
       substitutions: {
-        pinchHitsPerGame: 6.5,
+        pinchHitsPerGame: 2.2,
         defensiveReplacementsPerGame: 2.2,
       },
     };
@@ -234,7 +235,7 @@ function getSeasonNorms(year: number): SeasonNorms {
         },
       },
       substitutions: {
-        pinchHitsPerGame: 6.0,
+        pinchHitsPerGame: 2.2,
         defensiveReplacementsPerGame: 2.0,
       },
     };
@@ -255,7 +256,7 @@ function getSeasonNorms(year: number): SeasonNorms {
         },
       },
       substitutions: {
-        pinchHitsPerGame: 5.0,
+        pinchHitsPerGame: 2.0,
         defensiveReplacementsPerGame: 1.5,
       },
     };
