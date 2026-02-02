@@ -30,7 +30,19 @@ export interface PitcherRole {
 	pitcherId: string;
 	role: 'starter' | 'reliever' | 'closer';
 	stamina: number; // 0-100
-	pitchesThrown: number;
+	pitchesThrown: number; // DEPRECATED: use battersFace instead
+	/** Batters faced in this game */
+	battersFace: number;
+	/** Average batters faced when starting (from season data) */
+	avgBfpAsStarter: number | null;
+	/** Average batters faced when relieving (from season data) */
+	avgBfpAsReliever: number | null;
+	/** Hits allowed in current appearance */
+	hitsAllowed: number;
+	/** Walks allowed in current appearance */
+	walksAllowed: number;
+	/** Runs allowed in current appearance */
+	runsAllowed: number;
 }
 
 /**

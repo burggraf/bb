@@ -94,10 +94,21 @@ export interface SeasonNorms {
     };
     /** Average batters faced by starters (based on era data) */
     starterBFP: number;
-    /** Average batters faced by relievers (based on era data) */
-    relieverBFP: number;
+    /** Average batters faced by relievers by inning group */
+    relieverBFP: {
+      /** Early game (innings 1-3): long men, spot starters */
+      early: number;
+      /** Middle game (innings 4-6): middle relievers */
+      middle: number;
+      /** Late game (innings 7+): closers, specialists */
+      late: number;
+    };
+    /** Overall average batters faced by relievers (for backward compatibility) */
+    relieverBFPOverall: number;
     /** Average number of relievers used per game (both teams combined) */
     relieversPerGame: number;
+    /** Median BFP for starters - represents typical deep outing for this season */
+    starterDeepOutingBFP: number;
   };
   /** How often pinch hitters are used per game (both teams combined) */
   substitutions: {
@@ -116,8 +127,15 @@ export interface SeasonNorms {
  * - 1950s-1970s: Complete games declining, but still common
  * - 1980s-1990s: Bullpens专业化, pitch counts monitored more closely
  * - 2000s-present: 100-pitch limit standard, strict management
+ *
+ * @param deepOutingBFP - 90th percentile BFP for starters from actual season data
+ * @param relieverBFP - Reliever BFP by inning group from actual season data
  */
-function getSeasonNorms(year: number): SeasonNorms {
+function getSeasonNorms(
+  year: number,
+  deepOutingBFP?: number,
+  relieverBFP?: { early: number; middle: number; late: number }
+): SeasonNorms {
   if (year >= 2010) {
     // Modern era: Strict pitch limits, 100-pitch standard, high bullpen usage
     return {
@@ -134,8 +152,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 15,
         },
         starterBFP: 23.7,
-        relieverBFP: 7.1,
+        relieverBFP: relieverBFP ?? { early: 12, middle: 8, late: 4 },
+        relieverBFPOverall: 7.1,
         relieversPerGame: 6.3,
+        starterDeepOutingBFP: deepOutingBFP ?? 23, // Median from 2024 data
       },
       substitutions: {
         pinchHitsPerGame: 2.0,
@@ -158,8 +178,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 18,
         },
         starterBFP: 25.7,
-        relieverBFP: 7.9,
+        relieverBFP: relieverBFP ?? { early: 14, middle: 10, late: 5 },
+        relieverBFPOverall: 7.9,
         relieversPerGame: 5.5,
+        starterDeepOutingBFP: deepOutingBFP ?? 29,
       },
       substitutions: {
         pinchHitsPerGame: 2.8,
@@ -182,8 +204,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 20,
         },
         starterBFP: 26.7,
-        relieverBFP: 9.9,
+        relieverBFP: relieverBFP ?? { early: 16, middle: 11, late: 6 },
+        relieverBFPOverall: 9.9,
         relieversPerGame: 4.1,
+        starterDeepOutingBFP: deepOutingBFP ?? 30,
       },
       substitutions: {
         pinchHitsPerGame: 3.0,
@@ -206,8 +230,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 22,
         },
         starterBFP: 28.0,
-        relieverBFP: 12.0,
+        relieverBFP: relieverBFP ?? { early: 18, middle: 13, late: 8 },
+        relieverBFPOverall: 12.0,
         relieversPerGame: 3.0,
+        starterDeepOutingBFP: deepOutingBFP ?? 29,
       },
       substitutions: {
         pinchHitsPerGame: 2.8,
@@ -230,8 +256,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 25,
         },
         starterBFP: 29.4,
-        relieverBFP: 14.5,
+        relieverBFP: relieverBFP ?? { early: 20, middle: 15, late: 10 },
+        relieverBFPOverall: 14.5,
         relieversPerGame: 2.3,
+        starterDeepOutingBFP: deepOutingBFP ?? 32,
       },
       substitutions: {
         pinchHitsPerGame: 2.2,
@@ -254,8 +282,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 30,
         },
         starterBFP: 30.9,
-        relieverBFP: 17.5,
+        relieverBFP: relieverBFP ?? { early: 22, middle: 17, late: 12 },
+        relieverBFPOverall: 17.5,
         relieversPerGame: 1.7,
+        starterDeepOutingBFP: deepOutingBFP ?? 33,
       },
       substitutions: {
         pinchHitsPerGame: 2.2,
@@ -278,8 +308,10 @@ function getSeasonNorms(year: number): SeasonNorms {
           typicalPitches: 35,
         },
         starterBFP: 31.0,
-        relieverBFP: 20.0,
+        relieverBFP: relieverBFP ?? { early: 25, middle: 20, late: 15 },
+        relieverBFPOverall: 20.0,
         relieversPerGame: 1.5,
+        starterDeepOutingBFP: deepOutingBFP ?? 35,
       },
       substitutions: {
         pinchHitsPerGame: 2.0,
@@ -692,6 +724,161 @@ ORDER BY gfa.player_id, appearances DESC;
 `;
 }
 
+function getPitcherBfpSQL(year: number): string {
+  return `
+WITH first_pitchers AS (
+  -- Find the first pitcher for each game and side
+  SELECT DISTINCT
+    e.game_id,
+    e.side,
+    e.pitcher_id as starter_id
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
+    AND e.no_play_flag = false
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY e.game_id, e.side ORDER BY e.event_id) = 1
+),
+pitcher_roles AS (
+  SELECT
+    e.pitcher_id,
+    e.game_id,
+    CASE
+      WHEN fp.starter_id IS NOT NULL THEN 'starter'
+      ELSE 'reliever'
+    END as role
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  LEFT JOIN first_pitchers fp ON e.game_id = fp.game_id AND e.side = fp.side AND e.pitcher_id = fp.starter_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
+    AND e.no_play_flag = false
+),
+pitcher_bfp AS (
+  SELECT
+    pitcher_id,
+    role,
+    COUNT(*) as bfp,
+    COUNT(DISTINCT game_id) as games
+  FROM pitcher_roles
+  GROUP BY pitcher_id, role
+)
+SELECT
+  pb.pitcher_id,
+  -- Average BFP as starter (only pitchers who started at least 5 games)
+  CASE
+    WHEN MAX(CASE WHEN role = 'starter' THEN games END) >= 5
+    THEN COALESCE(SUM(CASE WHEN role = 'starter' THEN bfp END), 0) / NULLIF(MAX(CASE WHEN role = 'starter' THEN games END), 0)
+    ELSE NULL
+  END as avg_bfp_as_starter,
+  -- Average BFP as reliever (only pitchers who relieved at least 5 games)
+  CASE
+    WHEN MAX(CASE WHEN role = 'reliever' THEN games END) >= 5
+    THEN COALESCE(SUM(CASE WHEN role = 'reliever' THEN bfp END), 0) / NULLIF(MAX(CASE WHEN role = 'reliever' THEN games END), 0)
+    ELSE NULL
+  END as avg_bfp_as_reliever
+FROM pitcher_bfp pb
+GROUP BY pb.pitcher_id
+HAVING COALESCE(SUM(CASE WHEN role = 'starter' THEN bfp END), 0) + COALESCE(SUM(CASE WHEN role = 'reliever' THEN bfp END), 0) >= 25
+ORDER BY COALESCE(SUM(CASE WHEN role = 'starter' THEN bfp END), 0) + COALESCE(SUM(CASE WHEN role = 'reliever' THEN bfp END), 0) DESC;
+`;
+}
+
+/**
+ * Query season-specific median BFP for starters
+ * This represents the "typical deep outing" - what pitchers commonly achieved
+ */
+function getSeasonStaminaSQL(year: number): string {
+  return `
+WITH first_pitchers AS (
+  SELECT DISTINCT
+    e.game_id,
+    e.side,
+    e.pitcher_id as starter_id
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
+    AND e.no_play_flag = false
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY e.game_id, e.side ORDER BY e.event_id) = 1
+),
+starter_outings AS (
+  SELECT
+    fp.starter_id as pitcher_id,
+    e.game_id,
+    COUNT(*) as bfp
+  FROM event.events e
+  JOIN first_pitchers fp ON e.game_id = fp.game_id AND e.side = fp.side AND e.pitcher_id = fp.starter_id
+  JOIN game.games g ON e.game_id = g.game_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
+    AND e.no_play_flag = false
+  GROUP BY fp.starter_id, e.game_id
+)
+SELECT
+  ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY bfp), 1) as deep_outing_bfp
+FROM starter_outings;
+`;
+}
+
+/**
+ * Query reliever BFP averages by inning group
+ * Early (1-3): long men, spot starters
+ * Middle (4-6): middle relievers
+ * Late (7+): closers, specialists
+ */
+function getRelieverBFPByInningSQL(year: number): string {
+  return `
+WITH first_pitchers AS (
+  SELECT DISTINCT
+    e.game_id,
+    e.side,
+    e.pitcher_id as starter_id
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
+    AND e.no_play_flag = false
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY e.game_id, e.side ORDER BY e.event_id) = 1
+),
+reliever_appearances AS (
+  SELECT
+    e.pitcher_id,
+    e.game_id,
+    e.side,
+    e.inning,
+    COUNT(*) as bfp,
+    -- Determine if this is early, middle, or late entry
+    CASE
+      WHEN e.inning <= 3 THEN 'early'
+      WHEN e.inning <= 6 THEN 'middle'
+      ELSE 'late'
+    END as inning_group
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  LEFT JOIN first_pitchers fp ON e.game_id = fp.game_id AND e.side = fp.side AND e.pitcher_id = fp.starter_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
+    AND e.no_play_flag = false
+    -- Exclude first pitcher in each game/side (starters)
+    AND fp.starter_id IS NULL
+  GROUP BY e.pitcher_id, e.game_id, e.side, e.inning
+)
+SELECT
+  inning_group,
+  ROUND(AVG(bfp), 1) as avg_bfp
+FROM reliever_appearances
+GROUP BY inning_group
+ORDER BY inning_group;
+`;
+}
+
 export interface SeasonPackage {
   meta: {
     year: number;
@@ -719,6 +906,10 @@ export interface SeasonPackage {
     name: string;
     throws: 'L' | 'R';
     teamId: string;
+    /** Average batters faced when starting (for fatigue modeling) */
+    avgBfpAsStarter: number | null;
+    /** Average batters faced when relieving (for fatigue modeling) */
+    avgBfpAsReliever: number | null;
     rates: {
       vsLHB: EventRates;
       vsRHB: EventRates;
@@ -935,6 +1126,20 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   }
   console.log(`    ✓ ${Object.keys(batters).length} batters`);
 
+  // Extract pitcher BFP data
+  console.log('  📊 Pitcher BFP data...');
+  const pitcherBfpResult = runDuckDB(getPitcherBfpSQL(year), dbPath);
+  const pitcherBfpRaw = parseCSV(pitcherBfpResult);
+  const pitcherBfpMap = new Map<string, { avgBfpAsStarter: number | null; avgBfpAsReliever: number | null }>();
+
+  for (const row of pitcherBfpRaw) {
+    pitcherBfpMap.set(row.pitcher_id, {
+      avgBfpAsStarter: row.avg_bfp_as_starter && row.avg_bfp_as_starter !== 'NULL' ? parseFloat(row.avg_bfp_as_starter) : null,
+      avgBfpAsReliever: row.avg_bfp_as_reliever && row.avg_bfp_as_reliever !== 'NULL' ? parseFloat(row.avg_bfp_as_reliever) : null,
+    });
+  }
+  console.log(`    ✓ ${pitcherBfpMap.size} pitchers with BFP data`);
+
   // Extract pitchers
   console.log('  📊 Pitchers...');
   const pitchersResult = runDuckDB(getPitcherStatsSQL(year), dbPath);
@@ -945,11 +1150,16 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     const paL = parseNumber(row.pa_vs_l);
     const paR = parseNumber(row.pa_vs_r);
 
+    // Get BFP data
+    const bfpData = pitcherBfpMap.get(row.pitcher_id) || { avgBfpAsStarter: null, avgBfpAsReliever: null };
+
     pitchers[row.pitcher_id] = {
       id: row.pitcher_id,
       name: row.name,
       throws: row.throws,
       teamId: row.primary_team_id,
+      avgBfpAsStarter: bfpData.avgBfpAsStarter,
+      avgBfpAsReliever: bfpData.avgBfpAsReliever,
       rates: {
         vsLHB: calcEventRates({
           singles: parseNumber(row.singles_vs_l),
@@ -1091,9 +1301,43 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   }
   console.log(`    ✓ ${games.length} games`);
 
+  // Get season-specific stamina data (90th percentile BFP for starters)
+  console.log('  📊 Season stamina data...');
+  const staminaResult = runDuckDB(getSeasonStaminaSQL(year), dbPath);
+  const staminaRaw = parseCSV(staminaResult);
+  const deepOutingBFP = staminaRaw.length > 0 && staminaRaw[0].deep_outing_bfp
+    ? parseFloat(staminaRaw[0].deep_outing_bfp)
+    : undefined;
+  console.log(`    ✓ Deep outing BFP (90th percentile): ${deepOutingBFP ?? 'N/A'}`);
+
+  // Get reliever BFP by inning group
+  console.log('  📊 Reliever BFP by inning group...');
+  const relieverBFPResult = runDuckDB(getRelieverBFPByInningSQL(year), dbPath);
+  const relieverBPFRaw = parseCSV(relieverBFPResult);
+
+  let relieverBFP: { early: number; middle: number; late: number } | undefined;
+  if (relieverBPFRaw.length >= 3) {
+    const earlyRow = relieverBPFRaw.find((r: any) => r.inning_group === 'early');
+    const middleRow = relieverBPFRaw.find((r: any) => r.inning_group === 'middle');
+    const lateRow = relieverBPFRaw.find((r: any) => r.inning_group === 'late');
+
+    if (earlyRow && middleRow && lateRow) {
+      relieverBFP = {
+        early: parseFloat(earlyRow.avg_bfp),
+        middle: parseFloat(middleRow.avg_bfp),
+        late: parseFloat(lateRow.avg_bfp),
+      };
+      console.log(`    ✓ Early (1-3): ${relieverBFP.early} BFP, Middle (4-6): ${relieverBFP.middle} BFP, Late (7+): ${relieverBFP.late} BFP`);
+    }
+  }
+
+  if (!relieverBFP) {
+    console.log('    ⚠ Could not load reliever BFP data, using defaults');
+  }
+
   // Get era-appropriate norms
   console.log('  📋 Season norms...');
-  const norms = getSeasonNorms(year);
+  const norms = getSeasonNorms(year, deepOutingBFP, relieverBFP);
   console.log(`    ✓ Era: ${norms.era}, Starter limit: ${norms.pitching.starterPitches.typicalLimit} pitches`);
 
   // Create season package

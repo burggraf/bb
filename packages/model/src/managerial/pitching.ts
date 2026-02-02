@@ -26,77 +26,218 @@ const DEFAULT_PITCH_COUNT_OPTIONS: PitchCountOptions = {
 };
 
 /**
+ * Options for pull decisions - use season-specific data from season norms
+ */
+export interface PullDecisionOptions {
+	/** Season-specific average BFP for relievers by inning group */
+	seasonRelieverBFP?: {
+		/** Early game (innings 1-3) */
+		early: number;
+		/** Middle game (innings 4-6) */
+		middle: number;
+		/** Late game (innings 7+) */
+		late: number;
+	};
+	/** Season-specific average BFP for starters (from season norms) */
+	seasonStarterBFP?: number;
+	/** Current inning for determining appropriate reliever cap */
+	currentInning: number;
+}
+
+/**
  * Decide whether to pull the current pitcher
+ *
+ * Uses pitcher-specific average BFP based on their current role.
+ * - Starters: pulled around their typical starter workload
+ * - Relievers: use their average but with caps to handle skewed data
+ *   - Pure relievers (no starter data): avgBfpAsReliever capped at 6 (modern specialists)
+ *   - Swingmen (have starter data): avgBfpAsReliever capped at 12 (can go longer)
  */
 export function shouldPullPitcher(
 	gameState: GameState,
 	pitcher: PitcherRole,
 	bullpen: BullpenState,
 	randomness = 0.1,
-	pitchCountOptions?: PitchCountOptions
+	options?: PullDecisionOptions
 ): PitchingDecision {
-	const { inning, outs, bases, scoreDiff } = gameState;
+	const { inning, scoreDiff } = gameState;
 
-	// Use provided options or defaults
-	const limits = pitchCountOptions || DEFAULT_PITCH_COUNT_OPTIONS;
+	// Get pitcher's average BFP for their current role
+	const avgBfp = pitcher.role === 'starter'
+		? pitcher.avgBfpAsStarter
+		: pitcher.avgBfpAsReliever;
 
-	// Hard limits
-	if (pitcher.pitchesThrown >= limits.hardLimit) {
-		return { shouldChange: true, reason: `Pitch count limit (${limits.hardLimit})` };
+	let typicalBfp: number;
+	let variance: number;
+
+	if (pitcher.role === 'starter') {
+		// === STARTER LOGIC: Complete game considerations ===
+		typicalBfp = avgBfp ?? options?.seasonStarterBFP ?? 27;
+
+		// Determine era from typical BFP (higher = earlier era)
+		const isEarlyEra = typicalBfp > 29;
+		const isMiddleEra = typicalBfp >= 27 && typicalBfp <= 29;
+		const isModernEra = typicalBfp < 27;
+
+		// Hard limit: 1.5x average is absolute max
+		if (pitcher.battersFace >= typicalBfp * 1.5) {
+			return { shouldChange: true, reason: `Exceeded limit (${pitcher.battersFace} BFP)` };
+		}
+
+		// Modern era: Pull earlier (at 65% of average) to simulate modern hook
+		// Early/Middle era: Pull at average (allow complete games)
+		const pullThreshold = (isEarlyEra || isMiddleEra) ? typicalBfp : typicalBfp * 0.55;
+
+		if (pitcher.battersFace >= pullThreshold) {
+			let pullChance = 0.5; // Base 50% chance at average
+
+			// === COMPLETE GAME LOGIC: Only for early/middle eras ===
+			// Modern baseball: Pull at average regardless of performance
+			if (isEarlyEra || isMiddleEra) {
+				// 1. How is the pitcher performing today?
+				const baserunnersAllowed = pitcher.hitsAllowed + pitcher.walksAllowed;
+				const roughness = pitcher.battersFace > 0 ? baserunnersAllowed / pitcher.battersFace : 0;
+
+				if (roughness < 0.2) {
+					pullChance -= 0.25; // Pitching great
+				} else if (roughness > 0.4) {
+					pullChance += 0.15; // Getting hit around
+				}
+
+				// 2. Game situation
+				if (scoreDiff >= 4) {
+					pullChance -= 0.15; // Comfortable lead
+				} else if (scoreDiff <= -2 || (scoreDiff >= 0 && scoreDiff <= 2)) {
+					pullChance += 0.15; // Losing or close game
+				}
+
+				// 3. Inning context - deep in game with lead?
+				if (inning >= 8 && scoreDiff > 0 && roughness < 0.3) {
+					pullChance -= 0.25;
+				}
+
+				// 4. Era-specific adjustments
+				if (isEarlyEra) {
+					// Early era: Managers let starters finish
+					if (roughness < 0.3) {
+						pullChance -= 0.2;
+					}
+					if (pitcher.battersFace < typicalBfp * 1.2 && roughness < 0.4) {
+						pullChance = Math.min(pullChance, 0.3);
+					}
+				} else if (roughness < 0.25) {
+					pullChance -= 0.1;
+				}
+			} else {
+				// Modern era: Pull at average regardless of how they're pitching
+				// Maybe slightly more lenient if absolutely dominating
+				const baserunnersAllowed = pitcher.hitsAllowed + pitcher.walksAllowed;
+				const roughness = pitcher.battersFace > 0 ? baserunnersAllowed / pitcher.battersFace : 0;
+				if (roughness < 0.1) {
+					// Perfect game / no-hitter type performance
+					pullChance -= 0.1;
+				}
+			}
+
+			pullChance += randomness;
+			pullChance = Math.max(0.1, Math.min(pullChance, 1.0));
+
+			if (Math.random() < pullChance) {
+				const newPitcher = selectReliever(gameState, bullpen);
+				return {
+					shouldChange: true,
+					newPitcher: newPitcher.pitcherId,
+					reason: `BFP count (${pitcher.battersFace}/${typicalBfp.toFixed(0)} avg)`
+				};
+			}
+		}
+
+		// Before reaching average, only pull for serious issues
+		if (pitcher.battersFace >= typicalBfp * 0.8) {
+			const baserunnersAllowed = pitcher.hitsAllowed + pitcher.walksAllowed;
+			const roughness = pitcher.battersFace > 0 ? baserunnersAllowed / pitcher.battersFace : 0;
+
+			if (roughness > 0.5) {
+				if (Math.random() < 0.4 + randomness) {
+					const newPitcher = selectReliever(gameState, bullpen);
+					return {
+						shouldChange: true,
+						newPitcher: newPitcher.pitcherId,
+						reason: 'Pitching ineffectively'
+					};
+				}
+			}
+		}
+
+		return { shouldChange: false };
+	} else {
+		// Relievers use their personal average, capped at inning-group appropriate maximum
+		const relieverAvg = avgBfp ?? 12;
+
+		// Determine the appropriate cap based on current inning
+		let seasonCap: number;
+		if (options?.seasonRelieverBFP) {
+			if (inning <= 3) {
+				seasonCap = options.seasonRelieverBFP.early;
+			} else if (inning <= 6) {
+				seasonCap = options.seasonRelieverBFP.middle;
+			} else {
+				seasonCap = options.seasonRelieverBFP.late;
+			}
+		} else {
+			// Fallback defaults if no season data
+			seasonCap = inning <= 3 ? 15 : inning <= 6 ? 10 : 6;
+		}
+
+		// Cap at the inning-group average to handle swingmen with inflated reliever averages
+		// E.g., a swingman with avgBfpAsReliever=18 entering in 8th gets capped at late-game avg (~4-6)
+		typicalBfp = Math.min(relieverAvg, seasonCap);
+		// Lower variance for early eras (relievers pitched longer), higher for modern (specialists)
+		variance = seasonCap > 10 ? 0.15 : 0.30;
 	}
 
-	if (pitcher.stamina <= 20) {
-		return { shouldChange: true, reason: 'Fatigue' };
+	const lowerThreshold = typicalBfp * (1 - variance);
+	const upperThreshold = typicalBfp * (1 + variance);
+
+	// Hard limit: exceeded upper threshold
+	if (pitcher.battersFace >= upperThreshold) {
+		return { shouldChange: true, reason: `Exceeded limit (${pitcher.battersFace} BFP)` };
 	}
 
-	// Soft limits with randomness - scale based on era-appropriate limits
-	const typicalLimit = limits.typicalLimit;
-	const fatigueThreshold = limits.fatigueThreshold;
+	// Start considering pull when at lower threshold
+	if (pitcher.battersFace >= lowerThreshold) {
+		let pullChance = 0.3; // Base 30% chance at lower threshold
 
-	let pullThreshold = typicalLimit - 10; // Start pulling 10 pitches before typical limit
-	let pullChance = 0;
+		// Increase chance as we approach upper threshold
+		const bfpProgress = (pitcher.battersFace - lowerThreshold) / (upperThreshold - lowerThreshold);
+		pullChance += bfpProgress * 0.4; // Up to 70% at upper threshold
 
-	// Through 5th: fatigue threshold - 10
-	if (inning <= 5 && pitcher.pitchesThrown >= fatigueThreshold - 10) {
-		pullThreshold = fatigueThreshold - 10;
-		pullChance = 0.6;
+		// Later innings = more aggressive pulling
+		if (inning >= 9) {
+			pullChance += 0.15;
+		} else if (inning >= 7) {
+			pullChance += 0.1;
+		}
+
+
+		// Add randomness
+		pullChance += randomness;
+		pullChance = Math.min(pullChance, 1.0);
+
+		if (Math.random() < pullChance) {
+			const newPitcher = selectReliever(gameState, bullpen);
+			return {
+				shouldChange: true,
+				newPitcher: newPitcher.pitcherId,
+				reason: `BFP count (${pitcher.battersFace}/${typicalBfp.toFixed(0)} avg)`
+			};
+		}
 	}
 
-	// 6th inning: fatigue threshold - 5
-	if (inning === 6 && pitcher.pitchesThrown >= fatigueThreshold - 5) {
-		pullThreshold = fatigueThreshold - 5;
-		pullChance = 0.7;
-	}
-
-	// 7th inning: fatigue threshold
-	if (inning === 7 && pitcher.pitchesThrown >= fatigueThreshold) {
-		pullThreshold = fatigueThreshold;
-		pullChance = 0.85;
-	}
-
-	// 8th inning+: fatigue threshold + 5
-	if (inning >= 8 && pitcher.pitchesThrown >= fatigueThreshold + 5) {
-		pullThreshold = fatigueThreshold + 5;
-		pullChance = 1.0;
-	}
-
-	// Add randomness
-	pullChance += randomness;
-	pullChance = Math.min(pullChance, 1.0);
-
-	if (pitcher.pitchesThrown >= pullThreshold && Math.random() < pullChance) {
-		const newPitcher = selectReliever(gameState, bullpen);
-		return {
-			shouldChange: true,
-			newPitcher: newPitcher.pitcherId,
-			reason: 'Pitch count with situation'
-		};
-	}
-
-	// Situation-based: high leverage, starter tired
+	// Situation-based: high leverage, consider pull even earlier
 	const leverage = calculateLeverageIndex(gameState);
-	if (leverage > 2.0 && pitcher.pitchesThrown >= fatigueThreshold - 15) {
-		if (Math.random() < 0.85 + randomness) {
+	if (leverage > 2.0 && pitcher.battersFace >= lowerThreshold * 0.8) {
+		if (Math.random() < 0.7 + randomness) {
 			const newPitcher = selectReliever(gameState, bullpen);
 			return {
 				shouldChange: true,

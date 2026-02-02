@@ -554,23 +554,39 @@ export class GameEngine {
 
 		// First pitcher is the starter
 		const starterId = teamPitchers[0]!.id;
+		const starterStats = this.season.pitchers[starterId];
 
-		// Create pitcher role for starter
+		// Create pitcher role for starter with BFP data
 		const starter: PitcherRole = {
 			pitcherId: starterId,
 			role: 'starter',
 			stamina: 100,
-			pitchesThrown: 0
+			pitchesThrown: 0,
+			battersFace: 0,
+			avgBfpAsStarter: starterStats?.avgBfpAsStarter ?? null,
+			avgBfpAsReliever: starterStats?.avgBfpAsReliever ?? null,
+			hitsAllowed: 0,
+			walksAllowed: 0,
+			runsAllowed: 0
 		};
 		this.pitcherStamina.set(starterId, starter);
 
 		// Remaining pitchers are bullpen
-		const relievers: PitcherRole[] = teamPitchers.slice(1).map((p) => ({
-			pitcherId: p.id,
-			role: p.id.includes('closer') ? 'closer' : 'reliever',
-			stamina: 100,
-			pitchesThrown: 0
-		}));
+		const relievers: PitcherRole[] = teamPitchers.slice(1).map((p) => {
+			const stats = this.season.pitchers[p.id];
+			return {
+				pitcherId: p.id,
+				role: p.id.includes('closer') ? 'closer' : 'reliever',
+				stamina: 100,
+				pitchesThrown: 0,
+				battersFace: 0,
+				avgBfpAsStarter: stats?.avgBfpAsStarter ?? null,
+				avgBfpAsReliever: stats?.avgBfpAsReliever ?? null,
+				hitsAllowed: 0,
+				walksAllowed: 0,
+				runsAllowed: 0
+			};
+		});
 
 		this.bullpenStates.set(teamId, {
 			starter,
@@ -686,11 +702,11 @@ export class GameEngine {
 		// Check for pitching change
 		const mgrState = toManagerialGameState(this.state);
 
-		// Get era-appropriate pitch count limits from season norms
-		const pitchCountOptions: PitchCountOptions = {
-			hardLimit: this.season.norms.pitching.starterPitches.hardLimit,
-			typicalLimit: this.season.norms.pitching.starterPitches.typicalLimit,
-			fatigueThreshold: this.season.norms.pitching.starterPitches.fatigueThreshold,
+		// Use season-specific BFP data for pull decisions
+		const pullOptions = {
+			seasonStarterBFP: this.season.norms.pitching.starterBFP,
+			seasonRelieverBFP: this.season.norms.pitching.relieverBFP,
+			currentInning: this.state.inning
 		};
 
 		const pitchingDecision = shouldPullPitcher(
@@ -698,7 +714,7 @@ export class GameEngine {
 			pitcherRole,
 			bullpen,
 			this.managerialOptions.randomness ?? 0.1,
-			pitchCountOptions
+			pullOptions
 		);
 
 		if (pitchingDecision.shouldChange && pitchingDecision.newPitcher) {
@@ -706,11 +722,18 @@ export class GameEngine {
 			pitchingTeam.pitcher = pitchingDecision.newPitcher;
 
 			// Update stamina tracking - create role for new pitcher
+			const newPitcherStats = this.season.pitchers[pitchingDecision.newPitcher];
 			const newPitcherRole: PitcherRole = {
 				pitcherId: pitchingDecision.newPitcher,
 				role: 'reliever',
 				stamina: 100,
-				pitchesThrown: 0
+				pitchesThrown: 0,
+				battersFace: 0,
+				avgBfpAsStarter: newPitcherStats?.avgBfpAsStarter ?? null,
+				avgBfpAsReliever: newPitcherStats?.avgBfpAsReliever ?? null,
+				hitsAllowed: 0,
+				walksAllowed: 0,
+				runsAllowed: 0
 			};
 			this.pitcherStamina.set(pitchingDecision.newPitcher, newPitcherRole);
 
@@ -809,12 +832,19 @@ export class GameEngine {
 								// Bring in new pitcher
 								battingTeam.pitcher = newPitcherId;
 
-								// Create pitcher role
+								// Create pitcher role with BFP data
+								const newPitcherStats = this.season.pitchers[newPitcherId];
 								const newPitcherRole: PitcherRole = {
 									pitcherId: newPitcherId,
 									role: 'reliever',
 									stamina: 100,
-									pitchesThrown: 0
+									pitchesThrown: 0,
+									battersFace: 0,
+									avgBfpAsStarter: newPitcherStats?.avgBfpAsStarter ?? null,
+									avgBfpAsReliever: newPitcherStats?.avgBfpAsReliever ?? null,
+									hitsAllowed: 0,
+									walksAllowed: 0,
+									runsAllowed: 0
 								};
 								this.pitcherStamina.set(newPitcherId, newPitcherRole);
 
@@ -1110,23 +1140,49 @@ export class GameEngine {
 
 		// Track pitch count for stamina (managerial mode)
 		if (pitcherId && this.managerialOptions.enabled) {
-			this.trackPitchCount(pitcherId);
+			this.trackPitchCount(pitcherId, adjustedOutcome, adjustedRuns);
 		}
 
 		return play;
 	}
 
 	/**
-	 * Track pitch count and update pitcher stamina
+	 * Track batters faced and update pitcher stamina
+	 * Each plate appearance counts as 1 batter faced (BFP)
+	 * Also tracks hits, walks, and runs allowed for complete game logic
 	 */
-	private trackPitchCount(pitcherId: string): void {
+	private trackPitchCount(pitcherId: string, outcome: Outcome, runsAllowed: number): void {
 		const pitcherRole = this.pitcherStamina.get(pitcherId);
 		if (pitcherRole) {
-			// Average pitches per PA is around 4-5, with some variation
-			const pitchesInPA = Math.floor(Math.random() * 4) + 3; // 3-6 pitches
-			pitcherRole.pitchesThrown += pitchesInPA;
-			// Reduce stamina based on pitches thrown
-			pitcherRole.stamina = Math.max(0, pitcherRole.stamina - (pitchesInPA * 0.3));
+			// Track batters faced (1 per PA)
+			pitcherRole.battersFace += 1;
+
+			// Track performance for complete game logic
+			if (outcome === 'walk' || outcome === 'hitByPitch') {
+				pitcherRole.walksAllowed += 1;
+			} else if (
+				outcome === 'single' ||
+				outcome === 'double' ||
+				outcome === 'triple' ||
+				outcome === 'homeRun'
+			) {
+				pitcherRole.hitsAllowed += 1;
+			}
+			pitcherRole.runsAllowed += runsAllowed;
+
+			// Also track pitch count for legacy compatibility (approximate 4 pitches per PA)
+			pitcherRole.pitchesThrown += 4;
+
+			// Reduce stamina based on BFP compared to pitcher's average
+			// Each BFP reduces stamina proportionally to how close they are to their limit
+			const avgBfp = pitcherRole.role === 'starter'
+				? (pitcherRole.avgBfpAsStarter || 25)
+				: (pitcherRole.avgBfpAsReliever || 12);
+
+			// Stamina reduction: 100 / average BFP
+			// So after average BFP, stamina reaches 0
+			const staminaPerBfp = 100 / avgBfp;
+			pitcherRole.stamina = Math.max(0, pitcherRole.stamina - staminaPerBfp);
 		}
 	}
 

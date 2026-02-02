@@ -73,6 +73,10 @@ export interface PitcherStats {
 	name: string;
 	throws: 'L' | 'R';
 	teamId: string;
+	/** Average batters faced when starting (for fatigue modeling) */
+	avgBfpAsStarter: number | null;
+	/** Average batters faced when relieving (for fatigue modeling) */
+	avgBfpAsReliever: number | null;
 	rates: {
 		vsLHB: EventRates;
 		vsRHB: EventRates;
@@ -125,10 +129,21 @@ export interface SeasonNorms {
 		};
 		/** Average batters faced by starters (based on era data) */
 		starterBFP: number;
-		/** Average batters faced by relievers (based on era data) */
-		relieverBFP: number;
+		/** Average batters faced by relievers by inning group */
+		relieverBFP: {
+			/** Early game (innings 1-3): long men, spot starters */
+			early: number;
+			/** Middle game (innings 4-6): middle relievers */
+			middle: number;
+			/** Late game (innings 7+): closers, specialists */
+			late: number;
+		};
+		/** Overall average batters faced by relievers */
+		relieverBFPOverall: number;
 		/** Average number of relievers used per game (both teams combined) */
 		relieversPerGame: number;
+		/** 90th percentile BFP for starters - deep outing ceiling for this season */
+		starterDeepOutingBFP: number;
 	};
 	/** How often pinch hitters are used per game (both teams combined) */
 	substitutions: {
