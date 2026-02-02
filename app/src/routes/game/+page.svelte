@@ -589,7 +589,7 @@
 					</div>
 					<!-- Current Pitcher -->
 					<div class="flex items-center gap-2 py-1 px-2 rounded border-t border-slate-700/30 mt-1 pt-2">
-						<span class="text-[10px] sm:text-xs w-4 text-slate-500"></span>
+						<span class="text-[10px] sm:text-xs w-4 text-slate-500">P</span>
 						<span class="text-[10px] sm:text-xs w-5 text-slate-400"></span>
 						<span class="text-xs sm:text-sm text-slate-300 truncate">{awayPitcherDisplay}</span>
 					</div>
@@ -616,7 +616,7 @@
 					</div>
 					<!-- Current Pitcher -->
 					<div class="flex items-center gap-2 py-1 px-2 rounded border-t border-slate-700/30 mt-1 pt-2">
-						<span class="text-[10px] sm:text-xs w-4 text-slate-500"></span>
+						<span class="text-[10px] sm:text-xs w-4 text-slate-500">P</span>
 						<span class="text-[10px] sm:text-xs w-5 text-slate-400"></span>
 						<span class="text-xs sm:text-sm text-slate-300 truncate">{homePitcherDisplay}</span>
 					</div>
