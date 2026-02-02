@@ -1,13 +1,12 @@
 /**
  * Static teams data by year
- * Downloaded and cached similar to season files
+ * Downloaded and cached permanently
  */
 
 import { clearSeasonCache } from './season-loader.js';
 
 const TEAMS_DATA_VERSION = '1.0';
 const CACHE_KEY = 'bb_teams_data';
-const CACHE_EXPIRY_DAYS = 30; // Cache for 30 days
 
 export interface TeamInfo {
 	id: string;
@@ -29,7 +28,7 @@ interface CachedTeamsData {
 let memoryCache: TeamsByYear | null = null;
 
 /**
- * Check if teams data is downloaded
+ * Check if teams data is downloaded (cached permanently)
  */
 export function isTeamsDataDownloaded(): boolean {
 	const cached = localStorage.getItem(CACHE_KEY);
@@ -37,10 +36,8 @@ export function isTeamsDataDownloaded(): boolean {
 
 	try {
 		const data = JSON.parse(cached) as CachedTeamsData;
-		// Check if cache is expired
-		const cachedAge = Date.now() - new Date(data.cachedAt).getTime();
-		const maxAge = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
-		return cachedAge < maxAge;
+		// Only check version match, no expiry
+		return data.version === TEAMS_DATA_VERSION;
 	} catch {
 		return false;
 	}
@@ -55,15 +52,13 @@ export async function loadTeamsData(): Promise<TeamsByYear> {
 		return memoryCache;
 	}
 
-	// Check localStorage cache
+	// Check localStorage cache (permanent, only check version)
 	try {
 		const cached = localStorage.getItem(CACHE_KEY);
 		if (cached) {
 			const data = JSON.parse(cached) as CachedTeamsData;
-			const cachedAge = Date.now() - new Date(data.cachedAt).getTime();
-			const maxAge = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 
-			if (cachedAge < maxAge && data.version === TEAMS_DATA_VERSION) {
+			if (data.version === TEAMS_DATA_VERSION) {
 				memoryCache = data.data;
 				return memoryCache;
 			}
