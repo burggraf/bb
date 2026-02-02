@@ -2,7 +2,15 @@
  * Baseball game engine using the MatchupModel
  */
 
-import { MatchupModel, type ProbabilityDistribution } from '@bb/model';
+import {
+	MatchupModel,
+	type ProbabilityDistribution,
+	generateLineup as generateManagerialLineup,
+	type LineupSlot,
+	shouldPullPitcher,
+	type BatterStats as ModelBatterStats,
+	type PitcherStats as ModelPitcherStats
+} from '@bb/model';
 import type {
 	GameState,
 	LineupState,
@@ -11,9 +19,80 @@ import type {
 	SeasonPackage,
 	BatterStats,
 	PitcherStats,
+	LineupPlayer
 } from './types.js';
 import { transition, createBaserunningState } from './state-machine/index.js';
 import { isHit } from './state-machine/outcome-types.js';
+import type { PitcherRole, BullpenState } from '@bb/model';
+
+/**
+ * Convert app BatterStats to model BatterStats
+ */
+function toModelBatter(batter: BatterStats): ModelBatterStats {
+	return {
+		id: batter.id,
+		name: batter.name,
+		handedness: batter.bats,
+		rates: {
+			vsLeft: batter.rates.vsLHP,
+			vsRight: batter.rates.vsRHP
+		}
+	};
+}
+
+/**
+ * Convert app PitcherStats to model PitcherStats
+ */
+function toModelPitcher(pitcher: PitcherStats): ModelPitcherStats {
+	return {
+		id: pitcher.id,
+		name: pitcher.name,
+		handedness: pitcher.throws,
+		rates: {
+			vsLeft: pitcher.rates.vsLHB,
+			vsRight: pitcher.rates.vsRHB
+		}
+	};
+}
+
+/**
+ * Options for managerial system integration
+ */
+export interface ManagerialOptions {
+	/** Enable managerial decisions */
+	enabled?: boolean;
+	/** Randomness factor for decisions (0-1) */
+	randomness?: number;
+	/** Lineup generation method */
+	lineupMethod?: 'obp' | 'sabermetric' | 'traditional';
+}
+
+/**
+ * Convert app GameState to managerial GameState interface
+ */
+function toManagerialGameState(state: GameState) {
+	// Calculate score difference from batting team's perspective
+	let awayScore = 0;
+	let homeScore = 0;
+	for (const play of state.plays) {
+		if (play.isTopInning) {
+			awayScore += play.runsScored;
+		} else {
+			homeScore += play.runsScored;
+		}
+	}
+
+	// Score diff from batting team's perspective
+	const scoreDiff = state.isTopInning ? awayScore - homeScore : homeScore - awayScore;
+
+	return {
+		inning: state.inning,
+		isTopInning: state.isTopInning,
+		outs: state.outs,
+		bases: state.bases,
+		scoreDiff
+	};
+}
 
 // Generate lineup from batters on the specified team
 function generateLineup(
@@ -271,10 +350,67 @@ export class GameEngine {
 	private model: MatchupModel;
 	private season: SeasonPackage;
 	private state: GameState;
+	private managerialOptions: ManagerialOptions;
+	// Track pitcher stamina and bullpen state
+	private pitcherStamina: Map<string, PitcherRole>;
+	private bullpenStates: Map<string, BullpenState>;
 
-	constructor(season: SeasonPackage, awayTeam: string, homeTeam: string) {
+	constructor(
+		season: SeasonPackage,
+		awayTeam: string,
+		homeTeam: string,
+		managerial?: ManagerialOptions
+	) {
 		this.model = new MatchupModel();
 		this.season = season;
+		this.managerialOptions = managerial ?? { enabled: false };
+
+		// Generate lineups
+		let awayLineup: LineupState;
+		let homeLineup: LineupState;
+
+		if (this.managerialOptions.enabled) {
+			// Use managerial system for lineups
+			const awayBatters = Object.values(season.batters)
+				.filter((b) => b.teamId === awayTeam)
+				.map(toModelBatter);
+			const homeBatters = Object.values(season.batters)
+				.filter((b) => b.teamId === homeTeam)
+				.map(toModelBatter);
+
+			const awaySlots = generateManagerialLineup(awayBatters, {
+				method: this.managerialOptions.lineupMethod,
+				randomness: this.managerialOptions.randomness
+			});
+			const homeSlots = generateManagerialLineup(homeBatters, {
+				method: this.managerialOptions.lineupMethod,
+				randomness: this.managerialOptions.randomness
+			});
+
+			awayLineup = {
+				teamId: awayTeam,
+				players: awaySlots.map((s: LineupSlot) => ({
+					playerId: s.playerId,
+					position: s.fieldingPosition
+				})),
+				currentBatterIndex: 0,
+				pitcher: null // Will be set in initializeBullpen
+			};
+
+			homeLineup = {
+				teamId: homeTeam,
+				players: homeSlots.map((s: LineupSlot) => ({
+					playerId: s.playerId,
+					position: s.fieldingPosition
+				})),
+				currentBatterIndex: 0,
+				pitcher: null // Will be set in initializeBullpen
+			};
+		} else {
+			// Use default lineup generation
+			awayLineup = generateLineup(season.batters, season.pitchers, awayTeam);
+			homeLineup = generateLineup(season.batters, season.pitchers, homeTeam);
+		}
 
 		this.state = {
 			meta: {
@@ -286,15 +422,220 @@ export class GameEngine {
 			isTopInning: true,
 			outs: 0,
 			bases: [null, null, null],
-			awayLineup: generateLineup(season.batters, season.pitchers, awayTeam),
-			homeLineup: generateLineup(season.batters, season.pitchers, homeTeam),
+			awayLineup,
+			homeLineup,
 			plays: [],
 			homeTeamHasBattedInInning: false,
 		};
+
+		// Initialize bullpen tracking
+		this.pitcherStamina = new Map();
+		this.bullpenStates = new Map();
+		this.initializeBullpen(awayTeam);
+		this.initializeBullpen(homeTeam);
+
+		// Record starting lineups
+		this.recordStartingLineups();
+	}
+
+	/**
+	 * Record starting lineups for both teams
+	 */
+	private recordStartingLineups(): void {
+		const { state, season } = this;
+
+		// Get team names
+		const awayTeam = season.teams[state.meta.awayTeam];
+		const homeTeam = season.teams[state.meta.homeTeam];
+		const awayName = awayTeam ? `${awayTeam.city} ${awayTeam.nickname}` : state.meta.awayTeam;
+		const homeName = homeTeam ? `${homeTeam.city} ${homeTeam.nickname}` : state.meta.homeTeam;
+
+		// Record away lineup
+		const awayLineupPlayers: LineupPlayer[] = [];
+		for (let i = 0; i < 9; i++) {
+			const slot = state.awayLineup.players[i];
+			if (slot?.playerId) {
+				const player = season.batters[slot.playerId];
+				awayLineupPlayers.push({
+					playerId: slot.playerId,
+					playerName: player?.name ?? 'Unknown',
+					battingOrder: i + 1,
+					fieldingPosition: slot.position
+				});
+			}
+		}
+
+		const awayPitcherId = state.awayLineup.pitcher;
+		const awayPitcher = awayPitcherId ? season.pitchers[awayPitcherId] : null;
+
+		state.plays.unshift({
+			inning: 1,
+			isTopInning: true,
+			outcome: 'out' as Outcome,
+			batterId: '',
+			batterName: '',
+			pitcherId: awayPitcherId ?? '',
+			pitcherName: awayPitcher?.name ?? 'Unknown',
+			description: `${awayName} starting lineup: ${awayLineupPlayers.map((p) => `${p.playerName} (${this.getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${awayPitcher?.name ?? 'Unknown'}`,
+			runsScored: 0,
+			eventType: 'startingLineup',
+			lineup: awayLineupPlayers
+		});
+
+		// Record home lineup
+		const homeLineupPlayers: LineupPlayer[] = [];
+		for (let i = 0; i < 9; i++) {
+			const slot = state.homeLineup.players[i];
+			if (slot?.playerId) {
+				const player = season.batters[slot.playerId];
+				homeLineupPlayers.push({
+					playerId: slot.playerId,
+					playerName: player?.name ?? 'Unknown',
+					battingOrder: i + 1,
+					fieldingPosition: slot.position
+				});
+			}
+		}
+
+		const homePitcherId = state.homeLineup.pitcher;
+		const homePitcher = homePitcherId ? season.pitchers[homePitcherId] : null;
+
+		state.plays.unshift({
+			inning: 1,
+			isTopInning: false,
+			outcome: 'out' as Outcome,
+			batterId: '',
+			batterName: '',
+			pitcherId: homePitcherId ?? '',
+			pitcherName: homePitcher?.name ?? 'Unknown',
+			description: `${homeName} starting lineup: ${homeLineupPlayers.map((p) => `${p.playerName} (${this.getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${homePitcher?.name ?? 'Unknown'}`,
+			runsScored: 0,
+			eventType: 'startingLineup',
+			lineup: homeLineupPlayers
+		});
+	}
+
+	/**
+	 * Get position name from position number
+	 */
+	private getPositionName(position: number): string {
+		const positionNames = [
+			'P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'
+		];
+		return positionNames[position] ?? `Pos${position}`;
+	}
+
+	/**
+	 * Initialize bullpen state for a team
+	 */
+	private initializeBullpen(teamId: string): void {
+		const teamPitchers = Object.values(this.season.pitchers).filter((p) => p.teamId === teamId);
+
+		if (teamPitchers.length === 0) return;
+
+		// First pitcher is the starter
+		const starterId = teamPitchers[0]!.id;
+		this.state.awayLineup.pitcher = starterId;
+		this.state.homeLineup.pitcher = starterId;
+
+		// Create pitcher role for starter
+		const starter: PitcherRole = {
+			pitcherId: starterId,
+			role: 'starter',
+			stamina: 100,
+			pitchesThrown: 0
+		};
+		this.pitcherStamina.set(starterId, starter);
+
+		// Remaining pitchers are bullpen
+		const relievers: PitcherRole[] = teamPitchers.slice(1).map((p) => ({
+			pitcherId: p.id,
+			role: p.id.includes('closer') ? 'closer' : 'reliever',
+			stamina: 100,
+			pitchesThrown: 0
+		}));
+
+		this.bullpenStates.set(teamId, {
+			starter,
+			relievers,
+			closer: relievers.find((r) => r.role === 'closer')
+		});
+
+		// Set the starting pitcher in the appropriate lineup
+		if (this.state.awayLineup.teamId === teamId) {
+			this.state.awayLineup.pitcher = starterId;
+		} else {
+			this.state.homeLineup.pitcher = starterId;
+		}
 	}
 
 	getState(): Readonly<GameState> {
 		return this.state;
+	}
+
+	/**
+	 * Check for managerial decisions before a plate appearance
+	 * Returns true if a substitution was made
+	 */
+	private checkForManagerialDecisions(): boolean {
+		if (!this.managerialOptions.enabled) return false;
+
+		const pitchingTeam = this.state.isTopInning ? this.state.homeLineup : this.state.awayLineup;
+		const battingTeam = this.state.isTopInning ? this.state.awayLineup : this.state.homeLineup;
+
+		// Get current pitcher
+		const pitcherId = pitchingTeam.pitcher;
+		if (!pitcherId) return false;
+
+		const pitcher = this.season.pitchers[pitcherId];
+		const pitcherRole = this.pitcherStamina.get(pitcherId);
+		const bullpen = this.bullpenStates.get(pitchingTeam.teamId);
+
+		if (!pitcher || !pitcherRole || !bullpen) return false;
+
+		// Check for pitching change
+		const mgrState = toManagerialGameState(this.state);
+
+		const pitchingDecision = shouldPullPitcher(
+			mgrState,
+			pitcherRole,
+			bullpen,
+			this.managerialOptions.randomness ?? 0.1
+		);
+
+		if (pitchingDecision.shouldChange && pitchingDecision.newPitcher) {
+			// Apply pitching change
+			pitchingTeam.pitcher = pitchingDecision.newPitcher;
+
+			// Update stamina tracking - create role for new pitcher
+			const newPitcherRole: PitcherRole = {
+				pitcherId: pitchingDecision.newPitcher,
+				role: 'reliever',
+				stamina: 100,
+				pitchesThrown: 0
+			};
+			this.pitcherStamina.set(pitchingDecision.newPitcher, newPitcherRole);
+
+			// Record the substitution as a play
+			const newPitcher = this.season.pitchers[pitchingDecision.newPitcher];
+			this.state.plays.unshift({
+				inning: this.state.inning,
+				isTopInning: this.state.isTopInning,
+				outcome: 'out' as Outcome,
+				batterId: '',
+				batterName: '',
+				pitcherId: pitchingDecision.newPitcher,
+				pitcherName: newPitcher ? newPitcher.name : 'Unknown',
+				description: `Pitching change: ${newPitcher?.name ?? 'Unknown'} replaces ${pitcher.name}`,
+				runsScored: 0,
+				eventType: 'pitchingChange',
+				substitutedPlayer: pitcherId
+			});
+
+			return true;
+		}
+
+		return false;
 	}
 
 	simulatePlateAppearance(): PlayEvent {
@@ -305,6 +646,10 @@ export class GameEngine {
 		if (state.isTopInning && state.inning > 9) {
 			state.homeTeamHasBattedInInning = false;
 		}
+
+		// Check for managerial decisions (pitching changes, pinch-hitters)
+		this.checkForManagerialDecisions();
+
 		const battingTeam = state.isTopInning ? state.awayLineup : state.homeLineup;
 		const pitchingTeam = state.isTopInning ? state.homeLineup : state.awayLineup;
 
@@ -544,7 +889,24 @@ export class GameEngine {
 		// Advance to next batter
 		advanceBatter(battingTeam);
 
+		// Track pitch count for stamina (managerial mode)
+		if (pitcherId && this.managerialOptions.enabled) {
+			this.trackPitchCount(pitcherId);
+		}
+
 		return play;
+	}
+
+	/**
+	 * Track pitch count and update pitcher stamina
+	 */
+	private trackPitchCount(pitcherId: string): void {
+		const pitcherRole = this.pitcherStamina.get(pitcherId);
+		if (pitcherRole) {
+			pitcherRole.pitchesThrown += 1;
+			// Reduce stamina slightly with each pitch
+			pitcherRole.stamina = Math.max(0, pitcherRole.stamina - 0.2);
+		}
 	}
 
 	isComplete(): boolean {
@@ -649,15 +1011,28 @@ export class GameEngine {
 	}
 
 	// Create a new GameEngine from a serialized state
-	static restore(serializedState: string, season: SeasonPackage): GameEngine {
+	static restore(
+		serializedState: string,
+		season: SeasonPackage,
+		managerial?: ManagerialOptions
+	): GameEngine {
 		const state = JSON.parse(serializedState) as GameState;
-		const engine = new GameEngine(season, state.meta.awayTeam, state.meta.homeTeam);
+		const engine = new GameEngine(
+			season,
+			state.meta.awayTeam,
+			state.meta.homeTeam,
+			managerial
+		);
 		// Restore game state but regenerate lineups from season data
 		// This ensures lineups use correct team filtering even after data updates
 		engine.state = {
 			...state,
-			awayLineup: generateLineup(season.batters, season.pitchers, state.meta.awayTeam),
-			homeLineup: generateLineup(season.batters, season.pitchers, state.meta.homeTeam),
+			awayLineup: managerial?.enabled
+				? engine.state.awayLineup // Keep the generated lineup from constructor
+				: generateLineup(season.batters, season.pitchers, state.meta.awayTeam),
+			homeLineup: managerial?.enabled
+				? engine.state.homeLineup // Keep the generated lineup from constructor
+				: generateLineup(season.batters, season.pitchers, state.meta.homeTeam),
 			// Ensure flag exists for backward compatibility
 			homeTeamHasBattedInInning: state.homeTeamHasBattedInInning ?? false,
 		};

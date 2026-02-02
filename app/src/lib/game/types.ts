@@ -116,6 +116,16 @@ export interface LineupSlot {
 	position: number;
 }
 
+/**
+ * Extended lineup slot with player name for display
+ */
+export interface LineupPlayer {
+	playerId: string;
+	playerName: string;
+	battingOrder: number;
+	fieldingPosition: number;
+}
+
 export interface LineupState {
 	teamId: string;
 	players: LineupSlot[];
@@ -153,6 +163,12 @@ export interface PlayEvent {
 	runnersAfter?: [string | null, string | null, string | null]; // runners on base after the play (1B, 2B, 3B)
 	scorerIds?: string[]; // players who scored on this play
 	runnersBefore?: [string | null, string | null, string | null]; // runners on base before the play
+	// Managerial event types
+	eventType?: 'plateAppearance' | 'startingLineup' | 'pitchingChange' | 'pinchHit' | 'defensiveSub';
+	// Additional data for managerial events
+	lineup?: LineupPlayer[]; // For starting lineup events
+	substitutedPlayer?: string; // For PH/defensive sub - who was replaced
+	position?: number; // For defensive sub - new position
 }
 
 export type GameMode = 'pitch-by-pitch' | 'auto-play' | 'quick-sim';
