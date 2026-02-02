@@ -329,7 +329,7 @@ export class GameEngine {
 	) {
 		this.model = new MatchupModel();
 		this.season = season;
-		this.managerialOptions = { enabled: false, randomness: 0.1, ...managerial };
+		this.managerialOptions = { enabled: true, randomness: 0.1, ...managerial };
 
 		// Get league info for DH rules
 		const awayLeague = season.teams[awayTeam]?.league ?? 'NL';
