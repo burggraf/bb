@@ -25,6 +25,7 @@ import type {
 import { transition, createBaserunningState } from './state-machine/index.js';
 import { isHit } from './state-machine/outcome-types.js';
 import type { PitcherRole, BullpenState } from '@bb/model';
+import { buildLineup } from './lineup-builder.js';
 
 /**
  * Convert app BatterStats to model BatterStats
@@ -95,154 +96,13 @@ function toManagerialGameState(state: GameState) {
 	};
 }
 
-// Generate lineup from batters on the specified team
-// For NL games (pre-2022), pitcher bats. For AL games (post-1973), DH is used.
-function generateLineup(
-	batters: Record<string, BatterStats>,
-	pitchers: Record<string, PitcherStats>,
-	teamId: string
-): LineupState {
-	// Filter batters by teamId (exclude pitchers - position 1)
-	const positionPlayers = Object.values(batters).filter((b) => b.teamId === teamId && b.primaryPosition !== 1);
-
-	// Group batters by primary position
-	const byPosition: Record<number, BatterStats[]> = {
-		2: [], // C
-		3: [], // 1B
-		4: [], // 2B
-		5: [], // 3B
-		6: [], // SS
-		7: [], // LF
-		8: [], // CF
-		9: [], // RF
-	};
-
-	for (const batter of positionPlayers) {
-		const pos = batter.primaryPosition;
-		if (pos >= 2 && pos <= 9) {
-			byPosition[pos].push(batter);
-		}
-	}
-
-	// Calculate OBP for sorting
-	const calculateOBP = (b: BatterStats): number => {
-		const vsR = b.rates.vsRHP;
-		return vsR.walk + vsR.single + vsR.double + vsR.triple + vsR.homeRun;
-	};
-
-	// Select best batter at each position (by OBP)
-	const bestAtPosition: Record<number, BatterStats> = {};
-	for (const pos of [2, 3, 4, 5, 6, 7, 8, 9]) {
-		const candidates = byPosition[pos];
-		if (candidates.length > 0) {
-			// Sort by OBP and take the best
-			candidates.sort((a, b) => calculateOBP(b) - calculateOBP(a));
-			bestAtPosition[pos] = candidates[0]!;
-		}
-	}
-
-	// Check if we have all 8 position players
-	const missingPositions = [2, 3, 4, 5, 6, 7, 8, 9].filter((pos) => !bestAtPosition[pos]);
-	if (missingPositions.length > 0) {
-		console.warn(`Missing players at positions ${missingPositions.map(getPositionName).join(', ')} for team ${teamId}`);
-	}
-
-	// Build lineup slots with proper fielding positions
-	const lineupPlayers: Array<{ batter: BatterStats; battingOrder: number; fieldingPosition: number }> = [];
-
-	// Traditional batting order for NL (pitcher bats 8th or 9th)
-	// Using a simplified traditional order:
-	// 1: Leadoff (high OBP) - typically CF or SS
-	// 2: Contact - good bat control - typically 2B or 3B
-	// 3: Best hitter - typically RF or LF
-	// 4: Power - cleanup - typically 1B or LF
-	// 5: Power - typically RF or 3B
-	// 6: Corner OF/IF - typically LF or 1B
-	// 7: Middle IF - typically 2B or SS
-	// 8: Pitcher (NL) or weak hitter
-	// 9: C (or pitcher if NL)
-
-	// For now, use a simple traditional order mapping
-	// Batting order -> Fielding position
-	const traditionalOrder: Array<{ battingOrder: number; preferredPosition: number; fallbackPositions: number[] }> = [
-		{ battingOrder: 1, preferredPosition: 8, fallbackPositions: [6, 7, 9] },  // CF (leadoff type)
-		{ battingOrder: 2, preferredPosition: 4, fallbackPositions: [5, 6] },     // 2B (contact)
-		{ battingOrder: 3, preferredPosition: 9, fallbackPositions: [7, 3] },     // RF (best hitter)
-		{ battingOrder: 4, preferredPosition: 3, fallbackPositions: [7, 9] },     // 1B (cleanup)
-		{ battingOrder: 5, preferredPosition: 5, fallbackPositions: [7, 9] },     // 3B (power)
-		{ battingOrder: 6, preferredPosition: 7, fallbackPositions: [9, 3] },     // LF
-		{ battingOrder: 7, preferredPosition: 6, fallbackPositions: [4, 5] },     // SS
-		{ battingOrder: 8, preferredPosition: 2, fallbackPositions: [3] },        // C
-		{ battingOrder: 9, preferredPosition: 1, fallbackPositions: [] },         // P (will be added separately)
-	];
-
-	// Assign position players to batting order slots
-	const usedPositions = new Set<number>();
-	for (const slot of traditionalOrder.slice(0, 8)) {
-		let assigned = bestAtPosition[slot.preferredPosition];
-		const preferredPos = slot.preferredPosition;
-
-		// If preferred position already used, try fallbacks
-		if (assigned && usedPositions.has(preferredPos)) {
-			assigned = undefined;
-			for (const fallbackPos of slot.fallbackPositions) {
-				if (bestAtPosition[fallbackPos] && !usedPositions.has(fallbackPos)) {
-					assigned = bestAtPosition[fallbackPos];
-					break;
-				}
-			}
-		}
-
-		// If still not assigned, find any available position
-		if (!assigned) {
-			for (const pos of [2, 3, 4, 5, 6, 7, 8, 9]) {
-				if (bestAtPosition[pos] && !usedPositions.has(pos)) {
-					assigned = bestAtPosition[pos];
-					break;
-				}
-			}
-		}
-
-		if (assigned) {
-			lineupPlayers.push({
-				batter: assigned,
-				battingOrder: slot.battingOrder,
-				fieldingPosition: assigned.primaryPosition
-			});
-			usedPositions.add(assigned.primaryPosition);
-		}
-	}
-
-	// Add pitcher in the 9th spot for NL games
-	const teamPitchers = Object.values(pitchers).filter((p) => p.teamId === teamId);
-	const startingPitcher = teamPitchers[0]?.id ?? null;
-
-	if (startingPitcher) {
-		lineupPlayers.push({
-			batter: { id: startingPitcher, name: '', bats: 'R', teamId, primaryPosition: 1, positionEligibility: {}, rates: batters[startingPitcher]?.rates ?? { vsLHP: {} as any, vsRHP: {} as any } },
-			battingOrder: 9,
-			fieldingPosition: 1 // Pitcher
-		});
-	}
-
-	// Sort by batting order
-	lineupPlayers.sort((a, b) => a.battingOrder - b.battingOrder);
-
-	return {
-		teamId,
-		players: lineupPlayers.map((p) => ({ playerId: p.batter.id, position: p.fieldingPosition })),
-		currentBatterIndex: 0,
-		pitcher: startingPitcher,
-	};
-}
-
 // Get next batter in lineup
-function getNextBatter(lineup: LineupState, season: SeasonPackage): string {
+function getNextBatter(lineup: LineupState, batters: Record<string, BatterStats>): string {
 	const playerId = lineup.players[lineup.currentBatterIndex].playerId;
 	if (!playerId) {
 		// Use a random batter as fallback
-		const batters = Object.values(season.batters);
-		return batters[Math.floor(Math.random() * batters.length)].id;
+		const batterList = Object.values(batters);
+		return batterList[Math.floor(Math.random() * batterList.length)].id;
 	}
 	return playerId;
 }
@@ -469,54 +329,19 @@ export class GameEngine {
 	) {
 		this.model = new MatchupModel();
 		this.season = season;
-		this.managerialOptions = { enabled: true, randomness: 0.1, ...managerial };
+		this.managerialOptions = { enabled: false, randomness: 0.1, ...managerial };
 
-		// Generate lineups
-		let awayLineup: LineupState;
-		let homeLineup: LineupState;
+		// Get league info for DH rules
+		const awayLeague = season.teams[awayTeam]?.league ?? 'NL';
+		const homeLeague = season.teams[homeTeam]?.league ?? 'NL';
+		const year = season.meta.year;
 
-		if (this.managerialOptions.enabled) {
-			// Use managerial system for lineups
-			const awayBatters = Object.values(season.batters)
-				.filter((b) => b.teamId === awayTeam)
-				.map(toModelBatter);
-			const homeBatters = Object.values(season.batters)
-				.filter((b) => b.teamId === homeTeam)
-				.map(toModelBatter);
+		// Generate lineups using the new lineup builder
+		const awayResult = buildLineup(season.batters, season.pitchers, awayTeam, awayLeague, year);
+		const homeResult = buildLineup(season.batters, season.pitchers, homeTeam, homeLeague, year);
 
-			const awaySlots = generateManagerialLineup(awayBatters, {
-				method: this.managerialOptions.lineupMethod,
-				randomness: this.managerialOptions.randomness
-			});
-			const homeSlots = generateManagerialLineup(homeBatters, {
-				method: this.managerialOptions.lineupMethod,
-				randomness: this.managerialOptions.randomness
-			});
-
-			awayLineup = {
-				teamId: awayTeam,
-				players: awaySlots.map((s: LineupSlot) => ({
-					playerId: s.playerId,
-					position: s.fieldingPosition
-				})),
-				currentBatterIndex: 0,
-				pitcher: null // Will be set in initializeBullpen
-			};
-
-			homeLineup = {
-				teamId: homeTeam,
-				players: homeSlots.map((s: LineupSlot) => ({
-					playerId: s.playerId,
-					position: s.fieldingPosition
-				})),
-				currentBatterIndex: 0,
-				pitcher: null // Will be set in initializeBullpen
-			};
-		} else {
-			// Use default lineup generation
-			awayLineup = generateLineup(season.batters, season.pitchers, awayTeam);
-			homeLineup = generateLineup(season.batters, season.pitchers, homeTeam);
-		}
+		const awayLineup: LineupState = awayResult.lineup;
+		const homeLineup: LineupState = homeResult.lineup;
 
 		this.state = {
 			meta: {
@@ -539,8 +364,8 @@ export class GameEngine {
 		this.bullpenStates = new Map();
 		this.usedPinchHitters = new Set();
 		this.removedPlayers = new Set();
-		this.initializeBullpen(awayTeam);
-		this.initializeBullpen(homeTeam);
+		this.initializeBullpen(awayTeam, awayLineup.pitcher!);
+		this.initializeBullpen(homeTeam, homeLineup.pitcher!);
 
 		// Record starting lineups
 		this.recordStartingLineups();
@@ -646,15 +471,16 @@ export class GameEngine {
 
 	/**
 	 * Initialize bullpen state for a team
+	 * Uses the starting pitcher already selected by the lineup builder
 	 */
-	private initializeBullpen(teamId: string): void {
-		const teamPitchers = Object.values(this.season.pitchers).filter((p) => p.teamId === teamId);
+	private initializeBullpen(teamId: string, starterId: string): void {
+		const teamPitchers = Object.values(this.season.pitchers).filter((p) => p.teamId === teamId && p.id !== starterId);
 
-		if (teamPitchers.length === 0) return;
-
-		// First pitcher is the starter
-		const starterId = teamPitchers[0]!.id;
 		const starterStats = this.season.pitchers[starterId];
+		if (!starterStats) {
+			console.warn(`Starter ${starterId} not found in season data for team ${teamId}`);
+			return;
+		}
 
 		// Create pitcher role for starter with BFP data
 		const starter: PitcherRole = {
@@ -672,7 +498,7 @@ export class GameEngine {
 		this.pitcherStamina.set(starterId, starter);
 
 		// Remaining pitchers are bullpen
-		const relievers: PitcherRole[] = teamPitchers.slice(1).map((p) => {
+		const relievers: PitcherRole[] = teamPitchers.map((p) => {
 			const stats = this.season.pitchers[p.id];
 			return {
 				pitcherId: p.id,
@@ -694,12 +520,7 @@ export class GameEngine {
 			closer: relievers.find((r) => r.role === 'closer')
 		});
 
-		// Set the starting pitcher in the appropriate lineup
-		if (this.state.awayLineup.teamId === teamId) {
-			this.state.awayLineup.pitcher = starterId;
-		} else {
-			this.state.homeLineup.pitcher = starterId;
-		}
+		// Note: The starting pitcher is already set in the lineup by buildLineup
 	}
 
 	/**
@@ -995,7 +816,7 @@ export class GameEngine {
 		const pitchingTeam = state.isTopInning ? state.homeLineup : state.awayLineup;
 
 		// Get batter and pitcher
-		const batterId = getNextBatter(battingTeam, season);
+		const batterId = getNextBatter(battingTeam, season.batters);
 		const batter = season.batters[batterId];
 		// Use the current starting pitcher (V1: no bullpen changes yet)
 		const pitcherId = pitchingTeam.pitcher;
@@ -1307,7 +1128,7 @@ export class GameEngine {
 
 	private getCurrentBatter(): BatterStats {
 		const battingTeam = this.state.isTopInning ? this.state.awayLineup : this.state.homeLineup;
-		const batterId = getNextBatter(battingTeam, this.season);
+		const batterId = getNextBatter(battingTeam, this.season.batters);
 		const batter = this.season.batters[batterId];
 		if (!batter) {
 			throw new Error('Missing batter data');
@@ -1386,22 +1207,28 @@ export class GameEngine {
 		managerial?: ManagerialOptions
 	): GameEngine {
 		const state = JSON.parse(serializedState) as GameState;
+
+		// Get league info for DH rules
+		const awayLeague = season.teams[state.meta.awayTeam]?.league ?? 'NL';
+		const homeLeague = season.teams[state.meta.homeTeam]?.league ?? 'NL';
+		const year = season.meta.year;
+
 		const engine = new GameEngine(
 			season,
 			state.meta.awayTeam,
 			state.meta.homeTeam,
 			managerial
 		);
-		// Restore game state but regenerate lineups from season data
-		// This ensures lineups use correct team filtering even after data updates
+
+		// Regenerate lineups using buildLineup for consistent team filtering
+		const awayLineup = buildLineup(season.batters, season.pitchers, state.meta.awayTeam, awayLeague, year).lineup;
+		const homeLineup = buildLineup(season.batters, season.pitchers, state.meta.homeTeam, homeLeague, year).lineup;
+
+		// Restore game state with fresh lineups
 		engine.state = {
 			...state,
-			awayLineup: managerial?.enabled
-				? engine.state.awayLineup // Keep the generated lineup from constructor
-				: generateLineup(season.batters, season.pitchers, state.meta.awayTeam),
-			homeLineup: managerial?.enabled
-				? engine.state.homeLineup // Keep the generated lineup from constructor
-				: generateLineup(season.batters, season.pitchers, state.meta.homeTeam),
+			awayLineup,
+			homeLineup,
 			// Ensure flag exists for backward compatibility
 			homeTeamHasBattedInInning: state.homeTeamHasBattedInInning ?? false,
 		};
