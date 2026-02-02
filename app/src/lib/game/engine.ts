@@ -739,11 +739,12 @@ export class GameEngine {
 		const currentBatter = this.season.batters[currentBatterId];
 		if (!currentBatter) return false;
 
-		// Pinch hit frequency is controlled via relaxedThresholds in shouldPinchHit
-		// The season norm provides the target PH rate, but actual decisions use the relaxed mode
-		// which lowers leverage thresholds and increases probability of PH
-
-		// Get available bench players
+		// Season-based frequency control: target PH rate divided by total PAs per game
+		// Multiplied by 15 to account for shouldPinchHit rejecting ~93% of candidates
+		// 1976: (2.8 PH/game / 70 PAs) * 15 = ~60% should consider PH
+		const phConsiderationRate = (this.season.norms.substitutions.pinchHitsPerGame / 70) * 15;
+		const shouldConsiderPH = Math.random() < phConsiderationRate;
+		if (!shouldConsiderPH) return false;
 
 		// Get available bench players
 		const currentLineupPlayerIds = battingTeam.players.map(p => p.playerId).filter((id): id is string => id !== null);
@@ -764,7 +765,7 @@ export class GameEngine {
 					toModelBatter(currentBatter),
 					availableBench,
 					toModelPitcher(opposingPitcher),
-					{ randomness: this.managerialOptions.randomness ?? 0.15, relaxedThresholds: true }
+					this.managerialOptions.randomness ?? 0.15
 				);
 
 				if (phDecision.shouldPinchHit && phDecision.pinchHitterId) {
