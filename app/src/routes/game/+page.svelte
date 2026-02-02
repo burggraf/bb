@@ -5,6 +5,7 @@
 	import { loadSeason } from '$lib/game/season-loader.js';
 	import { GameEngine } from '$lib/game/engine.js';
 	import type { GameState, PlayEvent } from '$lib/game/types.js';
+	import GameScoreboard from '$lib/components/GameScoreboard.svelte';
 
 	// Constants for localStorage
 	const STORAGE_KEY = 'baseball-game-state';
@@ -18,7 +19,8 @@
 	let isTopInning = $state(true);
 	let outs = $state(0);
 
-	let runners = $state([false, false, false]); // 1B, 2B, 3B
+	let runnerIds = $state<[string | null, string | null, string | null]>([null, null, null]); // 1B, 2B, 3B runner IDs
+	let runnerNames = $state<[string | null, string | null, string | null]>([null, null, null]); // 1B, 2B, 3B runner names
 	let plays = $state<PlayEvent[]>([]);
 	let gameComplete = $state(false);
 
@@ -203,10 +205,12 @@
 		isTopInning = state.isTopInning;
 		outs = state.outs;
 
-		runners = [
-			state.bases[0] !== null,
-			state.bases[1] !== null,
-			state.bases[2] !== null,
+		// Update runner IDs and names
+		runnerIds = [state.bases[0], state.bases[1], state.bases[2]];
+		runnerNames = [
+			state.bases[0] && season?.batters[state.bases[0]] ? season.batters[state.bases[0]].name : null,
+			state.bases[1] && season?.batters[state.bases[1]] ? season.batters[state.bases[1]].name : null,
+			state.bases[2] && season?.batters[state.bases[2]] ? season.batters[state.bases[2]].name : null,
 		];
 
 		// Force reactivity by creating new array reference
@@ -332,7 +336,8 @@
 		inning = 1;
 		isTopInning = true;
 		outs = 0;
-		runners = [false, false, false];
+		runnerIds = [null, null, null];
+		runnerNames = [null, null, null];
 		currentBatter = 'Ready to play!';
 		currentPitcher = 'Loading...';
 
@@ -489,90 +494,24 @@
 	<main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
 		<!-- Left Section: Field + Matchup -->
 		<div class="flex-1 flex flex-col p-3 sm:p-4 lg:p-6 gap-3 sm:gap-4 lg:gap-6 overflow-y-auto">
-			<!-- Field Display -->
+			<!-- Scoreboard Display -->
 			<div class="flex items-center justify-center">
-				<div class="relative w-full max-w-xl aspect-square">
-					<!-- Field SVG with embedded scoreboard -->
-					<svg viewBox="0 0 400 400" class="w-full h-full drop-shadow-2xl">
-						<!-- Outfield grass -->
-						<rect x="0" y="0" width="400" height="400" fill="#1a472a" rx="20" />
-
-						<!-- Infield grass (lighter) -->
-						<circle cx="200" cy="200" r="140" fill="#1e5a33" opacity="0.5" />
-
-						<!-- Infield dirt -->
-						<polygon
-							points="200,60 340,200 200,340 60,200"
-							fill="#8B4513"
-							opacity="0.6"
-						/>
-
-						<!-- Base paths -->
-						<polygon
-							points="200,60 340,200 200,340 60,200"
-							fill="none"
-							stroke="rgba(255,255,255,0.2)"
-							stroke-width="3"
-						/>
-
-						<!-- Pitcher's mound -->
-						<circle cx="200" cy="200" r="15" fill="#8B4513" opacity="0.8" />
-						<circle cx="200" cy="200" r="8" fill="#654321" />
-
-						<!-- Home plate -->
-						<polygon points="200,185 208,192 208,200 200,208 192,200 192,192" fill="white" />
-
-						<!-- First base -->
-						<rect x="330" y="192" width="20" height="20" fill={runners[0] ? '#fbbf24' : 'white'} rx="2" />
-						{#if runners[0]}
-							<circle cx="340" cy="182" r="12" fill="#fbbf24" opacity="0.8" />
-						{/if}
-
-						<!-- Second base -->
-						<rect x="190" y="50" width="20" height="20" fill={runners[1] ? '#fbbf24' : 'white'} rx="2" />
-						{#if runners[1]}
-							<circle cx="200" cy="40" r="12" fill="#fbbf24" opacity="0.8" />
-						{/if}
-
-						<!-- Third base -->
-						<rect x="50" y="192" width="20" height="20" fill={runners[2] ? '#fbbf24' : 'white'} rx="2" />
-						{#if runners[2]}
-							<circle cx="60" cy="182" r="12" fill="#fbbf24" opacity="0.8" />
-						{/if}
-
-						<!-- Foul lines -->
-						<line x1="60" y1="200" x2="0" y2="140" stroke="rgba(255,255,255,0.15)" stroke-width="2" />
-						<line x1="340" y1="200" x2="400" y2="140" stroke="rgba(255,255,255,0.15)" stroke-width="2" />
-
-						<!-- === Scoreboard on Field === -->
-
-						<!-- Away Score (top left) -->
-						<text x="25" y="35" fill="white" font-size="28" font-weight="bold" text-anchor="start">{awayScore}</text>
-						<text x="25" y="50" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="start" font-weight="500">AWAY</text>
-
-						<!-- Home Score (top right) -->
-						<text x="375" y="35" fill="white" font-size="28" font-weight="bold" text-anchor="end">{homeScore}</text>
-						<text x="375" y="50" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="end" font-weight="500">HOME</text>
-
-						<!-- Pitcher Name (above mound) -->
-						<text x="200" y="165" fill="white" font-size="13" text-anchor="middle" font-weight="500">{currentPitcher}</text>
-
-						<!-- Batter Name (below home plate) -->
-						<text x="200" y="235" fill="white" font-size="13" text-anchor="middle" font-weight="500">{currentBatter}</text>
-
-						<!-- Inning (bottom left) -->
-						<text x="25" y="375" fill="white" font-size="18" font-weight="bold" text-anchor="start">{isTopInning ? '▲' : '▼'} {inning}</text>
-						<text x="25" y="388" fill="rgba(255,255,255,0.6)" font-size="10" text-anchor="start" font-weight="500">INNING</text>
-
-						<!-- Outs (bottom right) - using dot display -->
-						<g transform="translate(348, 368)">
-							<text x="27" y="-5" fill="rgba(255,255,255,0.6)" font-size="10" text-anchor="middle" font-weight="600">OUTS</text>
-							{#each [0,1,2] as i}
-								<circle cx="{i * 18}" cy="8" r="6" fill={i < outs ? '#f59e0b' : 'rgba(255,255,255,0.2)'} />
-							{/each}
-						</g>
-					</svg>
-				</div>
+				<GameScoreboard
+					{awayScore}
+					{homeScore}
+					{inning}
+					{isTopInning}
+					{outs}
+					runners={runnerIds}
+					{runnerNames}
+					{currentBatter}
+					{currentPitcher}
+					awayTeam="CIN"
+					homeTeam="HOU"
+					awayTeamFull="Cincinnati Reds"
+					homeTeamFull="Houston Astros"
+					{plays}
+				/>
 			</div>
 
 			<!-- Lineups -->
