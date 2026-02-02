@@ -7,7 +7,7 @@
  * - Sensical gameplay
  * - Good play-by-play descriptions
  *
- * Usage: pnpm exec tsx test-game-sim.ts [number of games]
+ * Usage: pnpm exec tsx test-game-sim.ts [number of games] [--year|-y YEAR] [--verbose|-v]
  */
 
 import { GameEngine } from './src/lib/game/engine.js';
@@ -412,10 +412,10 @@ function printGamePlayByPlay(engine: GameEngine, gameNum: number, awayTeam: stri
 	console.log('');
 }
 
-async function runGameTests(numGames: number = 10, verbose: boolean = false): Promise<void> {
-	console.log(`\n🏟️  Running ${numGames} game simulation tests...\n`);
+async function runGameTests(numGames: number = 10, verbose: boolean = false, year: number = 1976): Promise<void> {
+	console.log(`\n🏟️  Running ${numGames} game simulation tests (${year} season)...\n`);
 
-	const season = await loadSeason(1976);
+	const season = await loadSeason(year);
 	const validator = new GameValidator();
 
 	const allErrors: string[] = [];
@@ -547,20 +547,24 @@ async function runGameTests(numGames: number = 10, verbose: boolean = false): Pr
 }
 
 // Parse command line arguments
-// Supports: test-game-sim.ts [num_games] [--verbose|-v]
-// Or: test-game-sim.ts --verbose|-v [num_games]
+// Supports: test-game-sim.ts [num_games] [--year|-y YEAR] [--verbose|-v]
+// Or: test-game-sim.ts --verbose|-v [num_games] [year]
 let numGames = 10;
 let verbose = false;
+let year = 1976;
 
-for (const arg of process.argv.slice(2)) {
+for (let i = 0; i < process.argv.slice(2).length; i++) {
+	const arg = process.argv.slice(2)[i];
 	if (arg === '--verbose' || arg === '-v') {
 		verbose = true;
+	} else if ((arg === '--year' || arg === '-y') && i + 1 < process.argv.slice(2).length) {
+		year = parseInt(process.argv.slice(2)[++i]);
 	} else if (!isNaN(parseInt(arg))) {
 		numGames = parseInt(arg);
 	}
 }
 
-runGameTests(numGames, verbose).catch(err => {
+runGameTests(numGames, verbose, year).catch(err => {
 	console.error('Error running tests:', err);
 	process.exit(1);
 });

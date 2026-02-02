@@ -92,6 +92,12 @@ export interface SeasonNorms {
       /** Typical pitches for a one-inning reliever */
       typicalPitches: number;
     };
+    /** Average batters faced by starters (based on era data) */
+    starterBFP: number;
+    /** Average batters faced by relievers (based on era data) */
+    relieverBFP: number;
+    /** Average number of relievers used per game (both teams combined) */
+    relieversPerGame: number;
   };
   /** How often pinch hitters are used per game (both teams combined) */
   substitutions: {
@@ -114,7 +120,6 @@ export interface SeasonNorms {
 function getSeasonNorms(year: number): SeasonNorms {
   if (year >= 2010) {
     // Modern era: Strict pitch limits, 100-pitch standard, high bullpen usage
-    // PH usage has declined due to expanded benches and more specialized bullpens
     return {
       year,
       era: 'modern',
@@ -128,6 +133,9 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 35,
           typicalPitches: 15,
         },
+        starterBFP: 23.7,
+        relieverBFP: 7.1,
+        relieversPerGame: 6.3,
       },
       substitutions: {
         pinchHitsPerGame: 2.0,
@@ -149,6 +157,9 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 40,
           typicalPitches: 18,
         },
+        starterBFP: 25.7,
+        relieverBFP: 7.9,
+        relieversPerGame: 5.5,
       },
       substitutions: {
         pinchHitsPerGame: 2.8,
@@ -170,6 +181,9 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 45,
           typicalPitches: 20,
         },
+        starterBFP: 26.7,
+        relieverBFP: 9.9,
+        relieversPerGame: 4.1,
       },
       substitutions: {
         pinchHitsPerGame: 3.0,
@@ -191,6 +205,9 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 50,
           typicalPitches: 22,
         },
+        starterBFP: 28.0,
+        relieverBFP: 12.0,
+        relieversPerGame: 3.0,
       },
       substitutions: {
         pinchHitsPerGame: 2.8,
@@ -212,6 +229,9 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 60,
           typicalPitches: 25,
         },
+        starterBFP: 29.4,
+        relieverBFP: 14.5,
+        relieversPerGame: 2.3,
       },
       substitutions: {
         pinchHitsPerGame: 2.2,
@@ -233,6 +253,9 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 70,
           typicalPitches: 30,
         },
+        starterBFP: 30.9,
+        relieverBFP: 17.5,
+        relieversPerGame: 1.7,
       },
       substitutions: {
         pinchHitsPerGame: 2.2,
@@ -254,6 +277,9 @@ function getSeasonNorms(year: number): SeasonNorms {
           maxPitches: 80,
           typicalPitches: 35,
         },
+        starterBFP: 31.0,
+        relieverBFP: 20.0,
+        relieversPerGame: 1.5,
       },
       substitutions: {
         pinchHitsPerGame: 2.0,

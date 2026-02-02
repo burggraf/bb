@@ -56,27 +56,27 @@ export function shouldPullPitcher(
 	let pullThreshold = typicalLimit - 10; // Start pulling 10 pitches before typical limit
 	let pullChance = 0;
 
-	// Through 5th: fatigue threshold
-	if (inning <= 5 && pitcher.pitchesThrown >= fatigueThreshold) {
-		pullThreshold = fatigueThreshold;
+	// Through 5th: fatigue threshold - 10
+	if (inning <= 5 && pitcher.pitchesThrown >= fatigueThreshold - 10) {
+		pullThreshold = fatigueThreshold - 10;
 		pullChance = 0.6;
 	}
 
-	// 6th inning: fatigue threshold
-	if (inning === 6 && pitcher.pitchesThrown >= fatigueThreshold) {
-		pullThreshold = fatigueThreshold;
+	// 6th inning: fatigue threshold - 5
+	if (inning === 6 && pitcher.pitchesThrown >= fatigueThreshold - 5) {
+		pullThreshold = fatigueThreshold - 5;
 		pullChance = 0.7;
 	}
 
-	// 7th inning: fatigue threshold + 5
-	if (inning === 7 && pitcher.pitchesThrown >= fatigueThreshold + 5) {
-		pullThreshold = fatigueThreshold + 5;
+	// 7th inning: fatigue threshold
+	if (inning === 7 && pitcher.pitchesThrown >= fatigueThreshold) {
+		pullThreshold = fatigueThreshold;
 		pullChance = 0.85;
 	}
 
-	// 8th inning+: fatigue threshold + 10
-	if (inning >= 8 && pitcher.pitchesThrown >= fatigueThreshold + 10) {
-		pullThreshold = fatigueThreshold + 10;
+	// 8th inning+: fatigue threshold + 5
+	if (inning >= 8 && pitcher.pitchesThrown >= fatigueThreshold + 5) {
+		pullThreshold = fatigueThreshold + 5;
 		pullChance = 1.0;
 	}
 

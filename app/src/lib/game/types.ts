@@ -123,6 +123,12 @@ export interface SeasonNorms {
 			/** Typical pitches for a one-inning reliever */
 			typicalPitches: number;
 		};
+		/** Average batters faced by starters (based on era data) */
+		starterBFP: number;
+		/** Average batters faced by relievers (based on era data) */
+		relieverBFP: number;
+		/** Average number of relievers used per game (both teams combined) */
+		relieversPerGame: number;
 	};
 	/** How often pinch hitters are used per game (both teams combined) */
 	substitutions: {
