@@ -27,6 +27,7 @@ import { transition, createBaserunningState } from './state-machine/index.js';
 import { isHit } from './state-machine/outcome-types.js';
 import type { PitcherRole, BullpenState } from '@bb/model';
 import { buildLineup } from './lineup-builder.js';
+import { validateLineup, type LineupValidationResult } from './lineup-validator.js';
 
 /**
  * Convert app BatterStats to model BatterStats
@@ -344,6 +345,17 @@ export class GameEngine {
 		const awayLineup: LineupState = awayResult.lineup;
 		const homeLineup: LineupState = homeResult.lineup;
 
+		// Validate initial lineups
+		const awayValidation = validateLineup(awayLineup.players, season.batters);
+		const homeValidation = validateLineup(homeLineup.players, season.batters);
+
+		if (!awayValidation.isValid) {
+			throw new Error(`Invalid away lineup for ${awayTeam}: ${awayValidation.errors.join(', ')}`);
+		}
+		if (!homeValidation.isValid) {
+			throw new Error(`Invalid home lineup for ${homeTeam}: ${homeValidation.errors.join(', ')}`);
+		}
+
 		this.state = {
 			meta: {
 				awayTeam,
@@ -594,6 +606,53 @@ export class GameEngine {
 	}
 
 	/**
+	 * Validate a lineup after a substitution
+	 * Returns true if the lineup is valid, false otherwise
+	 */
+	private validateCurrentLineup(lineup: LineupState): { isValid: boolean; errors: string[] } {
+		const result = validateLineup(lineup.players, this.season.batters);
+		return { isValid: result.isValid, errors: result.errors };
+	}
+
+	/**
+	 * Find a valid position for a substitute that doesn't create conflicts
+	 * Returns the position number or null if no valid position exists
+	 */
+	private findValidSubstitution(
+		substitutePlayerId: string,
+		currentLineup: LineupState,
+		excludePositions: Set<number> = new Set()
+	): number | null {
+		const player = this.season.batters[substitutePlayerId];
+		if (!player) return null;
+
+		// Get positions the player is eligible for, sorted by most played (descending)
+		const eligiblePositions = Object.entries(player.positionEligibility)
+			.filter(([_, outs]) => outs > 0)
+			.map(([pos, _]) => parseInt(pos))
+			.sort((a, b) => (player.positionEligibility[b] ?? 0) - (player.positionEligibility[a] ?? 0));
+
+		// Also include primary position if not already in list
+		if (!eligiblePositions.includes(player.primaryPosition)) {
+			eligiblePositions.push(player.primaryPosition);
+		}
+
+		// For each eligible position (most played first), check if it's available
+		for (const position of eligiblePositions) {
+			if (excludePositions.has(position)) continue;
+
+			// Check if this position is already filled by someone else
+			const existingSlot = currentLineup.players.find(p => p.position === position);
+			if (!existingSlot) {
+				// Position is empty, we can use it
+				return position;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Check for managerial decisions before a plate appearance
 	 * Returns true if a substitution was made
 	 */
@@ -651,6 +710,11 @@ export class GameEngine {
 				console.warn(`Preventing re-entry: ${pitchingDecision.newPitcher} has already been removed`);
 				return false;
 			}
+
+			// Store the old state in case we need to revert
+			const oldPitcherId = pitchingTeam.pitcher;
+			const oldPlayers = [...pitchingTeam.players];
+
 			// Apply pitching change
 			pitchingTeam.pitcher = pitchingDecision.newPitcher;
 
@@ -662,6 +726,16 @@ export class GameEngine {
 					playerId: pitchingDecision.newPitcher,
 					position: 1
 				};
+			}
+
+			// Validate the lineup after the change
+			const validation = this.validateCurrentLineup(pitchingTeam);
+			if (!validation.isValid) {
+				// Revert the change
+				pitchingTeam.pitcher = oldPitcherId;
+				pitchingTeam.players = oldPlayers;
+				console.warn(`Pitching change would create invalid lineup: ${validation.errors.join(', ')}`);
+				return false;
 			}
 
 			// Mark the old pitcher as removed so they can't return
@@ -744,10 +818,6 @@ export class GameEngine {
 						const replacedPosition = battingTeam.players[batterIndex].position;
 						const pinchHitter = this.season.batters[phDecision.pinchHitterId];
 
-						// Mark replaced player as removed (can't return)
-						this.removedPlayers.add(currentBatterId);
-						this.usedPinchHitters.add(phDecision.pinchHitterId);
-
 						// Check if we're pinch hitting for a pitcher (position 1)
 						const isPitcherPH = replacedPosition === 1;
 
@@ -760,6 +830,11 @@ export class GameEngine {
 						}
 
 						let description = `Pinch hit: ${this.formatName(pinchHitter?.name ?? 'Unknown')} pinch hits for ${this.formatName(currentBatter.name)}`;
+
+						// Store old state for potential revert
+						const oldPlayers = [...battingTeam.players];
+						const oldPitcher = battingTeam.pitcher;
+						const oldRemovedPlayers = new Set(this.removedPlayers);
 
 						// If pinch hitting for pitcher, we also need a new pitcher (double switch)
 						if (isPitcherPH) {
@@ -789,9 +864,6 @@ export class GameEngine {
 								}
 
 								const newPitcher = this.season.pitchers[newPitcherId];
-
-								// Mark old pitcher as removed
-								this.removedPlayers.add(currentBatterId);
 
 								// Update lineup with pinch hitter at their defensive position
 								battingTeam.players[batterIndex] = { playerId: phDecision.pinchHitterId, position: defensivePosition };
@@ -834,6 +906,21 @@ export class GameEngine {
 							// Always show defensive position for clarity
 							description += ` (stays in as ${this.getPositionName(defensivePosition)})`;
 						}
+
+						// Validate the lineup after the substitution
+						const validation = this.validateCurrentLineup(battingTeam);
+						if (!validation.isValid) {
+							// Revert the substitution
+							battingTeam.players = oldPlayers;
+							battingTeam.pitcher = oldPitcher;
+							this.removedPlayers = oldRemovedPlayers;
+							console.warn(`Pinch hit substitution would create invalid lineup: ${validation.errors.join(', ')}`);
+							return false;
+						}
+
+						// Validation passed - mark the replaced player as removed
+						this.removedPlayers.add(currentBatterId);
+						this.usedPinchHitters.add(phDecision.pinchHitterId);
 
 						// Record the substitution as a summary entry
 						this.state.plays.unshift({

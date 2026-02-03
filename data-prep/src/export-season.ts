@@ -894,7 +894,6 @@ SELECT
   city,
   nickname
 FROM dim.teams
-WHERE first_year <= ${year} AND last_year >= ${year}
 ORDER BY league, city;
 `;
 }
@@ -916,14 +915,13 @@ ORDER BY date;
 function getBatterPositionsSQL(year: number): string {
   return `
 SELECT
-  gfa.player_id,
-  gfa.fielding_position,
-  COUNT(*) AS appearances
-FROM game.game_fielding_appearances gfa
-JOIN game.games g ON gfa.game_id = g.game_id
-WHERE EXTRACT(YEAR FROM g.date) = ${year}
-GROUP BY gfa.player_id, gfa.fielding_position
-ORDER BY gfa.player_id, appearances DESC;
+  ds.player_id,
+  ds.fielding_position,
+  SUM(ds.outs_played) AS outs_played
+FROM main.defensive_stats ds
+WHERE ds.season = ${year}
+GROUP BY ds.player_id, ds.fielding_position
+ORDER BY ds.player_id, outs_played DESC;
 `;
 }
 
@@ -1228,27 +1226,27 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   const positionMap = new Map<string, { primaryPosition: number; positionEligibility: Record<number, number> }>();
 
   // Aggregate positions by player
-  const playerPositions = new Map<string, Array<{ position: number; appearances: number }>>();
+  const playerPositions = new Map<string, Array<{ position: number; outsPlayed: number }>>();
   for (const row of positionsRaw) {
     const playerId = row.player_id;
     const position = parseNumber(row.fielding_position);
-    const appearances = parseNumber(row.appearances);
+    const outsPlayed = parseNumber(row.outs_played);
 
     if (!playerPositions.has(playerId)) {
       playerPositions.set(playerId, []);
     }
-    playerPositions.get(playerId)!.push({ position, appearances });
+    playerPositions.get(playerId)!.push({ position, outsPlayed });
   }
 
   // Determine primary position and build eligibility map
   for (const [playerId, positions] of playerPositions) {
-    // Sort by appearances, excluding DH (position 10) from primary consideration
-    const sorted = positions.sort((a, b) => b.appearances - a.appearances);
+    // Sort by outs played, excluding DH (position 10) from primary consideration
+    const sorted = positions.sort((a, b) => b.outsPlayed - a.outsPlayed);
     const primary = sorted.find(p => p.position !== 10) || sorted[0];
 
     const eligibility: Record<number, number> = {};
     for (const pos of sorted) {
-      eligibility[pos.position] = pos.appearances;
+      eligibility[pos.position] = pos.outsPlayed;
     }
 
     positionMap.set(playerId, {
