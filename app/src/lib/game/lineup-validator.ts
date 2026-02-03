@@ -17,6 +17,14 @@ export interface LineupValidationResult {
 }
 
 /**
+ * Options for lineup validation
+ */
+export interface ValidateLineupOptions {
+	/** Allow players at positions they're not rated for (emergency roster exhaustion) */
+	allowEmergencyPositions?: boolean;
+}
+
+/**
  * Position names for error messages
  */
 const POSITION_NAMES: Record<number, string> = {
@@ -76,17 +84,19 @@ function isPlayerEligibleAtPosition(
  *
  * Validation rules:
  * 1. All 9 positions (1-9) must have a non-null player ID
- * 2. Each player must be eligible at their assigned position
+ * 2. Each player must be eligible at their assigned position (unless allowEmergencyPositions is true)
  * 3. No player can appear twice in the field
  * 4. Position 1 must always be a pitcher
  *
  * @param lineupSlots - Array of {playerId, position} tuples (length 9 for full lineup)
  * @param batters - Record of all batters in the season
+ * @param options - Optional validation settings
  * @returns Validation result with errors and warnings
  */
 export function validateLineup(
 	lineupSlots: Array<{ playerId: string | null; position: number }>,
-	batters: Record<string, BatterStats>
+	batters: Record<string, BatterStats>,
+	options?: ValidateLineupOptions
 ): LineupValidationResult {
 	const errors: string[] = [];
 	const warnings: string[] = [];
@@ -128,8 +138,8 @@ export function validateLineup(
 			seenPositions.add(slot.position);
 		}
 
-		// Check position eligibility
-		if (!isPlayerEligibleAtPosition(player, slot.position)) {
+		// Check position eligibility (unless in emergency mode)
+		if (!options?.allowEmergencyPositions && !isPlayerEligibleAtPosition(player, slot.position)) {
 			const primaryName = getPositionName(player.primaryPosition);
 			errors.push(
 				`Player ${player.name} at ${getPositionName(slot.position)} but only eligible at ${primaryName} (and others per positionEligibility)`

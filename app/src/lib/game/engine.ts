@@ -348,6 +348,8 @@ export class GameEngine {
 	// Track relievers (pitchers who entered mid-game - should never bat in non-DH games)
 	// Using ES2022 private field syntax for better tsx compatibility
 	#relievers: Set<string> = new Set();
+	// Track emergency roster mode per team (when bench is exhausted, allow position eligibility bypass)
+	private emergencyRosterMode: Map<string, boolean> = new Map();
 
 	constructor(
 		season: SeasonPackage,
@@ -641,9 +643,52 @@ export class GameEngine {
 	 * Validate a lineup after a substitution
 	 * Returns true if the lineup is valid, false otherwise
 	 */
-	private validateCurrentLineup(lineup: LineupState): { isValid: boolean; errors: string[] } {
-		const result = validateLineup(lineup.players, this.season.batters);
+	private validateCurrentLineup(
+		lineup: LineupState,
+		options?: { allowEmergencyPositions?: boolean }
+	): { isValid: boolean; errors: string[] } {
+		const result = validateLineup(lineup.players, this.season.batters, options);
 		return { isValid: result.isValid, errors: result.errors };
+	}
+
+	/**
+	 * Check if a team has available bench players (not in lineup, not used as PH, not removed)
+	 */
+	private hasAvailableBench(lineup: LineupState): boolean {
+		const currentLineupPlayerIds = lineup.players
+			.map(p => p.playerId)
+			.filter((id): id is string => id !== null);
+		const allTeamBatters = Object.values(this.season.batters).filter(
+			b => b.teamId === lineup.teamId
+		);
+		const availableBench = allTeamBatters.filter(
+			b =>
+				!currentLineupPlayerIds.includes(b.id) &&
+				!this.usedPinchHitters.has(b.id) &&
+				!this.removedPlayers.has(b.id)
+		);
+		return availableBench.length > 0;
+	}
+
+	/**
+	 * Check if a team has available relief pitchers (not current pitcher, not removed)
+	 */
+	private hasAvailableRelievers(teamId: string, currentPitcherId: string): boolean {
+		const bullpen = this.bullpenStates.get(teamId);
+		if (!bullpen) return false;
+
+		// Check if there are any relievers available (excluding removed and current pitcher)
+		const availableRelievers = bullpen.relievers.filter(
+			r => !this.removedPlayers.has(r.pitcherId) && r.pitcherId !== currentPitcherId
+		);
+
+		// Also check closer if available
+		const closerAvailable =
+			bullpen.closer &&
+			!this.removedPlayers.has(bullpen.closer.pitcherId) &&
+			bullpen.closer.pitcherId !== currentPitcherId;
+
+		return (availableRelievers.length > 0 || !!closerAvailable);
 	}
 
 	/**
@@ -691,6 +736,9 @@ export class GameEngine {
 
 		if (!gameUsesDH) {
 			// Non-DH game: Need to resolve PHs using double-switch logic
+			// Track if bench searches fail (will trigger emergency mode)
+			let benchSearchFailed = false;
+
 			// Step 1: Identify "open" positions - positions that were vacated by players who were PH'd for
 			const openPositions = new Set<number>();
 			const phForPitcher: Array<{ index: number; playerId: string; replacedPosition: number }> = [];
@@ -796,6 +844,7 @@ export class GameEngine {
 				}
 				if (!found) {
 					console.warn(`No bench player available to fill open position ${POSITION_NAMES[position] ?? position}`);
+					benchSearchFailed = true;
 				}
 			}
 
@@ -892,6 +941,7 @@ export class GameEngine {
 						});
 					} else {
 						console.warn(`No bench pitcher available to fill vacated pitcher slot at batting order ${vacatedSlot.index + 1}`);
+						benchSearchFailed = true;
 						// Leave the slot empty - this will cause a validation error
 					}
 				} else {
@@ -1026,11 +1076,19 @@ export class GameEngine {
 					// This is a problem - we'll have to leave them in but it's not ideal
 					const phPlayer = this.season.batters[ph.playerId];
 					console.warn(`Pinch hitter ${phPlayer?.name || ph.playerId} cannot play position ${replacedPosition !== undefined ? POSITION_NAMES[replacedPosition] : 'unknown'} defensively and no bench replacement available - leaving in game at PH position`);
+					benchSearchFailed = true;
 				}
 			}
 
+			// Set emergency mode if bench searches failed
+			if (benchSearchFailed) {
+				this.emergencyRosterMode.set(teamId, true);
+			}
+
 			// Validate the final lineup to ensure no issues
-			const finalValidation = this.validateCurrentLineup(lineup);
+			const finalValidation = this.validateCurrentLineup(lineup, {
+				allowEmergencyPositions: this.emergencyRosterMode.get(teamId) ?? false
+			});
 			if (!finalValidation.isValid) {
 				console.error(`Lineup validation failed after PH resolution: ${finalValidation.errors.join(', ')}`);
 				// This is a serious error - the lineup is invalid
@@ -1055,6 +1113,9 @@ export class GameEngine {
 			}
 		} else {
 			// DH game: PH could stay in or be replaced
+			// Track if bench searches fail (will trigger emergency mode)
+			let benchSearchFailed = false;
+
 			// For now, simpler case - find bench players to replace PHs
 			for (const phSlot of phSlots) {
 				const phPlayerId = phSlot.playerId;
@@ -1074,6 +1135,12 @@ export class GameEngine {
 					!this.usedPinchHitters.has(b.id) &&
 					!this.removedPlayers.has(b.id)
 				);
+
+				if (availableBench.length === 0) {
+					// No bench players available at all
+					console.warn(`No bench players available for ${teamId} - PH ${phPlayer.name} must remain in game`);
+					benchSearchFailed = true;
+				}
 
 				if (availableBench.length > 0) {
 					// Find a bench player and position that doesn't create conflicts
@@ -1120,8 +1187,14 @@ export class GameEngine {
 					if (!replacementFound) {
 						// No bench player can fit in any eligible position - leave PH in place as fallback
 						console.warn(`No valid defensive position found for any bench player to replace PH ${phPlayer.name} at batting order ${phSlot.index + 1}`);
+						benchSearchFailed = true;
 					}
 				}
+			}
+
+			// Set emergency mode if bench searches failed
+			if (benchSearchFailed) {
+				this.emergencyRosterMode.set(teamId, true);
 			}
 		}
 	}
@@ -1230,7 +1303,12 @@ export class GameEngine {
 			pullOptions
 		);
 
+		// Prevent pitching change if no relievers available
 		if (pitchingDecision.shouldChange && pitchingDecision.newPitcher) {
+			if (!this.hasAvailableRelievers(pitchingTeam.teamId, pitcherId)) {
+				console.warn(`No relief pitchers available for ${pitchingTeam.teamId} - cannot make pitching change`);
+				return false;
+			}
 			// Sanity check: ensure we're not replacing a pitcher with themselves
 			if (pitchingDecision.newPitcher === pitcherId) {
 				// This shouldn't happen - log and skip the change
@@ -1262,7 +1340,9 @@ export class GameEngine {
 			}
 
 			// Validate the lineup after the change
-			const validation = this.validateCurrentLineup(pitchingTeam);
+			const validation = this.validateCurrentLineup(pitchingTeam, {
+				allowEmergencyPositions: this.emergencyRosterMode.get(pitchingTeam.teamId) ?? false
+			});
 			if (!validation.isValid) {
 				// Revert the change
 				pitchingTeam.pitcher = oldPitcherId;
@@ -1346,6 +1426,14 @@ export class GameEngine {
 			!this.usedPinchHitters.has(b.id) &&
 			!this.removedPlayers.has(b.id)
 		);
+
+		// Prevent pinch hit if no bench players available
+		if (availableBench.length === 0) {
+			if (mustPHForReliever) {
+				console.warn(`No bench players available for ${battingTeam.teamId} - reliever ${currentBatter.name} must bat`);
+			}
+			return false;
+		}
 
 		if (availableBench.length > 0) {
 			const opposingPitcher = this.season.pitchers[pitchingTeam.pitcher!];
