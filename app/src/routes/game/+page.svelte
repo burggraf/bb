@@ -452,7 +452,7 @@
 	// Format runner info for play-by-play display
 	// Shows runners who advanced or just reached base, plus scorers
 	// Order: scorers first, then highest base first (3rd, 2nd, 1st)
-	function formatRunnerInfo(play: PlayEvent): string | null {
+	function formatRunnerInfo(play: PlayEvent, nextPlay?: PlayEvent): string | null {
 		// Only show runner info if there are scorers OR runners who moved/reached
 		if (!play.runnersAfter) {
 			return null;
@@ -473,6 +473,18 @@
 			} else {
 				parts.push(`${scorerNames.join(', ')} score`);
 			}
+		}
+
+		// Check if this play ends the inning (next play is a summary for the same inning)
+		// If so, don't show runner advancement (except for scorers, which are walk-off situation)
+		const isThirdOut = nextPlay?.isSummary &&
+			nextPlay.inning === play.inning &&
+			nextPlay.isTopInning === play.isTopInning;
+
+		// If this was the last out and there are no scorers, don't show runner advancement
+		// (the exception is walk-offs, which are handled above by showing scorers)
+		if (isThirdOut) {
+			return parts.length > 0 ? parts.join(', ') : null;
 		}
 
 		// Add runners on base (excluding those who scored and the current batter)
@@ -699,8 +711,9 @@
 					<div class="flex-1 overflow-y-auto space-y-1.5 sm:space-y-2 pr-1 sm:pr-2 min-h-0" id="play-by-play-container">
 						{#each plays.slice().reverse() as play, index}
 							{@const playNumber = index + 1}
-							{@const runnerInfo = formatRunnerInfo(play)}
 							{@const reversedPlays = plays.slice().reverse()}
+							{@const nextPlay = reversedPlays[index + 1]}
+							{@const runnerInfo = formatRunnerInfo(play, nextPlay)}
 							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, false)}
 							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border {play.isSummary
@@ -915,8 +928,9 @@
 					<div class="flex-1 overflow-y-auto space-y-2 pr-2">
 						{#each plays.slice().reverse() as play, index}
 							{@const playNumber = index + 1}
-							{@const runnerInfo = formatRunnerInfo(play)}
 							{@const reversedPlays = plays.slice().reverse()}
+							{@const nextPlay = reversedPlays[index + 1]}
+							{@const runnerInfo = formatRunnerInfo(play, nextPlay)}
 							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, false)}
 							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-3 sm:px-4 py-2 sm:py-3 border {play.isSummary

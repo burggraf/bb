@@ -1108,8 +1108,6 @@ export class GameEngine {
 								};
 								this.pitcherStamina.set(newPitcherId, newPitcherRole);
 								this.#relievers.add(newPitcherId);
-
-								description += `; ${this.formatName(newPitcher?.name ?? 'Unknown')} now pitching`;
 							} else {
 								// No relievers available - can't pinch hit for pitcher
 								// Revert the PH assignment
