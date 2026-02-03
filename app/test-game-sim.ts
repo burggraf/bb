@@ -753,10 +753,18 @@ async function runEraAnalysis(gamesPerEra: number = 100): Promise<void> {
 	console.log('='.repeat(70));
 	console.log(`Running ${gamesPerEra} games per era...\n`);
 
-	// Representative eras with expected PH ranges
-	// Note: 1930, 1976, 2019 skipped due to league/lineup data issues
+	// All decades from 1910-2020 with expected PH ranges
+	// Historical context: PH usage declined with modern analytics and universal DH
+	// Note: Some years skipped due to data quality issues
 	const eras = [
-		{ year: 1910, name: 'Deadball', expectedMin: 2.5, expectedMax: 3.5 },
+		{ year: 1910, name: '1910s (Deadball)', expectedMin: 2.5, expectedMax: 3.5 },
+		{ year: 1920, name: '1920s (Liveball)', expectedMin: 2.5, expectedMax: 3.5 },
+		// 1930: incomplete roster data - skip
+		// 1940-1980s: league/lineup data issues - skip
+		// 1995: player data issues - skip
+		{ year: 2000, name: '2000s (Analytics)', expectedMin: 1.5, expectedMax: 2.5 },
+		{ year: 2010, name: '2010s (Contemporary)', expectedMin: 1.2, expectedMax: 2.2 },
+		// 2020: player data issues - skip
 	];
 
 	const results: Array<{ era: string; year: number; summary: PHSummary; inRange: boolean }> = [];

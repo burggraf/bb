@@ -42,13 +42,19 @@ function getPositionName(position: number): string {
 /**
  * Check if a player is eligible to play a specific position.
  * A player is eligible if:
- * 1. They have explicit eligibility data for that position (> 0 outs played)
- * 2. OR the position matches their primary position
+ * 1. They are assigned to DH (position 10) - any player can DH
+ * 2. They have explicit eligibility data for that position (> 0 outs played)
+ * 3. OR the position matches their primary position
  */
 function isPlayerEligibleAtPosition(
 	player: BatterStats,
 	position: number
 ): boolean {
+	// Any player can be a DH
+	if (position === 10) {
+		return true;
+	}
+
 	// Check explicit position eligibility
 	const outsAtPosition = player.positionEligibility[position];
 	if (outsAtPosition && outsAtPosition > 0) {
