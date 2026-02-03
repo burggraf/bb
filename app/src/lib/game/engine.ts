@@ -1230,9 +1230,15 @@ export class GameEngine {
 		// Collect impossible outcomes based on game state
 		const impossibleOutcomes: (keyof ProbabilityDistribution)[] = [];
 
-		// Fielder's choice, sacrifice fly, and sacrifice bunt are impossible with empty bases
+		// Fielder's choice and sacrifice bunt are impossible with empty bases
 		if (areBasesEmpty(state.bases)) {
-			impossibleOutcomes.push('fieldersChoice', 'sacrificeFly', 'sacrificeBunt');
+			impossibleOutcomes.push('fieldersChoice', 'sacrificeBunt');
+		}
+
+		// Sacrifice fly requires: runner on 3rd AND less than 2 outs
+		// With 2 outs, a fly out that scores a runner ends the inning (not a sacrifice fly)
+		if (!state.bases[2] || state.outs === 2) {
+			impossibleOutcomes.push('sacrificeFly');
 		}
 
 		// Sacrifice bunt is impossible with 2 outs (can't advance runner with 2 outs)
