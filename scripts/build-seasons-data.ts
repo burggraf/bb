@@ -70,13 +70,27 @@ for (let year = START_YEAR; year <= END_YEAR; year++) {
 
 		// Gzip the file
 		console.log('  Compressing...');
-		execSync(`gzip -c "${outputPath}" > "${gzippedPath}"`, {
-			stdio: 'pipe',
-		});
+		try {
+			execSync(`gzip -c "${outputPath}" > "${gzippedPath}"`, {
+				stdio: 'inherit', // Show errors
+			});
+		} catch (gzipError) {
+			throw new Error(`gzip failed: ${gzipError}`);
+		}
 
-		// Verify the gzipped file was created
+		// Verify the gzipped file was created and is valid gzip format
 		if (!fs.existsSync(gzippedPath)) {
 			throw new Error('Gzipped file not created');
+		}
+
+		// Verify it's actually gzipped by checking magic bytes
+		const buffer = Buffer.alloc(2);
+		const fd = fs.openSync(gzippedPath, 'r');
+		fs.readSync(fd, buffer, 0, 2, 0);
+		fs.closeSync(fd);
+		// gzip magic bytes are 0x1f 0x8b
+		if (buffer[0] !== 0x1f || buffer[1] !== 0x8b) {
+			throw new Error('Gzipped file is not valid gzip format');
 		}
 
 		// Get file sizes
