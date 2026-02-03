@@ -141,7 +141,7 @@ function calculateOBP(batter: BatterStats): number {
 
 /**
  * Assign fielding positions to position players
- * Uses "up the middle first" priority with fallback to primary position
+ * Prioritizes primary positions, then uses secondary eligibility only when needed
  */
 function assignPositions(
 	players: BatterStats[]
@@ -157,47 +157,48 @@ function assignPositions(
 
 	// Fill positions in priority order
 	for (const position of POSITION_PRIORITY) {
-		const eligiblePlayers: Array<{ player: BatterStats; score: number }> = [];
+		// First priority: Find someone whose PRIMARY position is this position
+		const primaryPlayer = players.find(p =>
+			!usedPlayers.has(p.id) && p.primaryPosition === position
+		);
 
-		// Find all players eligible for this position
+		if (primaryPlayer) {
+			assigned.set(primaryPlayer.id, position);
+			usedPlayers.add(primaryPlayer.id);
+			playerPool.delete(primaryPlayer.id);
+			continue;
+		}
+
+		// Second priority: Find someone with secondary eligibility at this position
+		// Sort by outs played at this position (descending) to get most experienced
+		const secondaryPlayers: Array<{ player: BatterStats; outs: number; score: number }> = [];
+
 		for (const player of players) {
 			if (usedPlayers.has(player.id)) continue;
 
 			// Check explicit position eligibility
-			const gamesAtPosition = player.positionEligibility[position];
-			if (gamesAtPosition && gamesAtPosition > 0) {
-				eligiblePlayers.push({
+			const outsAtPosition = player.positionEligibility[position];
+			if (outsAtPosition && outsAtPosition > 0) {
+				secondaryPlayers.push({
 					player,
+					outs: outsAtPosition,
 					score: calculateOBP(player)
 				});
 			}
 		}
 
-		if (eligiblePlayers.length === 0) {
-			// No eligible players found - try primary position fallback
-			for (const player of players) {
-				if (usedPlayers.has(player.id)) continue;
-
-				if (player.primaryPosition === position) {
-					assigned.set(player.id, position);
-					usedPlayers.add(player.id);
-					playerPool.delete(player.id);
-					warnings.push(`No eligible ${getPositionName(position)} - using ${player.name} (primary position)`);
-					break;
-				}
-			}
-
-			if (!usedPlayers.has(Array.from(assigned.keys()).find(id => assigned.get(id) === position) ?? '')) {
-				// Still couldn't fill - will fail validation later
-				warnings.push(`WARNING: Unable to fill ${getPositionName(position)} position`);
-			}
-		} else {
-			// Sort by OBP and assign best available hitter
-			eligiblePlayers.sort((a, b) => b.score - a.score);
-			const best = eligiblePlayers[0]!;
+		if (secondaryPlayers.length > 0) {
+			// Sort by most outs at this position, then by OBP
+			secondaryPlayers.sort((a, b) => b.outs - a.outs || b.score - a.score);
+			const best = secondaryPlayers[0];
 			assigned.set(best.player.id, position);
 			usedPlayers.add(best.player.id);
 			playerPool.delete(best.player.id);
+		}
+
+		if (!assigned.has(Array.from(assigned.keys()).find(id => assigned.get(id) === position) ?? '')) {
+			// Still couldn't fill - will fail validation later
+			warnings.push(`WARNING: Unable to fill ${getPositionName(position)} position`);
 		}
 	}
 
