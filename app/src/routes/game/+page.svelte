@@ -302,10 +302,11 @@
 		}
 
 		// Helper function to get player position for display
+		// Uses slotPosition (the actual position they're playing in this game)
+		// not the player's primaryPosition from the database
 		function getPlayerPosition(playerId: string, slotPosition: number): string {
-			if (season?.batters[playerId]) return getPositionAbbrev(season.batters[playerId].primaryPosition);
-			// For pitchers, show P
-			return 'P';
+			// Use the slot position which is where they're actually playing
+			return getPositionAbbrev(slotPosition);
 		}
 
 		// Update lineup displays

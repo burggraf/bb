@@ -48,9 +48,10 @@ for (let year = START_YEAR; year <= END_YEAR; year++) {
 		console.log('  Exporting...');
 		const dataPrepDir = path.join(ROOT_DIR, 'data-prep');
 		const relativeExportScript = path.join('src', 'export-season.ts');
-		// The database is in the parent repo, which is ../../../ from data-prep in a worktree
-		// (worktree/data-prep -> worktree -> .worktrees -> main repo)
-		const relativeDbPath = path.join('..', '..', '..', 'baseball.duckdb');
+		// The database is in the parent repo
+		// From main repo: ../baseball.duckdb
+		// From worktree: ../../../baseball.duckdb
+		const relativeDbPath = path.join('..', 'baseball.duckdb');
 		const relativeOutputPath = path.join('..', 'app', 'static', 'seasons', `${year}.json`);
 
 		execSync(
