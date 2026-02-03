@@ -61,7 +61,7 @@ export interface BatterStats {
 	name: string;
 	bats: 'L' | 'R' | 'S';
 	teamId: string;
-	/** Primary position (1=P, 2=C, 3=1B, 4=2B, 5=3B, 6=SS, 7=LF, 8=CF, 9=RF, 10=DH) */
+	/** Primary position (1=P, 2=C, 3=1B, 4=2B, 5=3B, 6=SS, 7=LF, 8=CF, 9=RF, 10=DH, 11=PH, 12=PR) */
 	primaryPosition: number;
 	/** All positions player can play, with appearance counts */
 	positionEligibility: Record<number, number>;
@@ -126,6 +126,15 @@ export interface SeasonNorms {
 			maxPitches: number;
 			/** Typical pitches for a one-inning reliever */
 			typicalPitches: number;
+		};
+		/** Pull decision thresholds for starting pitchers */
+		pullThresholds?: {
+			/** BFP multiplier at which to consider pulling starter */
+			consider: number;
+			/** BFP multiplier at which to likely pull starter */
+			likely: number;
+			/** BFP multiplier hard limit */
+			hardLimit: number;
 		};
 		/** Average batters faced by starters (based on era data) */
 		starterBFP: number;
@@ -230,7 +239,7 @@ export interface PlayEvent {
 	scorerIds?: string[]; // players who scored on this play
 	runnersBefore?: [string | null, string | null, string | null]; // runners on base before the play
 	// Managerial event types
-	eventType?: 'plateAppearance' | 'startingLineup' | 'pitchingChange' | 'pinchHit' | 'defensiveSub';
+	eventType?: 'plateAppearance' | 'startingLineup' | 'pitchingChange' | 'pinchHit' | 'defensiveSub' | 'lineupAdjustment';
 	// Additional data for managerial events
 	lineup?: LineupPlayer[]; // For starting lineup events
 	substitutedPlayer?: string; // For PH/defensive sub - who was replaced

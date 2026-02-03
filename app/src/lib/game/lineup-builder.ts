@@ -25,6 +25,7 @@ export interface LineupBuildResult {
 }
 
 // Position numbers (standard MLB scoring)
+// 1-9 are standard defensive positions, 10=DH, 11=PH (temporary), 12=PR (temporary)
 const POSITIONS = {
 	PITCHER: 1,
 	CATCHER: 2,
@@ -35,7 +36,9 @@ const POSITIONS = {
 	LEFT_FIELD: 7,
 	CENTER_FIELD: 8,
 	RIGHT_FIELD: 9,
-	DH: 10
+	DH: 10,
+	PH: 11,  // Pinch hitter (temporary)
+	PR: 12   // Pinch runner (temporary)
 } as const;
 
 /**

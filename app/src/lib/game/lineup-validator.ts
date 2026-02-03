@@ -29,7 +29,9 @@ const POSITION_NAMES: Record<number, string> = {
 	7: 'LF',
 	8: 'CF',
 	9: 'RF',
-	10: 'DH'
+	10: 'DH',
+	11: 'PH',
+	12: 'PR'
 };
 
 /**
@@ -42,7 +44,7 @@ function getPositionName(position: number): string {
 /**
  * Check if a player is eligible to play a specific position.
  * A player is eligible if:
- * 1. They are assigned to DH (position 10) - any player can DH
+ * 1. They are assigned to DH (position 10), PH (position 11), or PR (position 12) - any player can fill these
  * 2. They have explicit eligibility data for that position (> 0 outs played)
  * 3. OR the position matches their primary position
  */
@@ -50,8 +52,8 @@ function isPlayerEligibleAtPosition(
 	player: BatterStats,
 	position: number
 ): boolean {
-	// Any player can be a DH
-	if (position === 10) {
+	// Any player can DH, PH, or PR
+	if (position === 10 || position === 11 || position === 12) {
 		return true;
 	}
 
