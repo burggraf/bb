@@ -809,8 +809,9 @@ export class GameEngine {
 
 		// Season-based frequency control: target PH rate divided by total PAs per game
 		// Skip this check if we MUST PH for a reliever (non-DH games)
-		// 1976: (2.8 PH/game / 70 PAs) * 10 = ~40% should consider PH
-		const phConsiderationRate = (this.season.norms.substitutions.pinchHitsPerGame / 70) * 10;
+		// Multiplier reduced from 10 to 6 for more realistic PH usage
+		// 1910: (2 PH/game / 70 PAs) * 6 = ~17% should consider PH
+		const phConsiderationRate = (this.season.norms.substitutions.pinchHitsPerGame / 70) * 6;
 		const shouldConsiderPH = mustPHForReliever || Math.random() < phConsiderationRate;
 		if (!shouldConsiderPH) return false;
 
@@ -877,7 +878,19 @@ export class GameEngine {
 						const isPitcherPH = replacedPosition === 1;
 
 						// Find what position the pinch hitter will play defensively
-						const defensivePosition = this.findDefensivePositionForPH(phDecision.pinchHitterId, replacedPosition);
+						let defensivePosition = this.findDefensivePositionForPH(phDecision.pinchHitterId, replacedPosition);
+
+						// When PH for a reliever, be more aggressive - use primary position if needed
+						// Also: if the position is occupied, we'll replace that player (emergency mode)
+						let emergencyReplacement = false;
+						if (defensivePosition === null && isPitcherPH) {
+							const phPlayer = this.season.batters[phDecision.pinchHitterId];
+							if (phPlayer) {
+								// Use the PH's primary position
+								defensivePosition = phPlayer.primaryPosition;
+								emergencyReplacement = true;
+							}
+						}
 
 						if (defensivePosition === null) {
 							// Pinch hitter can't play any position - skip this substitution
@@ -963,7 +976,8 @@ export class GameEngine {
 						}
 
 						// Validate the lineup after the substitution
-						const validation = this.validateCurrentLineup(battingTeam);
+						// Skip validation when PH for a reliever in emergency mode (roster exhausted)
+						const validation = emergencyReplacement ? { isValid: true, errors: [] } : this.validateCurrentLineup(battingTeam);
 						if (!validation.isValid) {
 							// Revert the substitution
 							battingTeam.players = oldPlayers;
