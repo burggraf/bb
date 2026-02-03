@@ -277,6 +277,22 @@ function getInningSuffix(n: number): string {
 	return 'th';
 }
 
+// Position names for lineup adjustments
+const POSITION_NAMES: Record<number, string> = {
+	1: 'P',
+	2: 'C',
+	3: '1B',
+	4: '2B',
+	5: '3B',
+	6: 'SS',
+	7: 'LF',
+	8: 'CF',
+	9: 'RF',
+	10: 'DH',
+	11: 'PH',
+	12: 'PR'
+};
+
 // Apply baserunning using state machine
 function applyBaserunning(
 	state: GameState,
@@ -699,6 +715,7 @@ export class GameEngine {
 
 				// Record the substitution
 				const pitcher = this.season.pitchers[currentPitcherId];
+				const battingOrder = phSlot.index + 1;
 				this.state.plays.unshift({
 					inning: this.state.inning,
 					isTopInning: this.state.isTopInning,
@@ -707,7 +724,7 @@ export class GameEngine {
 					batterName: '',
 					pitcherId: currentPitcherId,
 					pitcherName: this.formatName(pitcher?.name ?? 'Unknown'),
-					description: `Lineup adjustment: ${this.formatName(pitcher?.name ?? 'Unknown')} replaces ${this.formatName(phPlayer.name)} in batting order`,
+					description: `Lineup adjustment: ${this.formatName(pitcher?.name ?? 'Unknown')} (${POSITION_NAMES[1]}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 					runsScored: 0,
 					eventType: 'lineupAdjustment',
 					substitutedPlayer: phPlayerId,
@@ -731,6 +748,8 @@ export class GameEngine {
 				if (availableBench.length > 0) {
 					// Use the first available bench player
 					const replacement = availableBench[0];
+					const battingOrder = phSlot.index + 1;
+					const positionName = POSITION_NAMES[replacement.primaryPosition] ?? `Pos${replacement.primaryPosition}`;
 					lineup.players[phSlot.index] = {
 						playerId: replacement.id,
 						position: replacement.primaryPosition
@@ -744,7 +763,7 @@ export class GameEngine {
 						batterName: '',
 						pitcherId: '',
 						pitcherName: '',
-						description: `Lineup adjustment: ${this.formatName(replacement.name)} replaces ${this.formatName(phPlayer.name)}`,
+						description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 						runsScored: 0,
 						eventType: 'lineupAdjustment',
 						substitutedPlayer: phPlayerId,
