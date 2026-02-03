@@ -69,6 +69,7 @@ interface ValidationResult {
 		finalScore: { away: number; home: number };
 		outcomesSeen: string[];
 		halfInnings: HalfInningStats[];
+		pitchersUsed: Map<string, number>; // team -> number of pitchers
 	};
 }
 
@@ -505,6 +506,7 @@ class GameValidator {
 				finalScore: { away: awayScore, home: homeScore },
 				outcomesSeen: Array.from(this.seenOutcomes),
 				halfInnings,
+				pitchersUsed: new Map(Array.from(pitchersUsed.entries()).map(([team, set]) => [team, set.size])),
 			},
 		};
 	}
@@ -698,6 +700,18 @@ async function runGameTests(numGames: number = 10, verbose: boolean = false, yea
 
 	const avgInnings = results.reduce((sum, r) => sum + r.stats.innings, 0) / numGames;
 	console.log(`  Average innings: ${avgInnings.toFixed(1)}`);
+
+	// Pitcher usage statistics
+	const allPitcherCounts: number[] = [];
+	for (const result of results) {
+		for (const count of result.stats.pitchersUsed.values()) {
+			allPitcherCounts.push(count);
+		}
+	}
+	const avgPitchers = allPitcherCounts.length > 0
+		? (allPitcherCounts.reduce((a, b) => a + b, 0) / allPitcherCounts.length).toFixed(1)
+		: 'N/A';
+	console.log(`  Average pitchers per team per game: ${avgPitchers}`);
 
 	// Half-inning validation stats
 	console.log(`\n📊 Half-Inning Validation:`);

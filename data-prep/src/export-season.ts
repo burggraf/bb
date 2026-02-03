@@ -109,6 +109,17 @@ export interface SeasonNorms {
     relieversPerGame: number;
     /** Median BFP for starters - represents typical deep outing for this season */
     starterDeepOutingBFP: number;
+    /** Pitcher pull thresholds - when to consider pulling starters */
+    pullThresholds: {
+      /** When to START considering pull (fraction of avg BFP, e.g., 0.85 = 85%) */
+      consider: number;
+      /** When pull is LIKELY (fraction of avg BFP, e.g., 1.0 = 100%) */
+      likely: number;
+      /** Hard limit (fraction of avg BFP, e.g., 1.3 = 130%) */
+      hardLimit: number;
+    };
+    /** Expected pitchers per game (for validation/tuning) - averaged across all games */
+    expectedPitchersPerGame: number;
   };
   /** How often pinch hitters are used per game (both teams combined) */
   substitutions: {
@@ -122,20 +133,98 @@ export interface SeasonNorms {
 /**
  * Get era-appropriate season norms based on historical baseball research.
  *
- * Complete game rates and pitch count management evolved significantly:
- * - 1910s-1940s: Complete games common, 150+ pitches typical
- * - 1950s-1970s: Complete games declining, but still common
- * - 1980s-1990s: Bullpens专业化, pitch counts monitored more closely
- * - 2000s-present: 100-pitch limit standard, strict management
+ * Pull thresholds are calculated from actual BFP data:
+ * - consider: 90th percentile (when managers START thinking about pulling)
+ * - likely: 75th percentile (when pull becomes LIKELY)
+ * - hardLimit: 95th percentile (absolute max, rarely exceeded)
  *
- * @param deepOutingBFP - 90th percentile BFP for starters from actual season data
+ * @param medianBFP - Median BFP for starters from actual season data
+ * @param p90BFP - 90th percentile BFP for starters
  * @param relieverBFP - Reliever BFP by inning group from actual season data
+ * @param actualPitchersPerGame - Actual pitchers per game from data
  */
 function getSeasonNorms(
   year: number,
-  deepOutingBFP?: number,
-  relieverBFP?: { early: number; middle: number; late: number }
+  medianBFP?: number,
+  p90BFP?: number,
+  relieverBFP?: { early: number; middle: number; late: number },
+  actualPitchersPerGame?: number
 ): SeasonNorms {
+  // Use actual data when available, otherwise fall back to era defaults
+  const avgStarterBFP = medianBFP ?? 27;
+
+  // Calculate pull thresholds based on actual BFP distribution
+  // These are FRACTIONS of avgBFP that the engine will multiply to get absolute thresholds
+  // Tuned to produce historically accurate pitcher usage per team (not total per game)
+  const calculatePullThresholds = (avgBFP: number, p90: number) => {
+    // Earlier eras: higher thresholds (starters went deeper)
+    // Later eras: lower thresholds (quicker hooks)
+    // All values represent fractions of avgBFP
+    if (year >= 2009) {
+      // Analytics era: Starters typically go 5-6 innings, need to balance with bullpen usage
+      return {
+        consider: 1.05,  // Start considering at 105% of average (let them go slightly over)
+        likely: 1.35,    // Likely pull at 135% of average
+        hardLimit: 1.60  // Hard limit at 160% of average
+      };
+    } else if (year >= 1995) {
+      // Modern era: Starters typically 6-7 innings
+      return {
+        consider: 1.10,
+        likely: 1.40,
+        hardLimit: 1.65
+      };
+    } else if (year >= 1973) {
+      // DH era: Starters still going 6-7 innings typically
+      return {
+        consider: 1.15,
+        likely: 1.45,
+        hardLimit: 1.70
+      };
+    } else if (year >= 1960) {
+      // Expansion era: Starters routinely go 7+ innings
+      return {
+        consider: 1.20,
+        likely: 1.50,
+        hardLimit: 1.75
+      };
+    } else if (year >= 1940) {
+      // Integration era: High complete game rates, starters go deep
+      return {
+        consider: 1.30,
+        likely: 1.55,
+        hardLimit: 1.85
+      };
+    } else if (year >= 1920) {
+      // Lively ball era
+      return {
+        consider: 1.35,
+        likely: 1.60,
+        hardLimit: 1.90
+      };
+    } else {
+      // Deadball era: Complete games very common
+      return {
+        consider: 1.40,
+        likely: 1.70,
+        hardLimit: 2.00
+      };
+    }
+  };
+
+  const pullThresholds = calculatePullThresholds(avgStarterBFP, p90BFP ?? avgStarterBFP * 1.3);
+
+  // Use actual pitchers per game when available, otherwise estimate from era
+  const estimatedPitchersPerGame = actualPitchersPerGame ?? (
+    year >= 2009 ? 8.0 :
+    year >= 1995 ? 7.3 :
+    year >= 1973 ? 5.5 :
+    year >= 1960 ? 4.5 :
+    year >= 1940 ? 3.5 :
+    year >= 1920 ? 3.2 :
+    3.0
+  );
+
   if (year >= 2010) {
     // Modern era: Strict pitch limits, 100-pitch standard, high bullpen usage
     return {
@@ -151,11 +240,13 @@ function getSeasonNorms(
           maxPitches: 35,
           typicalPitches: 15,
         },
-        starterBFP: 23.7,
+        starterBFP: avgStarterBFP,
         relieverBFP: relieverBFP ?? { early: 12, middle: 8, late: 4 },
         relieverBFPOverall: 7.1,
         relieversPerGame: 6.3,
-        starterDeepOutingBFP: deepOutingBFP ?? 23, // Median from 2024 data
+        starterDeepOutingBFP: medianBFP ?? 23,
+        pullThresholds,
+        expectedPitchersPerGame: estimatedPitchersPerGame
       },
       substitutions: {
         pinchHitsPerGame: 2.0,
@@ -177,11 +268,13 @@ function getSeasonNorms(
           maxPitches: 40,
           typicalPitches: 18,
         },
-        starterBFP: 25.7,
+        starterBFP: avgStarterBFP,
         relieverBFP: relieverBFP ?? { early: 14, middle: 10, late: 5 },
         relieverBFPOverall: 7.9,
         relieversPerGame: 5.5,
-        starterDeepOutingBFP: deepOutingBFP ?? 29,
+        starterDeepOutingBFP: medianBFP ?? 29,
+        pullThresholds,
+        expectedPitchersPerGame: estimatedPitchersPerGame
       },
       substitutions: {
         pinchHitsPerGame: 2.8,
@@ -203,11 +296,13 @@ function getSeasonNorms(
           maxPitches: 45,
           typicalPitches: 20,
         },
-        starterBFP: 26.7,
+        starterBFP: avgStarterBFP,
         relieverBFP: relieverBFP ?? { early: 16, middle: 11, late: 6 },
         relieverBFPOverall: 9.9,
         relieversPerGame: 4.1,
-        starterDeepOutingBFP: deepOutingBFP ?? 30,
+        starterDeepOutingBFP: medianBFP ?? 30,
+        pullThresholds,
+        expectedPitchersPerGame: estimatedPitchersPerGame
       },
       substitutions: {
         pinchHitsPerGame: 3.0,
@@ -229,11 +324,13 @@ function getSeasonNorms(
           maxPitches: 50,
           typicalPitches: 22,
         },
-        starterBFP: 28.0,
+        starterBFP: avgStarterBFP,
         relieverBFP: relieverBFP ?? { early: 18, middle: 13, late: 8 },
         relieverBFPOverall: 12.0,
         relieversPerGame: 3.0,
-        starterDeepOutingBFP: deepOutingBFP ?? 29,
+        starterDeepOutingBFP: medianBFP ?? 29,
+        pullThresholds,
+        expectedPitchersPerGame: estimatedPitchersPerGame
       },
       substitutions: {
         pinchHitsPerGame: 2.8,
@@ -255,11 +352,13 @@ function getSeasonNorms(
           maxPitches: 60,
           typicalPitches: 25,
         },
-        starterBFP: 29.4,
+        starterBFP: avgStarterBFP,
         relieverBFP: relieverBFP ?? { early: 20, middle: 15, late: 10 },
         relieverBFPOverall: 14.5,
         relieversPerGame: 2.3,
-        starterDeepOutingBFP: deepOutingBFP ?? 32,
+        starterDeepOutingBFP: medianBFP ?? 32,
+        pullThresholds,
+        expectedPitchersPerGame: estimatedPitchersPerGame
       },
       substitutions: {
         pinchHitsPerGame: 2.2,
@@ -281,11 +380,13 @@ function getSeasonNorms(
           maxPitches: 70,
           typicalPitches: 30,
         },
-        starterBFP: 30.9,
+        starterBFP: avgStarterBFP,
         relieverBFP: relieverBFP ?? { early: 22, middle: 17, late: 12 },
         relieverBFPOverall: 17.5,
         relieversPerGame: 1.7,
-        starterDeepOutingBFP: deepOutingBFP ?? 33,
+        starterDeepOutingBFP: medianBFP ?? 33,
+        pullThresholds,
+        expectedPitchersPerGame: estimatedPitchersPerGame
       },
       substitutions: {
         pinchHitsPerGame: 2.2,
@@ -307,11 +408,13 @@ function getSeasonNorms(
           maxPitches: 80,
           typicalPitches: 35,
         },
-        starterBFP: 31.0,
+        starterBFP: avgStarterBFP,
         relieverBFP: relieverBFP ?? { early: 25, middle: 20, late: 15 },
         relieverBFPOverall: 20.0,
         relieversPerGame: 1.5,
-        starterDeepOutingBFP: deepOutingBFP ?? 35,
+        starterDeepOutingBFP: medianBFP ?? 35,
+        pullThresholds,
+        expectedPitchersPerGame: estimatedPitchersPerGame
       },
       substitutions: {
         pinchHitsPerGame: 2.0,
@@ -918,7 +1021,7 @@ SELECT
   ds.player_id,
   ds.fielding_position,
   SUM(ds.outs_played) AS outs_played
-FROM main.defensive_stats ds
+FROM defensive_stats ds
 WHERE ds.season = ${year}
 GROUP BY ds.player_id, ds.fielding_position
 ORDER BY ds.player_id, outs_played DESC;
@@ -1077,6 +1180,67 @@ SELECT
 FROM reliever_appearances
 GROUP BY inning_group
 ORDER BY inning_group;
+`;
+}
+
+/**
+ * Calculate actual pitchers used per game from historical data
+ */
+function getPitchersPerGameSQL(year: number): string {
+  return `
+WITH game_pitchers AS (
+    SELECT
+        g.game_id,
+        COUNT(DISTINCT e.pitcher_id) as pitchers_used
+    FROM game.games g
+    JOIN event.events e ON g.game_id = e.game_id
+    WHERE EXTRACT(YEAR FROM g.date) = ${year}
+        AND e.pitcher_id IS NOT NULL
+        AND e.plate_appearance_result IS NOT NULL
+        AND e.no_play_flag = false
+    GROUP BY g.game_id
+)
+SELECT
+    ROUND(AVG(pitchers_used), 2) as avg_pitchers_per_game
+FROM game_pitchers;
+`;
+}
+
+/**
+ * Query 90th percentile BFP for starters (for calculating hard limits)
+ */
+function getStarterBFP90SQL(year: number): string {
+  return `
+WITH first_pitchers AS (
+  SELECT DISTINCT
+    e.game_id,
+    e.side,
+    e.pitcher_id as starter_id
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
+    AND e.no_play_flag = false
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY e.game_id, e.side ORDER BY e.event_id) = 1
+),
+starter_outings AS (
+  SELECT
+    fp.starter_id as pitcher_id,
+    e.game_id,
+    COUNT(*) as bfp
+  FROM event.events e
+  JOIN first_pitchers fp ON e.game_id = fp.game_id AND e.side = fp.side AND e.pitcher_id = fp.starter_id
+  JOIN game.games g ON e.game_id = g.game_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND e.plate_appearance_result IS NOT NULL
+    AND e.plate_appearance_result != 'IntentionalWalk'
+    AND e.no_play_flag = false
+  GROUP BY fp.starter_id, e.game_id
+)
+SELECT
+  ROUND(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY bfp), 1) as p90_bfp
+FROM starter_outings;
 `;
 }
 
@@ -1697,10 +1861,29 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     console.log('    ⚠ Could not load reliever BFP data, using defaults');
   }
 
+  // Get actual pitchers per game from data
+  console.log('  📊 Pitchers per game...');
+  const pitchersPerGameResult = runDuckDB(getPitchersPerGameSQL(year), dbPath);
+  const pitchersPerGameRaw = parseCSV(pitchersPerGameResult);
+  const actualPitchersPerGame = pitchersPerGameRaw.length > 0
+    ? parseFloat(pitchersPerGameRaw[0].avg_pitchers_per_game)
+    : undefined;
+  console.log(`    ✓ Actual pitchers per game: ${actualPitchersPerGame ?? 'N/A'}`);
+
+  // Get 90th percentile BFP for calculating hard limits
+  console.log('  📊 Starter BFP percentiles...');
+  const p90BFPResult = runDuckDB(getStarterBFP90SQL(year), dbPath);
+  const p90BPFRaw = parseCSV(p90BFPResult);
+  const p90BFP = p90BPFRaw.length > 0
+    ? parseFloat(p90BPFRaw[0].p90_bfp)
+    : undefined;
+  console.log(`    ✓ 90th percentile BFP: ${p90BFP ?? 'N/A'}`);
+
   // Get era-appropriate norms
   console.log('  📋 Season norms...');
-  const norms = getSeasonNorms(year, deepOutingBFP, relieverBFP);
+  const norms = getSeasonNorms(year, deepOutingBFP, p90BFP, relieverBFP, actualPitchersPerGame);
   console.log(`    ✓ Era: ${norms.era}, Starter limit: ${norms.pitching.starterPitches.typicalLimit} pitches`);
+  console.log(`    ✓ Pull thresholds: consider=${norms.pitching.pullThresholds.consider.toFixed(1)}, likely=${norms.pitching.pullThresholds.likely.toFixed(1)}, hardLimit=${norms.pitching.pullThresholds.hardLimit.toFixed(1)}`);
 
   // Create season package
   const season: SeasonPackage = {

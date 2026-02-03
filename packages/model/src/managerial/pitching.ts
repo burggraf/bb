@@ -38,18 +38,131 @@ export interface PullDecisionOptions {
 		/** Late game (innings 7+) */
 		late: number;
 	};
+	/** Season-specific overall average BFP for relievers (from season norms) */
+	seasonRelieverBFPOverall?: number;
 	/** Season-specific average BFP for starters (from season norms) */
 	seasonStarterBFP?: number;
 	/** Current inning for determining appropriate reliever cap */
 	currentInning: number;
+	/** Season year for era determination */
+	year?: number;
+	/** Is the pitching team in a DH game? */
+	usesDH?: boolean;
+	/** Season-specific pull thresholds (overrides year-based calculation) */
+	pullThresholds?: {
+		consider: number;
+		likely: number;
+		hardLimit: number;
+	};
+	/** Season-specific era minimum reliever caps */
+	eraMinRelieverCaps?: {
+		early: number;
+		middle: number;
+		late: number;
+	};
+}
+
+/**
+ * Era-specific pitching configuration
+ * Based on historical analysis of MLB pitcher usage patterns
+ */
+interface EraConfig {
+	/** Era name */
+	name: string;
+	/** Expected number of pitchers used per game (for validation) */
+	expectedPitchersPerGame: number;
+	/** Starter pull thresholds as percentage of average BFP */
+	starterPullThresholds: {
+		/** When to start considering pull (fraction of avg BFP) */
+		consider: number;
+		/** When pull is likely (fraction of avg BFP) */
+		likely: number;
+		/** Hard limit (fraction of avg BFP) */
+		hardLimit: number;
+	};
+	/** Complete game allowance */
+	completeGame: {
+		/** Maximum CG rate as fraction of starts */
+		maxCGRate: number;
+		/** Performance bonus for good games */
+		performanceBonus: boolean;
+	};
+}
+
+/**
+ * Get era configuration based on year
+ * Uses year-based era detection instead of inferring from BFP
+ */
+function getEraConfig(year: number, usesDH: boolean): EraConfig {
+	// Non-DH games typically use more pitchers (pinch-hitting for pitchers)
+	const dhAdjustment = usesDH ? 0 : 0.5;
+
+	if (year < 1920) {
+		// Deadball Era: High complete game rate (~75%)
+		// Starters routinely pitched 30+ batters, pull thresholds reflect this
+		return {
+			name: 'deadball',
+			expectedPitchersPerGame: 3.2,
+			starterPullThresholds: { consider: 1.0, likely: 1.2, hardLimit: 1.4 },
+			completeGame: { maxCGRate: 0.75, performanceBonus: true }
+		};
+	} else if (year < 1947) {
+		// Integration Era: Still high CG rate (~72%)
+		return {
+			name: 'integration',
+			expectedPitchersPerGame: 3.7,
+			starterPullThresholds: { consider: 1.0, likely: 1.15, hardLimit: 1.35 },
+			completeGame: { maxCGRate: 0.72, performanceBonus: true }
+		};
+	} else if (year < 1969) {
+		// Golden Age: Declining but still significant CG rate (~61%)
+		return {
+			name: 'golden-age',
+			expectedPitchersPerGame: 4.8,
+			starterPullThresholds: { consider: 0.80, likely: 0.95, hardLimit: 1.25 },
+			completeGame: { maxCGRate: 0.61, performanceBonus: true }
+		};
+	} else if (year < 1973) {
+		// Early DH Era: Transition period (~61% CG)
+		return {
+			name: 'early-dh',
+			expectedPitchersPerGame: 5.1,
+			starterPullThresholds: { consider: 0.75, likely: 0.90, hardLimit: 1.2 },
+			completeGame: { maxCGRate: 0.61, performanceBonus: true }
+		};
+	} else if (year < 1995) {
+		// DH Era: Modern bullpen usage begins (~54-58% CG depending on DH)
+		return {
+			name: 'dh-era',
+			expectedPitchersPerGame: 5.2 + dhAdjustment,
+			starterPullThresholds: { consider: 0.70, likely: 0.90, hardLimit: 1.2 },
+			completeGame: { maxCGRate: usesDH ? 0.58 : 0.54, performanceBonus: true }
+		};
+	} else if (year < 2009) {
+		// Modern Era: Specialization begins (~46-49% CG)
+		return {
+			name: 'modern',
+			expectedPitchersPerGame: 7.1 + dhAdjustment,
+			starterPullThresholds: { consider: 0.65, likely: 0.85, hardLimit: 1.15 },
+			completeGame: { maxCGRate: usesDH ? 0.49 : 0.46, performanceBonus: false }
+		};
+	} else {
+		// Analytics Era: Heavy specialization (~25-31% CG)
+		return {
+			name: 'analytics',
+			expectedPitchersPerGame: 8.0 + dhAdjustment,
+			starterPullThresholds: { consider: 0.55, likely: 0.80, hardLimit: 1.1 },
+			completeGame: { maxCGRate: usesDH ? 0.31 : 0.25, performanceBonus: false }
+		};
+	}
 }
 
 /**
  * Decide whether to pull the current pitcher
  *
- * Uses pitcher-specific average BFP based on their current role.
- * - Starters: pulled around their typical starter workload
- * - Relievers: use their average but with caps to handle skewed data
+ * Uses era-specific pull thresholds based on year and DH status.
+ * - Starters: pulled based on era-appropriate BFP thresholds
+ * - Relievers: use their average but with caps by inning group
  *   - Pure relievers (no starter data): avgBfpAsReliever capped at 6 (modern specialists)
  *   - Swingmen (have starter data): avgBfpAsReliever capped at 12 (can go longer)
  */
@@ -62,6 +175,26 @@ export function shouldPullPitcher(
 ): PitchingDecision {
 	const { inning, scoreDiff } = gameState;
 
+	// Get era configuration (default to 1976 if year not provided)
+	const year = options?.year ?? 1976;
+	const usesDH = options?.usesDH ?? false;
+
+	// Use season-specific pull thresholds if provided, otherwise fall back to year-based
+	let pullThresholds: { consider: number; likely: number; hardLimit: number };
+	let performanceBonus: boolean;
+
+	if (options?.pullThresholds) {
+		// Season-specific values from export script
+		pullThresholds = options.pullThresholds;
+		// Performance bonus based on era (CG rates declined over time)
+		performanceBonus = year < 1995;
+	} else {
+		// Fall back to year-based era config
+		const eraConfig = getEraConfig(year, usesDH);
+		pullThresholds = eraConfig.starterPullThresholds;
+		performanceBonus = eraConfig.completeGame.performanceBonus;
+	}
+
 	// Get pitcher's average BFP for their current role
 	const avgBfp = pitcher.role === 'starter'
 		? pitcher.avgBfpAsStarter
@@ -71,76 +204,65 @@ export function shouldPullPitcher(
 	let variance: number;
 
 	if (pitcher.role === 'starter') {
-		// === STARTER LOGIC: Complete game considerations ===
+		// === STARTER LOGIC: Era-specific complete game considerations ===
 		typicalBfp = avgBfp ?? options?.seasonStarterBFP ?? 27;
 
-		// Determine era from typical BFP (higher = earlier era)
-		const isEarlyEra = typicalBfp > 29;
-		const isMiddleEra = typicalBfp >= 27 && typicalBfp <= 29;
-		const isModernEra = typicalBfp < 27;
-
-		// Hard limit: 1.5x average is absolute max
-		if (pitcher.battersFace >= typicalBfp * 1.5) {
+		// Hard limit: exceeded hard limit threshold
+		const hardLimit = typicalBfp * pullThresholds.hardLimit;
+		if (pitcher.battersFace >= hardLimit) {
 			return { shouldChange: true, reason: `Exceeded limit (${pitcher.battersFace} BFP)` };
 		}
 
-		// Modern era: Pull earlier (at 65% of average) to simulate modern hook
-		// Early/Middle era: Pull at average (allow complete games)
-		const pullThreshold = (isEarlyEra || isMiddleEra) ? typicalBfp : typicalBfp * 0.55;
+		// Consider pull threshold
+		const considerThreshold = typicalBfp * pullThresholds.consider;
+		const likelyThreshold = typicalBfp * pullThresholds.likely;
 
-		if (pitcher.battersFace >= pullThreshold) {
-			let pullChance = 0.5; // Base 50% chance at average
+		if (pitcher.battersFace >= considerThreshold) {
+			// Calculate base pull chance based on BFP progress
+			const bfpProgress = (pitcher.battersFace - considerThreshold) / (likelyThreshold - considerThreshold);
+			let pullChance = 0.2 + bfpProgress * 0.5; // 20% at consider, 70% at likely
 
-			// === COMPLETE GAME LOGIC: Only for early/middle eras ===
-			// Modern baseball: Pull at average regardless of performance
-			if (isEarlyEra || isMiddleEra) {
-				// 1. How is the pitcher performing today?
+			// Performance-based adjustment (only for eras that allow CG bonuses)
+			if (performanceBonus) {
 				const baserunnersAllowed = pitcher.hitsAllowed + pitcher.walksAllowed;
 				const roughness = pitcher.battersFace > 0 ? baserunnersAllowed / pitcher.battersFace : 0;
 
-				if (roughness < 0.2) {
-					pullChance -= 0.25; // Pitching great
-				} else if (roughness > 0.4) {
-					pullChance += 0.15; // Getting hit around
+				// Reduce pull chance for good performances
+				if (roughness < 0.15) {
+					pullChance -= 0.3; // Dominating
+				} else if (roughness < 0.25) {
+					pullChance -= 0.15; // Pitching well
+				} else if (roughness > 0.5) {
+					pullChance += 0.2; // Getting hit around
 				}
 
-				// 2. Game situation
+				// Game situation adjustments
 				if (scoreDiff >= 4) {
-					pullChance -= 0.15; // Comfortable lead
-				} else if (scoreDiff <= -2 || (scoreDiff >= 0 && scoreDiff <= 2)) {
-					pullChance += 0.15; // Losing or close game
+					pullChance -= 0.1; // Comfortable lead
+				} else if (scoreDiff <= -2) {
+					pullChance += 0.15; // Losing
 				}
 
-				// 3. Inning context - deep in game with lead?
+				// Late game with lead: let them finish
 				if (inning >= 8 && scoreDiff > 0 && roughness < 0.3) {
 					pullChance -= 0.25;
 				}
-
-				// 4. Era-specific adjustments
-				if (isEarlyEra) {
-					// Early era: Managers let starters finish
-					if (roughness < 0.3) {
-						pullChance -= 0.2;
-					}
-					if (pitcher.battersFace < typicalBfp * 1.2 && roughness < 0.4) {
-						pullChance = Math.min(pullChance, 0.3);
-					}
-				} else if (roughness < 0.25) {
-					pullChance -= 0.1;
-				}
 			} else {
-				// Modern era: Pull at average regardless of how they're pitching
-				// Maybe slightly more lenient if absolutely dominating
+				// Modern/analytics era: performance matters less, adherence to limits matters more
+				// Only extreme performances get consideration
 				const baserunnersAllowed = pitcher.hitsAllowed + pitcher.walksAllowed;
 				const roughness = pitcher.battersFace > 0 ? baserunnersAllowed / pitcher.battersFace : 0;
-				if (roughness < 0.1) {
+				if (roughness < 0.08) {
 					// Perfect game / no-hitter type performance
-					pullChance -= 0.1;
+					pullChance -= 0.15;
+				} else if (roughness > 0.6) {
+					// Getting shelled
+					pullChance += 0.25;
 				}
 			}
 
 			pullChance += randomness;
-			pullChance = Math.max(0.1, Math.min(pullChance, 1.0));
+			pullChance = Math.max(0.05, Math.min(pullChance, 0.95));
 
 			if (Math.random() < pullChance) {
 				const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
@@ -154,13 +276,13 @@ export function shouldPullPitcher(
 			}
 		}
 
-		// Before reaching average, only pull for serious issues
-		if (pitcher.battersFace >= typicalBfp * 0.8) {
+		// Early pull for terrible performance (any era)
+		if (pitcher.battersFace >= typicalBfp * 0.5) {
 			const baserunnersAllowed = pitcher.hitsAllowed + pitcher.walksAllowed;
 			const roughness = pitcher.battersFace > 0 ? baserunnersAllowed / pitcher.battersFace : 0;
 
-			if (roughness > 0.5) {
-				if (Math.random() < 0.4 + randomness) {
+			if (roughness > 0.6) {
+				if (Math.random() < 0.5 + randomness) {
 					const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
 					if (newPitcher) {
 						return {
@@ -175,27 +297,57 @@ export function shouldPullPitcher(
 
 		return { shouldChange: false };
 	} else {
-		// Relievers use their personal average, capped at inning-group appropriate maximum
+		// === RELIEVER LOGIC ===
 		const relieverAvg = avgBfp ?? 12;
 
-		// Determine the appropriate cap based on current inning
-		let seasonCap: number;
-		if (options?.seasonRelieverBFP) {
-			if (inning <= 3) {
-				seasonCap = options.seasonRelieverBFP.early;
-			} else if (inning <= 6) {
-				seasonCap = options.seasonRelieverBFP.middle;
-			} else {
-				seasonCap = options.seasonRelieverBFP.late;
-			}
+		// Determine era-specific MINIMUM caps (these are floors, not ceilings)
+		// Use season-specific values if available, otherwise fall back to year-based
+		let eraMinCap: number;
+		if (options?.eraMinRelieverCaps) {
+			// Use season-specific caps from export script
+			eraMinCap = inning <= 3
+				? options.eraMinRelieverCaps.early
+				: inning <= 6
+					? options.eraMinRelieverCaps.middle
+					: options.eraMinRelieverCaps.late;
 		} else {
-			// Fallback defaults if no season data
-			seasonCap = inning <= 3 ? 15 : inning <= 6 ? 10 : 6;
+			// Fall back to year-based era determination
+			if (year < 1940) {
+				// Deadball/Integration: Long relievers routinely pitched 3+ innings
+				eraMinCap = inning <= 3 ? 18 : inning <= 6 ? 14 : 10;
+			} else if (year < 1973) {
+				eraMinCap = inning <= 3 ? 16 : inning <= 6 ? 12 : 8;
+			} else if (year < 1995) {
+				eraMinCap = inning <= 3 ? 12 : inning <= 6 ? 8 : 5;
+			} else {
+				// Modern era - strict caps
+				eraMinCap = inning <= 3 ? 9 : inning <= 6 ? 6 : 4;
+			}
 		}
 
-		// Cap at the inning-group average to handle swingmen with inflated reliever averages
-		// E.g., a swingman with avgBfpAsReliever=18 entering in 8th gets capped at late-game avg (~4-6)
-		typicalBfp = Math.min(relieverAvg, seasonCap);
+		// Use the overall season average for capping, which better represents typical reliever usage
+		// The inning-specific values are too low as they include short specialists
+		let seasonCap: number;
+		if (options?.seasonRelieverBFPOverall) {
+			// Use the overall average as the cap, which includes all reliever types
+			// This allows both short and long relievers to perform according to their actual ability
+			seasonCap = Math.max(eraMinCap, options.seasonRelieverBFPOverall);
+		} else if (options?.seasonRelieverBFP) {
+			// Fall back to inning-specific values if overall not available
+			const normBFP = inning <= 3
+				? options.seasonRelieverBFP.early
+				: inning <= 6
+					? options.seasonRelieverBFP.middle
+					: options.seasonRelieverBFP.late;
+			// Use 2.5x to account for overall being higher than inning-specific
+			seasonCap = Math.max(eraMinCap, normBFP * 2.5);
+		} else {
+			seasonCap = eraMinCap * 2.5;
+		}
+
+		// Cap at the season cap to handle swingmen with inflated reliever averages
+		// But ensure we don't cap below the era minimum
+		typicalBfp = Math.max(Math.min(relieverAvg, seasonCap), eraMinCap);
 		// Lower variance for early eras (relievers pitched longer), higher for modern (specialists)
 		variance = seasonCap > 10 ? 0.15 : 0.30;
 	}

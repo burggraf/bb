@@ -695,10 +695,31 @@ export class GameEngine {
 		const mgrState = toManagerialGameState(this.state);
 
 		// Use season-specific BFP data for pull decisions
+		// Get the pitching team's league for DH determination
+		const pitchingTeamLeague = this.season.teams[pitchingTeam.teamId]?.league ?? 'NL';
+		const pitchingTeamUsesDH = usesDH(pitchingTeamLeague, this.season.meta.year);
+
 		const pullOptions = {
 			seasonStarterBFP: this.season.norms.pitching.starterBFP,
 			seasonRelieverBFP: this.season.norms.pitching.relieverBFP,
-			currentInning: this.state.inning
+			seasonRelieverBFPOverall: this.season.norms.pitching.relieverBFPOverall,
+			currentInning: this.state.inning,
+			year: this.season.meta.year,
+			usesDH: pitchingTeamUsesDH,
+			pullThresholds: this.season.norms.pitching.pullThresholds,
+			// Calculate era minimum reliever caps based on year (fallback if not in season data)
+			eraMinRelieverCaps: (() => {
+				const y = this.season.meta.year;
+				if (y < 1940) {
+					return { early: 18, middle: 14, late: 10 };
+				} else if (y < 1973) {
+					return { early: 16, middle: 12, late: 8 };
+				} else if (y < 1995) {
+					return { early: 12, middle: 8, late: 5 };
+				} else {
+					return { early: 9, middle: 6, late: 4 };
+				}
+			})()
 		};
 
 		const pitchingDecision = shouldPullPitcher(
