@@ -342,6 +342,9 @@ export class GameEngine {
 	// Track which position each pinch hitter replaced (for double-switch logic)
 	// Maps PH playerId → the position of the player they replaced
 	private phReplacedPositions: Map<string, number>;
+	// Track which batting slot each PH-for-pitcher occupies
+	// Maps PH playerId → batting index, so we can put the new pitcher there
+	private phForPitcherBattingSlots: Map<string, number>;
 	// Track relievers (pitchers who entered mid-game - should never bat in non-DH games)
 	// Using ES2022 private field syntax for better tsx compatibility
 	#relievers: Set<string> = new Set();
@@ -401,6 +404,7 @@ export class GameEngine {
 		this.usedPinchHitters = new Set();
 		this.removedPlayers = new Set();
 		this.phReplacedPositions = new Map();
+		this.phForPitcherBattingSlots = new Map();
 		this.initializeBullpen(awayTeam, awayLineup.pitcher!);
 		this.initializeBullpen(homeTeam, homeLineup.pitcher!);
 
@@ -561,40 +565,36 @@ export class GameEngine {
 	}
 
 	/**
-	 * Check if a player can play a specific position
-	 * Rules:
-	 * - Pitchers (1) only play pitcher
-	 * - Catchers (2) primarily catch, but can play 1B in emergencies
-	 * - Infielders (3, 4, 5, 6) can play any infield position
-	 * - Outfielders (7, 8, 9) can play any outfield position
-	 * - Some players have multi-position eligibility from the data
+	 * Check if a player can play a specific position.
+	 * Uses position eligibility data from season stats.
+	 * Falls back to primary position only if no explicit eligibility data exists.
+	 *
+	 * This must match the validation logic in lineup-validator.ts
 	 */
 	private canPlayPosition(playerId: string, position: number): boolean {
 		const player = this.season.batters[playerId];
 		if (!player) return false;
 
-		// Check explicit position eligibility
-		if (player.positionEligibility[position]) return true;
+		// Any player can DH, PH, or PR (position 10, 11, 12)
+		if (position === 10 || position === 11 || position === 12) {
+			return true;
+		}
 
-		const primary = player.primaryPosition;
+		// Position 1 (pitcher) has special restrictions - only players whose primary position is pitcher
+		if (position === 1) {
+			return player.primaryPosition === 1;
+		}
 
-		// Position group rules
-		const isPitcher = primary === 1;
-		const isCatcher = primary === 2;
-		const isInfield = [3, 4, 5, 6].includes(primary);
-		const isOutfield = [7, 8, 9].includes(primary);
+		// Check explicit position eligibility data (from actual stats)
+		const outsAtPosition = player.positionEligibility[position];
+		if (outsAtPosition && outsAtPosition > 0) {
+			return true;
+		}
 
-		// Pitchers only pitch
-		if (isPitcher) return position === 1;
-
-		// Catchers primarily catch, can play 1B
-		if (isCatcher) return position === 2 || position === 3;
-
-		// Infielders can play any infield position
-		if (isInfield && [3, 4, 5, 6].includes(position)) return true;
-
-		// Outfielders can play any outfield position
-		if (isOutfield && [7, 8, 9].includes(position)) return true;
+		// Check if it's their primary position
+		if (player.primaryPosition === position) {
+			return true;
+		}
 
 		return false;
 	}
@@ -708,12 +708,46 @@ export class GameEngine {
 				}
 			}
 
-			// Step 2: For each PH, check if they can play one of the open positions
+			// Step 2: Handle PH for pitchers specially - the current pitcher takes the old pitcher's batting slot
+			// When a pitcher was PH'd for, we tracked the batting slot and need to put the new pitcher there
+			const pitcherReplacedSlots: Array<{ pitcherId: string; battingIndex: number }> = [];
+			for (const ph of phForPitcher) {
+				const replacedPosition = this.phReplacedPositions.get(ph.playerId);
+				if (replacedPosition === 1) {
+					// This PH replaced a pitcher - get the batting slot from the map
+					const battingIndex = this.phForPitcherBattingSlots.get(ph.playerId);
+					if (battingIndex !== undefined) {
+						// Place the current pitcher at this batting slot
+						const currentPitcherId = lineup.pitcher;
+						if (currentPitcherId) {
+							pitcherReplacedSlots.push({ pitcherId: currentPitcherId, battingIndex });
+							console.log(`DEBUG: PH for pitcher detected - PH ${ph.playerId} at batting index ${battingIndex}, will place pitcher ${currentPitcherId} there`);
+						}
+					}
+				}
+			}
+
+			// Debug: log current lineup before pitcher placement
+			if (pitcherReplacedSlots.length > 0) {
+				console.log(`DEBUG: Lineup before pitcher placement: ${lineup.players.map(p => {
+					const player = this.season.batters[p.playerId] || this.season.pitchers[p.playerId];
+					return `${player?.name || p.playerId || 'null'} (${POSITION_NAMES[p.position] ?? p.position})`;
+				}).join(', ')}`);
+				console.log(`DEBUG: Current pitcher from lineup.pitcher: ${lineup.pitcher}`);
+			}
+
+			// Step 3: For each PH, check if they can play one of the open positions
 			// This handles the double-switch case where a pitcher PH can take a field position
+			// IMPORTANT: PHs for pitchers should NOT take field positions here - they will be
+			// either replaced by the current pitcher or assigned later
+			// IMPORTANT: Position 1 (pitcher) is NOT included in positionsToFill because only
+			// the pitcher placement logic should place someone at position 1
 			const positionsToFill = new Set(openPositions);
+			positionsToFill.delete(1); // Remove position 1 - only pitcher placement logic handles this
 			const phAssignments: Map<string, { index: number; position: number }> = new Map();
 
-			// Check PH for position players first (they might be able to play pitcher)
+			// Only check PH for position players (they might be able to play pitcher or other open positions)
+			// PH for pitchers are handled separately below
 			for (const ph of phForPositionPlayer) {
 				// Check if this PH can play any of the open positions
 				for (const openPos of positionsToFill) {
@@ -726,18 +760,11 @@ export class GameEngine {
 				}
 			}
 
-			// Check PH for pitchers (they might be able to play a field position, though rare)
-			for (const ph of phForPitcher) {
-				// Check if this PH can play any of the open positions
-				for (const openPos of positionsToFill) {
-					if (this.canPlayPosition(ph.playerId, openPos)) {
-						// This PH stays in the lineup at their current batting order, playing the open position
-						phAssignments.set(ph.playerId, { index: ph.index, position: openPos });
-						positionsToFill.delete(openPos);
-						break;
-					}
-				}
-			}
+			// NOTE: PH for pitchers are NOT assigned to field positions here
+			// They will be either:
+			// 1. Replaced by the current pitcher (in Step 4)
+			// 2. Assigned to the position they replaced (in "Handle any remaining unassigned PHs")
+			// 3. Replaced by a bench player (in Step 4)
 
 			// Step 3: For remaining open positions, find bench players to fill them
 			// Get available bench players
@@ -773,8 +800,113 @@ export class GameEngine {
 			}
 
 			// Step 4: Apply all assignments
-			// First, apply PH assignments (PHs staying in at new positions)
+			// First, place the current pitcher at the old pitcher's batting slot (PH for pitcher case)
+			// Track which batting indices were filled by pitchers so we don't double-assign
+			const pitcherFilledIndices = new Set<number>();
+
+			// Track which PHs have been assigned (by PH assignments, bench assignments, or pitcher placements)
+			// This needs to be defined before the assignment loops so we can add to it
+			const assignedPlayerIds = new Set<string>();
+
+			// Track the old pitcher slot that will become vacant when we move the pitcher
+			// This needs to be filled by someone else
+			const vacatedPitcherSlots: Array<{ index: number; position: number }> = [];
+			const currentPitcherId = lineup.pitcher;
+			if (currentPitcherId) {
+				// Find and remove ALL occurrences of the current pitcher in the lineup
+				// (regardless of position - they could be at position 1, or at a field position from a double switch)
+				for (let i = 0; i < lineup.players.length; i++) {
+					if (lineup.players[i].playerId === currentPitcherId) {
+						// This is the current pitcher - we'll need to fill this slot
+						vacatedPitcherSlots.push({ index: i, position: lineup.players[i].position });
+						// Clear this slot
+						lineup.players[i] = { playerId: null, position: 0 };
+					}
+				}
+			}
+
+			// Now place the current pitcher at the PH's batting slots
+			for (const { pitcherId, battingIndex } of pitcherReplacedSlots) {
+				const pitcher = this.season.batters[pitcherId] || this.season.pitchers[pitcherId];
+				lineup.players[battingIndex] = {
+					playerId: pitcherId,
+					position: 1
+				};
+				pitcherFilledIndices.add(battingIndex);
+
+				const battingOrder = battingIndex + 1;
+				this.state.plays.unshift({
+					inning: this.state.inning,
+					isTopInning: this.state.isTopInning,
+					outcome: 'out' as Outcome,
+					batterId: '',
+					batterName: '',
+					pitcherId: '',
+					pitcherName: '',
+					description: `Lineup adjustment: ${this.formatName(pitcher?.name || pitcherId)} (P) batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+					runsScored: 0,
+					eventType: 'lineupAdjustment',
+					substitutedPlayer: pitcherId,
+					isSummary: true
+				});
+			}
+
+			// If we vacated any pitcher slots, fill them directly with bench players
+			// (can't rely on bench assignment logic because it looks for positions, not slots)
+			for (const vacatedSlot of vacatedPitcherSlots) {
+				if (vacatedSlot.position === 1) {
+					// Need to find a bench player who can play pitcher (position 1)
+					// Only players with primaryPosition === 1 can pitch
+					const currentLineupPlayerIds = lineup.players.map(p => p.playerId).filter((id): id is string => id !== null);
+					const allTeamBatters = Object.values(this.season.batters)
+						.filter(b => b.teamId === teamId);
+					const availableBench = allTeamBatters.filter(b =>
+						!currentLineupPlayerIds.includes(b.id) &&
+						!this.usedPinchHitters.has(b.id) &&
+						!this.removedPlayers.has(b.id) &&
+						b.primaryPosition === 1  // Only pitchers can play position 1
+					);
+
+					if (availableBench.length > 0) {
+						// Use the first available pitcher
+						const benchPlayer = availableBench[0];
+						lineup.players[vacatedSlot.index] = {
+							playerId: benchPlayer.id,
+							position: 1
+						};
+
+						const battingOrder = vacatedSlot.index + 1;
+						this.state.plays.unshift({
+							inning: this.state.inning,
+							isTopInning: this.state.isTopInning,
+							outcome: 'out' as Outcome,
+							batterId: '',
+							batterName: '',
+							pitcherId: '',
+							pitcherName: '',
+							description: `Lineup adjustment: ${this.formatName(benchPlayer.name)} (P) replaces pitcher, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+							runsScored: 0,
+							eventType: 'lineupAdjustment',
+							substitutedPlayer: benchPlayer.id,
+							isSummary: true
+						});
+					} else {
+						console.warn(`No bench pitcher available to fill vacated pitcher slot at batting order ${vacatedSlot.index + 1}`);
+						// Leave the slot empty - this will cause a validation error
+					}
+				} else {
+					// Vacated slot is for a field position - add to positionsToFill so bench assignment logic handles it
+					positionsToFill.add(vacatedSlot.position);
+				}
+			}
+
+			// Second, apply PH assignments (PHs staying in at new positions)
+			// Skip PHs that were replaced by pitchers
 			for (const [phId, assignment] of phAssignments) {
+				if (pitcherFilledIndices.has(assignment.index)) {
+					// This PH slot was filled by a pitcher, skip
+					continue;
+				}
 				const phPlayer = this.season.batters[phId];
 				if (!phPlayer) continue;
 
@@ -815,6 +947,9 @@ export class GameEngine {
 					position: assignment.position
 				};
 
+				// Track this PH as assigned so the "remaining PHs" logic skips it
+				assignedPlayerIds.add(originalPhId);
+
 				const battingOrder = assignment.index + 1;
 				const positionName = POSITION_NAMES[assignment.position] ?? `Pos${assignment.position}`;
 				this.state.plays.unshift({
@@ -833,9 +968,90 @@ export class GameEngine {
 				});
 			}
 
+			// Handle any remaining unassigned PHs
+			// These are PHs who couldn't stay in at a new position and weren't replaced by bench players
+			// Try to assign them to the position they replaced, if they're eligible
+			// Add PH assignment IDs to the tracking set
+			for (const phId of phAssignments.keys()) {
+				assignedPlayerIds.add(phId);
+			}
+
+			// Add bench assignment IDs to the tracking set
+			for (const assignment of benchAssignments) {
+				assignedPlayerIds.add(assignment.playerId);
+			}
+
+			// Also add the PH playerIds whose slots were filled by pitchers
+			for (const ph of phForPitcher) {
+				if (pitcherFilledIndices.has(ph.index)) {
+					assignedPlayerIds.add(ph.playerId);
+				}
+			}
+
+			console.log(`DEBUG: Processing remaining PHs - assignedPlayerIds: ${Array.from(assignedPlayerIds).join(', ')}`);
+			for (const ph of phSlots) {
+				if (assignedPlayerIds.has(ph.playerId)) {
+					continue; // Already handled above
+				}
+
+				const replacedPosition = this.phReplacedPositions.get(ph.playerId);
+				if (replacedPosition !== undefined && this.canPlayPosition(ph.playerId, replacedPosition)) {
+					// PH can play the position they replaced - assign them there
+					const phPlayer = this.season.batters[ph.playerId];
+					if (phPlayer) {
+						lineup.players[ph.index] = {
+							playerId: ph.playerId,
+							position: replacedPosition
+						};
+
+						const battingOrder = ph.index + 1;
+						const positionName = POSITION_NAMES[replacedPosition] ?? `Pos${replacedPosition}`;
+						this.state.plays.unshift({
+							inning: this.state.inning,
+							isTopInning: this.state.isTopInning,
+							outcome: 'out' as Outcome,
+							batterId: '',
+							batterName: '',
+							pitcherId: '',
+							pitcherName: '',
+							description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game defensively, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+							runsScored: 0,
+							eventType: 'lineupAdjustment',
+							substitutedPlayer: ph.playerId,
+							isSummary: true
+						});
+					}
+				} else {
+					// PH can't play the position they replaced, and no bench player available
+					// This is a problem - we'll have to leave them in but it's not ideal
+					const phPlayer = this.season.batters[ph.playerId];
+					console.warn(`Pinch hitter ${phPlayer?.name || ph.playerId} cannot play position ${replacedPosition !== undefined ? POSITION_NAMES[replacedPosition] : 'unknown'} defensively and no bench replacement available - leaving in game at PH position`);
+				}
+			}
+
+			// Validate the final lineup to ensure no issues
+			const finalValidation = this.validateCurrentLineup(lineup);
+			if (!finalValidation.isValid) {
+				console.error(`Lineup validation failed after PH resolution: ${finalValidation.errors.join(', ')}`);
+				// This is a serious error - the lineup is invalid
+				// Log the current state for debugging
+				console.error(`Lineup: ${lineup.players.map(p => {
+					const player = this.season.batters[p.playerId];
+					return `${player?.name || p.playerId} (${POSITION_NAMES[p.position] ?? p.position})`;
+				}).join(', ')}`);
+			}
+
 			// Clean up PH tracking
 			for (const ph of phSlots) {
 				this.phReplacedPositions.delete(ph.playerId);
+			}
+
+			// Clean up PH-for-pitcher batting slots tracking
+			// Remove entries for PHs whose slots we filled with pitchers
+			for (const ph of phForPitcher) {
+				if (pitcherFilledIndices.has(ph.index)) {
+					this.phForPitcherBattingSlots.delete(ph.playerId);
+				}
 			}
 		} else {
 			// DH game: PH could stay in or be replaced
@@ -1198,6 +1414,9 @@ export class GameEngine {
 
 						// If pinch hitting for pitcher, we also need a new pitcher
 						if (isPitcherPH) {
+							// Store which batting slot this PH occupies, so we can place the new pitcher there
+							this.phForPitcherBattingSlots.set(phDecision.pinchHitterId, batterIndex);
+
 							// Get a reliever from the bullpen (excluding the current pitcher being pinch hit for)
 							const bullpen = this.bullpenStates.get(battingTeam.teamId);
 							if (bullpen && bullpen.relievers.length > 0) {
@@ -1216,6 +1435,7 @@ export class GameEngine {
 									// Revert the PH assignment
 									battingTeam.players = oldPlayers;
 									this.phReplacedPositions = oldPhReplacedPositions;
+									this.phForPitcherBattingSlots.delete(phDecision.pinchHitterId);
 									return false;
 								}
 								const newPitcherId = selectedPitcher.pitcherId;
@@ -1226,10 +1446,22 @@ export class GameEngine {
 									// Revert the PH assignment
 									battingTeam.players = oldPlayers;
 									this.phReplacedPositions = oldPhReplacedPositions;
+									this.phForPitcherBattingSlots.delete(phDecision.pinchHitterId);
 									return false;
 								}
 
 								const newPitcher = this.season.pitchers[newPitcherId];
+
+								// Sanity check: ensure the new pitcher is actually a pitcher (primaryPosition === 1)
+								const newPitcherBatter = this.season.batters[newPitcherId];
+								if (newPitcherBatter && newPitcherBatter.primaryPosition !== 1) {
+									console.warn(`Selected reliever ${newPitcherId} (${newPitcher?.name}) is not a pitcher (primaryPosition: ${newPitcherBatter.primaryPosition}), skipping PH`);
+									// Revert the PH assignment
+									battingTeam.players = oldPlayers;
+									this.phReplacedPositions = oldPhReplacedPositions;
+									this.phForPitcherBattingSlots.delete(phDecision.pinchHitterId);
+									return false;
+								}
 
 								// Bring in new pitcher to pitch (but NOT in batting order yet - will be resolved at end of inning)
 								battingTeam.pitcher = newPitcherId;
@@ -1255,6 +1487,7 @@ export class GameEngine {
 								// Revert the PH assignment
 								battingTeam.players = oldPlayers;
 								this.phReplacedPositions = oldPhReplacedPositions;
+								this.phForPitcherBattingSlots.delete(phDecision.pinchHitterId);
 								return false;
 							}
 						}
@@ -1554,6 +1787,24 @@ export class GameEngine {
 				// This resolves any temporary pinch hitters (position 11) and ensures
 				// the current pitcher is in the batting order for non-DH games
 				this.auditLineupAtHalfInningEnd(battingTeam, battingTeam.teamId);
+
+				// CRITICAL: Validate the lineup after all substitutions
+				// This ensures: all 9 positions (1-9) are filled exactly once,
+				// no player is at position 11 (PH), and each player is eligible for their position
+				const validation = validateLineup(battingTeam.players, this.season.batters);
+				if (!validation.isValid) {
+					console.error(`CRITICAL: Invalid lineup after half-inning ${state.inning} (${state.isTopInning ? 'top' : 'bottom'}) for team ${battingTeam.teamId}:`);
+					for (const err of validation.errors) {
+						console.error(`  - ${err}`);
+					}
+					// Log the lineup for debugging
+					console.error(`Lineup: ${battingTeam.players.map(p => {
+						const player = this.season.batters[p.playerId];
+						const posName = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'PH', 'PR'][p.position - 1] || `Pos${p.position}`;
+						return `${player?.name || p.playerId} (${posName})`;
+					}).join(', ')}`);
+					throw new Error(`Invalid lineup after half-inning: ${validation.errors.join(', ')}`);
+				}
 			}
 
 			// Reset for the new inning
