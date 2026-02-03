@@ -167,6 +167,11 @@ export interface SeasonPackage {
 	league: {
 		vsLHP: EventRates;
 		vsRHP: EventRates;
+		/** League-average batting stats for pitchers (for pitchers with few/no at-bats) */
+		pitcherBatter: {
+			vsLHP: EventRates;
+			vsRHP: EventRates;
+		};
 	};
 	teams: Record<string, Team>;
 	games: Game[];

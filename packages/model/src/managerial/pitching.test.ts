@@ -29,28 +29,52 @@ describe('Pitching Management', () => {
 			pitcherId: 'pitcher_1',
 			role: 'starter',
 			stamina: 100,
-			pitchesThrown: 80
+			pitchesThrown: 80,
+			battersFace: 25,
+			avgBfpAsStarter: 27,
+			avgBfpAsReliever: null,
+			hitsAllowed: 0,
+			walksAllowed: 0,
+			runsAllowed: 0
 		};
 
 		const closer: PitcherRole = {
 			pitcherId: 'closer_1',
 			role: 'closer',
 			stamina: 100,
-			pitchesThrown: 0
+			pitchesThrown: 0,
+			battersFace: 0,
+			avgBfpAsStarter: null,
+			avgBfpAsReliever: 4,
+			hitsAllowed: 0,
+			walksAllowed: 0,
+			runsAllowed: 0
 		};
 
 		const reliever1: PitcherRole = {
 			pitcherId: 'reliever_1',
 			role: 'reliever',
 			stamina: 100,
-			pitchesThrown: 0
+			pitchesThrown: 0,
+			battersFace: 0,
+			avgBfpAsStarter: null,
+			avgBfpAsReliever: 6,
+			hitsAllowed: 0,
+			walksAllowed: 0,
+			runsAllowed: 0
 		};
 
 		const reliever2: PitcherRole = {
 			pitcherId: 'reliever_2',
 			role: 'reliever',
 			stamina: 100,
-			pitchesThrown: 0
+			pitchesThrown: 0,
+			battersFace: 0,
+			avgBfpAsStarter: null,
+			avgBfpAsReliever: 5,
+			hitsAllowed: 0,
+			walksAllowed: 0,
+			runsAllowed: 0
 		};
 
 		mockBullpen = {
@@ -61,30 +85,23 @@ describe('Pitching Management', () => {
 	});
 
 	describe('shouldPullPitcher', () => {
-		it('should pull at 110 pitches (hard limit)', () => {
-			mockPitcher.pitchesThrown = 110;
+		it('should pull at 110 BFP (hard limit)', () => {
+			mockPitcher.battersFace = 110;
 			const decision = shouldPullPitcher(mockState, mockPitcher, mockBullpen, 0);
 			expect(decision.shouldChange).toBe(true);
 			expect(decision.reason).toContain('110');
 		});
 
-		it('should pull when stamina is low', () => {
-			mockPitcher.stamina = 15;
-			const decision = shouldPullPitcher(mockState, mockPitcher, mockBullpen, 0);
-			expect(decision.shouldChange).toBe(true);
-			expect(decision.reason).toContain('Fatigue');
-		});
-
 		it('should not pull early in game with low pitch count', () => {
 			mockState.inning = 5;
-			mockPitcher.pitchesThrown = 60;
+			mockPitcher.battersFace = 15;
 			const decision = shouldPullPitcher(mockState, mockPitcher, mockBullpen, 0);
 			expect(decision.shouldChange).toBe(false);
 		});
 
-		it('should consider pulling at 85 pitches through 6th', () => {
+		it('should consider pulling at average BFP through 6th', () => {
 			mockState.inning = 6;
-			mockPitcher.pitchesThrown = 85;
+			mockPitcher.battersFace = 27; // Average starter BFP
 			// With randomness = 0, 30% chance means most tests will pass
 			// This test might occasionally fail
 			const decisions = Array.from({ length: 100 }, () =>
@@ -96,15 +113,28 @@ describe('Pitching Management', () => {
 			expect(pullCount).toBeLessThan(60);
 		});
 
-		it('should pull for high leverage situation with tired starter', () => {
+		it('should pull for high leverage situation with tired reliever', () => {
+			// Create a reliever for this test (high leverage logic only applies to relievers)
+			const tiredReliever: PitcherRole = {
+				pitcherId: 'reliever_tired',
+				role: 'reliever',
+				stamina: 30,
+				pitchesThrown: 0,
+				battersFace: 4, // Near average for reliever
+				avgBfpAsStarter: null,
+				avgBfpAsReliever: 5,
+				hitsAllowed: 0,
+				walksAllowed: 0,
+				runsAllowed: 0
+			};
+
 			mockState.inning = 7;
 			mockState.bases = ['runner1', 'runner2', 'runner3']; // Loaded
 			mockState.scoreDiff = 0;
-			mockPitcher.pitchesThrown = 80;
 
 			// High leverage (loaded bases, tie game)
 			const decisions = Array.from({ length: 100 }, () =>
-				shouldPullPitcher(mockState, mockPitcher, mockBullpen, 0)
+				shouldPullPitcher(mockState, tiredReliever, mockBullpen, 0)
 			);
 			const pullCount = decisions.filter((d) => d.shouldChange).length;
 			// Should pull most of the time (70%+)

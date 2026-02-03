@@ -214,6 +214,55 @@
 	</header>
 
 	<main class="space-y-4 sm:space-y-6 lg:space-y-8">
+		<!-- Teams Data Download -->
+		{#if !teamsDataDownloadState.isDownloaded}
+			<section class="bg-zinc-900 rounded-lg p-4 sm:p-6 text-center">
+				<h2 class="text-base sm:text-lg lg:text-xl font-semibold mb-3 sm:mb-4">Download Teams Data</h2>
+				<p class="text-sm sm:text-base text-zinc-400 mb-4 sm:mb-6">
+					Download team information for all seasons (1910-2024). This is a one-time download (~5 KB).
+				</p>
+
+				{#if teamsDataDownloadState.isDownloading}
+					<div class="flex flex-col items-center gap-3">
+						<div class="w-full max-w-xs bg-zinc-800 rounded-full h-3 overflow-hidden">
+							<div
+								class="bg-blue-600 h-full transition-all duration-300"
+								style="width: {teamsDataDownloadState.progress * 100}%"
+							></div>
+						</div>
+						<p class="text-sm text-blue-400">
+							Downloading {Math.round(teamsDataDownloadState.progress * 100)}%
+						</p>
+					</div>
+				{:else if teamsDataDownloadState.error}
+					<div class="mb-4 p-3 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
+						Error: {teamsDataDownloadState.error}
+					</div>
+					<button
+						onclick={downloadTeamsDataFile}
+						class="px-6 py-2 sm:px-8 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium transition-colors"
+					>
+						Retry Download
+					</button>
+				{:else}
+					<button
+						onclick={downloadTeamsDataFile}
+						class="px-6 py-2 sm:px-8 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium transition-colors flex items-center gap-2 mx-auto"
+					>
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+							/>
+						</svg>
+						Download Teams Data
+					</button>
+				{/if}
+			</section>
+		{/if}
+
 		<!-- Season Selection -->
 		{#if teamsDataDownloadState.isDownloaded}
 			<section class="bg-zinc-900 rounded-lg p-4 sm:p-6">

@@ -143,12 +143,14 @@ export function shouldPullPitcher(
 			pullChance = Math.max(0.1, Math.min(pullChance, 1.0));
 
 			if (Math.random() < pullChance) {
-				const newPitcher = selectReliever(gameState, bullpen);
-				return {
-					shouldChange: true,
-					newPitcher: newPitcher.pitcherId,
-					reason: `BFP count (${pitcher.battersFace}/${typicalBfp.toFixed(0)} avg)`
-				};
+				const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
+				if (newPitcher) {
+					return {
+						shouldChange: true,
+						newPitcher: newPitcher.pitcherId,
+						reason: `BFP count (${pitcher.battersFace}/${typicalBfp.toFixed(0)} avg)`
+					};
+				}
 			}
 		}
 
@@ -159,12 +161,14 @@ export function shouldPullPitcher(
 
 			if (roughness > 0.5) {
 				if (Math.random() < 0.4 + randomness) {
-					const newPitcher = selectReliever(gameState, bullpen);
-					return {
-						shouldChange: true,
-						newPitcher: newPitcher.pitcherId,
-						reason: 'Pitching ineffectively'
-					};
+					const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
+					if (newPitcher) {
+						return {
+							shouldChange: true,
+							newPitcher: newPitcher.pitcherId,
+							reason: 'Pitching ineffectively'
+						};
+					}
 				}
 			}
 		}
@@ -225,12 +229,14 @@ export function shouldPullPitcher(
 		pullChance = Math.min(pullChance, 1.0);
 
 		if (Math.random() < pullChance) {
-			const newPitcher = selectReliever(gameState, bullpen);
-			return {
-				shouldChange: true,
-				newPitcher: newPitcher.pitcherId,
-				reason: `BFP count (${pitcher.battersFace}/${typicalBfp.toFixed(0)} avg)`
-			};
+			const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
+			if (newPitcher) {
+				return {
+					shouldChange: true,
+					newPitcher: newPitcher.pitcherId,
+					reason: `BFP count (${pitcher.battersFace}/${typicalBfp.toFixed(0)} avg)`
+				};
+			}
 		}
 	}
 
@@ -238,12 +244,14 @@ export function shouldPullPitcher(
 	const leverage = calculateLeverageIndex(gameState);
 	if (leverage > 2.0 && pitcher.battersFace >= lowerThreshold * 0.8) {
 		if (Math.random() < 0.7 + randomness) {
-			const newPitcher = selectReliever(gameState, bullpen);
-			return {
-				shouldChange: true,
-				newPitcher: newPitcher.pitcherId,
-				reason: 'High leverage situation'
-			};
+			const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
+			if (newPitcher) {
+				return {
+					shouldChange: true,
+					newPitcher: newPitcher.pitcherId,
+					reason: 'High leverage situation'
+				};
+			}
 		}
 	}
 
@@ -252,8 +260,13 @@ export function shouldPullPitcher(
 
 /**
  * Select the best reliever for current situation
+ *
+ * @param gameState - Current game state
+ * @param bullpen - Available bullpen
+ * @param excludePitcherId - Optional pitcher ID to exclude from selection (e.g., current pitcher)
+ * @returns Selected reliever, or undefined if no relievers available
  */
-export function selectReliever(gameState: GameState, bullpen: BullpenState): PitcherRole {
+export function selectReliever(gameState: GameState, bullpen: BullpenState, excludePitcherId?: string): PitcherRole | undefined {
 	const { inning, outs, scoreDiff } = gameState;
 
 	// Determine if this is the home or away pitching
@@ -264,25 +277,31 @@ export function selectReliever(gameState: GameState, bullpen: BullpenState): Pit
 
 	// Save situation: 9th inning+, leading by 1-3 runs
 	if (inning >= 9 && pitchingScoreDiff > 0 && pitchingScoreDiff <= 3) {
-		return bullpen.closer ?? bullpen.relievers[0];
+		const available = bullpen.closer && bullpen.closer.pitcherId !== excludePitcherId
+			? bullpen.closer
+			: bullpen.relievers.find(r => r.pitcherId !== excludePitcherId);
+		return available;
 	}
 
 	// High leverage, late innings - use best reliever
 	if (inning >= 7) {
-		return bullpen.relievers[0];
+		const available = bullpen.relievers.find(r => r.pitcherId !== excludePitcherId);
+		return available;
 	}
 
 	// Earlier: use middle reliever (not necessarily the best)
-	// Select from relievers excluding closer if available
-	const availableRelievers = bullpen.closer
-		? bullpen.relievers.filter((r) => r.pitcherId !== bullpen.closer!.pitcherId)
-		: bullpen.relievers;
+	// Select from relievers excluding closer if available, and also excluding the specified pitcher
+	let availableRelievers = bullpen.relievers.filter((r) => r.pitcherId !== excludePitcherId);
+	if (bullpen.closer && bullpen.closer.pitcherId !== excludePitcherId) {
+		availableRelievers = availableRelievers.filter((r) => r.pitcherId !== bullpen.closer!.pitcherId);
+	}
 
 	if (availableRelievers.length > 0) {
 		return availableRelievers[Math.floor(Math.random() * availableRelievers.length)];
 	}
 
-	return bullpen.relievers[Math.floor(Math.random() * bullpen.relievers.length)];
+	// No relievers available
+	return undefined;
 }
 
 /**
