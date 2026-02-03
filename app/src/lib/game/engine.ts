@@ -1387,10 +1387,14 @@ export class GameEngine {
 			// The play we just added has the correct inning information
 			addHalfInningSummaryWithInning(state, this.season, playInning, playIsTop);
 
-			// Audit and fix the lineup for the team that just finished batting
-			// This resolves any temporary pinch hitters (position 11) and ensures
-			// the current pitcher is in the batting order for non-DH games
-			this.auditLineupAtHalfInningEnd(battingTeam, battingTeam.teamId);
+			// Only audit lineup if the game is NOT complete
+			// If the game is over (e.g., bottom of 11th, final out), we don't need to adjust lineups
+			if (!this.isComplete()) {
+				// Audit and fix the lineup for the team that just finished batting
+				// This resolves any temporary pinch hitters (position 11) and ensures
+				// the current pitcher is in the batting order for non-DH games
+				this.auditLineupAtHalfInningEnd(battingTeam, battingTeam.teamId);
+			}
 
 			// Reset for the new inning
 			state.bases = [null, null, null];
