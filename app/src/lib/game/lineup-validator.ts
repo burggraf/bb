@@ -91,6 +91,7 @@ export function validateLineup(
 	const errors: string[] = [];
 	const warnings: string[] = [];
 	const seenPlayers = new Set<string>();
+	const seenPositions = new Set<number>();
 
 	// Rule 1: Check all 9 positions have non-null player IDs
 	for (let i = 0; i < lineupSlots.length; i++) {
@@ -103,6 +104,7 @@ export function validateLineup(
 	// Rule 2: Check each player is eligible at their position
 	// Rule 3: Check for duplicate players
 	// Rule 4: Check position 1 is a pitcher
+	// Rule 5: Check for duplicate positions (e.g., two players at 2B)
 	for (const slot of lineupSlots) {
 		if (!slot.playerId) continue; // Skip null slots (already reported as error)
 
@@ -112,11 +114,19 @@ export function validateLineup(
 			continue;
 		}
 
-		// Check for duplicates
+		// Check for duplicate players
 		if (seenPlayers.has(slot.playerId)) {
 			errors.push(`Player ${player.name} appears multiple times in the lineup`);
 		}
 		seenPlayers.add(slot.playerId);
+
+		// Check for duplicate positions (only for real positions 1-9, not PH/PR/DH)
+		if (slot.position >= 1 && slot.position <= 9) {
+			if (seenPositions.has(slot.position)) {
+				errors.push(`Position ${getPositionName(slot.position)} is assigned to multiple players`);
+			}
+			seenPositions.add(slot.position);
+		}
 
 		// Check position eligibility
 		if (!isPlayerEligibleAtPosition(player, slot.position)) {

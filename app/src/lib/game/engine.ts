@@ -726,29 +726,56 @@ export class GameEngine {
 					);
 
 					if (availableBench.length > 0) {
-						// Use the first available bench player
-						const replacement = availableBench[0];
-						const battingOrder = phSlot.index + 1;
-						const positionName = POSITION_NAMES[replacement.primaryPosition] ?? `Pos${replacement.primaryPosition}`;
-						lineup.players[phSlot.index] = {
-							playerId: replacement.id,
-							position: replacement.primaryPosition
-						};
+						// Find a bench player and position that doesn't create conflicts
+						// The pinch hitter temporarily occupies position 11, which is not a real position
+						// We need to find a position for the replacement that is:
+						// 1. Eligible for the bench player
+						// 2. Not already occupied by another player
+						let replacementFound = false;
 
-						this.state.plays.unshift({
-							inning: this.state.inning,
-							isTopInning: this.state.isTopInning,
-							outcome: 'out' as Outcome,
-							batterId: '',
-							batterName: '',
-							pitcherId: '',
-							pitcherName: '',
-							description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
-							runsScored: 0,
-							eventType: 'lineupAdjustment',
-							substitutedPlayer: phPlayerId,
-							isSummary: true
-						});
+						for (const replacement of availableBench) {
+							// Build set of positions currently occupied (excluding PH slot at position 11)
+							const occupiedPositions = new Set(
+								lineup.players
+									.filter(p => p.position !== this.POSITION_PH)
+									.map(p => p.position)
+							);
+
+							// Find a valid position for this replacement player
+							const validPosition = this.findValidSubstitution(replacement.id, lineup, occupiedPositions);
+
+							if (validPosition !== null) {
+								const battingOrder = phSlot.index + 1;
+								const positionName = POSITION_NAMES[validPosition] ?? `Pos${validPosition}`;
+								lineup.players[phSlot.index] = {
+									playerId: replacement.id,
+									position: validPosition
+								};
+
+								this.state.plays.unshift({
+									inning: this.state.inning,
+									isTopInning: this.state.isTopInning,
+									outcome: 'out' as Outcome,
+									batterId: '',
+									batterName: '',
+									pitcherId: '',
+									pitcherName: '',
+									description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+									runsScored: 0,
+									eventType: 'lineupAdjustment',
+									substitutedPlayer: phPlayerId,
+									isSummary: true
+								});
+								replacementFound = true;
+								break;
+							}
+						}
+
+						if (!replacementFound) {
+							// No bench player can fit in any eligible position - this is an error condition
+							// Leave the PH in place as a fallback
+							console.warn(`No valid defensive position found for any bench player to replace PH ${phPlayer.name} at batting order ${phSlot.index + 1}`);
+						}
 					} else {
 						// No bench player available - this is an error condition, but handle gracefully
 						// by leaving the PH in place (they'll continue playing)
@@ -801,29 +828,51 @@ export class GameEngine {
 				);
 
 				if (availableBench.length > 0) {
-					// Use the first available bench player
-					const replacement = availableBench[0];
-					const battingOrder = phSlot.index + 1;
-					const positionName = POSITION_NAMES[replacement.primaryPosition] ?? `Pos${replacement.primaryPosition}`;
-					lineup.players[phSlot.index] = {
-						playerId: replacement.id,
-						position: replacement.primaryPosition
-					};
+					// Find a bench player and position that doesn't create conflicts
+					let replacementFound = false;
 
-					this.state.plays.unshift({
-						inning: this.state.inning,
-						isTopInning: this.state.isTopInning,
-						outcome: 'out' as Outcome,
-						batterId: '',
-						batterName: '',
-						pitcherId: '',
-						pitcherName: '',
-						description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
-						runsScored: 0,
-						eventType: 'lineupAdjustment',
-						substitutedPlayer: phPlayerId,
-						isSummary: true
-					});
+					for (const replacement of availableBench) {
+						// Build set of positions currently occupied (excluding PH slot at position 11)
+						const occupiedPositions = new Set(
+							lineup.players
+								.filter(p => p.position !== this.POSITION_PH)
+								.map(p => p.position)
+						);
+
+						// Find a valid position for this replacement player
+						const validPosition = this.findValidSubstitution(replacement.id, lineup, occupiedPositions);
+
+						if (validPosition !== null) {
+							const battingOrder = phSlot.index + 1;
+							const positionName = POSITION_NAMES[validPosition] ?? `Pos${validPosition}`;
+							lineup.players[phSlot.index] = {
+								playerId: replacement.id,
+								position: validPosition
+							};
+
+							this.state.plays.unshift({
+								inning: this.state.inning,
+								isTopInning: this.state.isTopInning,
+								outcome: 'out' as Outcome,
+								batterId: '',
+								batterName: '',
+								pitcherId: '',
+								pitcherName: '',
+								description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+								runsScored: 0,
+								eventType: 'lineupAdjustment',
+								substitutedPlayer: phPlayerId,
+								isSummary: true
+							});
+							replacementFound = true;
+							break;
+						}
+					}
+
+					if (!replacementFound) {
+						// No bench player can fit in any eligible position - leave PH in place as fallback
+						console.warn(`No valid defensive position found for any bench player to replace PH ${phPlayer.name} at batting order ${phSlot.index + 1}`);
+					}
 				}
 			}
 		}
