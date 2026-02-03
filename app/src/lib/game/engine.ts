@@ -9,6 +9,7 @@ import {
 	type LineupSlot,
 	shouldPullPitcher,
 	shouldPinchHit,
+	selectReliever,
 	type BatterStats as ModelBatterStats,
 	type PitcherStats as ModelPitcherStats
 } from '@bb/model';
@@ -612,6 +613,13 @@ export class GameEngine {
 
 		if (!pitcher || !pitcherRole || !bullpen) return false;
 
+		// Filter bullpen to exclude removed pitchers (they cannot re-enter the game)
+		const filteredBullpen: BullpenState = {
+			starter: bullpen.starter,
+			closer: bullpen.closer && !this.removedPlayers.has(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
+			relievers: bullpen.relievers.filter(r => !this.removedPlayers.has(r.pitcherId))
+		};
+
 		// Check for pitching change
 		const mgrState = toManagerialGameState(this.state);
 
@@ -625,12 +633,24 @@ export class GameEngine {
 		const pitchingDecision = shouldPullPitcher(
 			mgrState,
 			pitcherRole,
-			bullpen,
+			filteredBullpen,
 			this.managerialOptions.randomness ?? 0.1,
 			pullOptions
 		);
 
 		if (pitchingDecision.shouldChange && pitchingDecision.newPitcher) {
+			// Sanity check: ensure we're not replacing a pitcher with themselves
+			if (pitchingDecision.newPitcher === pitcherId) {
+				// This shouldn't happen - log and skip the change
+				console.warn(`Preventing self-replacement: ${pitcherId} replacing themselves`);
+				return false;
+			}
+			// Sanity check: ensure the new pitcher hasn't already been removed from the game
+			if (this.removedPlayers.has(pitchingDecision.newPitcher)) {
+				// This shouldn't happen with filtered bullpen - log and skip the change
+				console.warn(`Preventing re-entry: ${pitchingDecision.newPitcher} has already been removed`);
+				return false;
+			}
 			// Apply pitching change
 			pitchingTeam.pitcher = pitchingDecision.newPitcher;
 
@@ -743,10 +763,31 @@ export class GameEngine {
 
 						// If pinch hitting for pitcher, we also need a new pitcher (double switch)
 						if (isPitcherPH) {
-							// Get a reliever from the bullpen
+							// Get a reliever from the bullpen (excluding the current pitcher being pinch hit for)
 							const bullpen = this.bullpenStates.get(battingTeam.teamId);
 							if (bullpen && bullpen.relievers.length > 0) {
-								const newPitcherId = bullpen.relievers[0].pitcherId;
+								// Filter bullpen to exclude removed pitchers (they cannot re-enter the game)
+								const filteredBullpen: BullpenState = {
+									starter: bullpen.starter,
+									closer: bullpen.closer && !this.removedPlayers.has(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
+									relievers: bullpen.relievers.filter(r => !this.removedPlayers.has(r.pitcherId))
+								};
+
+								// Use selectReliever to properly choose a reliever, excluding the current pitcher
+								const mgrState = toManagerialGameState(this.state);
+								const selectedPitcher = selectReliever(mgrState, filteredBullpen, currentBatterId);
+								if (!selectedPitcher) {
+									console.warn('No suitable reliever found for double switch, skipping PH');
+									return false;
+								}
+								const newPitcherId = selectedPitcher.pitcherId;
+
+								// Sanity check: ensure the new pitcher hasn't already been removed from the game
+								if (this.removedPlayers.has(newPitcherId)) {
+									console.warn(`Preventing re-entry: ${newPitcherId} has already been removed`);
+									return false;
+								}
+
 								const newPitcher = this.season.pitchers[newPitcherId];
 
 								// Mark old pitcher as removed
@@ -754,6 +795,12 @@ export class GameEngine {
 
 								// Update lineup with pinch hitter at their defensive position
 								battingTeam.players[batterIndex] = { playerId: phDecision.pinchHitterId, position: defensivePosition };
+
+								// Add new pitcher to batting order at position 1
+								const pitcherSlotIndex = battingTeam.players.findIndex(p => p.position === 1);
+								if (pitcherSlotIndex !== -1) {
+									battingTeam.players[pitcherSlotIndex] = { playerId: newPitcherId, position: 1 };
+								}
 
 								// Bring in new pitcher
 								battingTeam.pitcher = newPitcherId;
@@ -830,7 +877,32 @@ export class GameEngine {
 
 		// Get batter and pitcher
 		const batterId = getNextBatter(battingTeam, season.batters);
-		const batter = season.batters[batterId];
+		let batter = season.batters[batterId];
+
+		// If batter not found in batters, check if it's a pitcher batting
+		// (e.g., reliever added to lineup during double switch, or pitcher batting in non-DH game)
+		let isPitcherBatting = false;
+		if (!batter) {
+		 const pitcherBatter = season.pitchers[batterId];
+		 if (pitcherBatter) {
+			 // Create a synthetic batter entry for the pitcher using league pitcher-batter averages
+			 // Pitchers with <5 PA use league averages as fallback
+			 isPitcherBatting = true;
+			 batter = {
+				 id: pitcherBatter.id,
+				 name: pitcherBatter.name,
+				 teamId: pitcherBatter.teamId,
+				 bats: pitcherBatter.throws, // Pitchers bat same side they throw
+				 primaryPosition: 1,
+				 positionEligibility: { 1: 1 },
+				 rates: {
+					 vsLHP: season.league.pitcherBatter.vsLHP,
+					 vsRHP: season.league.pitcherBatter.vsRHP
+				 }
+			 };
+		 }
+		}
+
 		// Use the current starting pitcher (V1: no bullpen changes yet)
 		const pitcherId = pitchingTeam.pitcher;
 		if (!pitcherId) {
