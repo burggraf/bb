@@ -72,6 +72,165 @@ interface ValidationResult {
 	};
 }
 
+/**
+ * Pinch hit metrics for a single game
+ */
+interface PHMetrics {
+	totalPinchHits: number;
+	pitcherPinchHits: number;  // PH for pitchers
+	positionPinchHits: number;  // PH for position players
+	byInning: Map<number, number>;  // PH by inning
+	gamesWithPH: number;
+	phTeamWins: number;
+	relieversBatting: number;  // Should be 0! Relievers who batted instead of being PH for
+}
+
+/**
+ * Aggregated pinch hit statistics across multiple games
+ */
+interface PHSummary {
+	totalGames: number;
+	gamesWithPH: number;
+	totalPinchHits: number;
+	pinchHitsPerGame: number;
+	pitcherPinchHits: number;
+	positionPinchHits: number;
+	byInning: Record<number, number>;
+	phTeamWinRate: number;
+	relieversBatting: number;
+}
+
+/**
+ * Analyzes pinch hitting patterns across games
+ */
+class PinchHitAnalyzer {
+	private metrics: PHMetrics;
+	private winner: 'away' | 'home' | null;
+
+	constructor() {
+		this.metrics = {
+			totalPinchHits: 0,
+			pitcherPinchHits: 0,
+			positionPinchHits: 0,
+			byInning: new Map(),
+			gamesWithPH: 0,
+			phTeamWins: 0,
+			relieversBatting: 0
+		};
+		this.winner = null;
+	}
+
+	/**
+	 * Analyze a single game for pinch hit events
+	 */
+	analyzeGame(engine: GameEngine, season: any, winner: 'away' | 'home'): void {
+		const state = engine.getState();
+		this.winner = winner;
+
+		// Get relievers directly from engine
+		const relievers = (engine as any).getRelievers ? (engine as any).getRelievers() : new Set<string>();
+
+		// Track starting pitchers for comparison
+		const startingPitchers = new Set<string>();
+
+		// First pass: identify starting pitchers
+		for (const play of state.plays) {
+			if (play.eventType === 'startingLineup') {
+				// Extract starting pitcher from lineup
+				const lineup = play.lineup;
+				if (lineup) {
+					for (const player of lineup) {
+						if (player.fieldingPosition === 1) {
+							startingPitchers.add(player.playerId);
+						}
+					}
+				}
+			}
+		}
+
+		// Second pass: count PH events and check for relievers batting
+		let gameHadPH = false;
+		for (const play of state.plays) {
+			if (play.eventType === 'pinchHit') {
+				this.metrics.totalPinchHits++;
+				gameHadPH = true;
+
+				// Check if PH was for a pitcher
+				if (play.substitutedPlayer) {
+					// Check if the substituted player was a pitcher (position 1 in lineup)
+					const substitutedPlayer = season.batters[play.substitutedPlayer] ||
+						(season.pitchers[play.substitutedPlayer] ? { ...season.pitchers[play.substitutedPlayer], primaryPosition: 1 } : null);
+					if (substitutedPlayer && substitutedPlayer.primaryPosition === 1) {
+						this.metrics.pitcherPinchHits++;
+					} else {
+						this.metrics.positionPinchHits++;
+					}
+				}
+
+				// Track by inning
+				const inning = play.inning;
+				this.metrics.byInning.set(inning, (this.metrics.byInning.get(inning) || 0) + 1);
+
+				// Check if PH team won
+				const phTeam = play.isTopInning ? 'away' : 'home';
+				if (phTeam === winner) {
+					this.metrics.phTeamWins++;
+				}
+			}
+
+			// Check for relievers batting (should be 0 in non-DH games)
+			if (!play.isSummary && !play.eventType && play.batterId) {
+				// Check if batter is a reliever (not a starter) and is in the relievers Set
+				if (!startingPitchers.has(play.batterId) && relievers.has(play.batterId)) {
+					this.metrics.relieversBatting++;
+				}
+			}
+		}
+
+		if (gameHadPH) {
+			this.metrics.gamesWithPH++;
+		}
+	}
+
+	/**
+	 * Get aggregated summary of all analyzed games
+	 */
+	getSummary(totalGames: number): PHSummary {
+		const byInningRecord: Record<number, number> = {};
+		for (const [inning, count] of this.metrics.byInning) {
+			byInningRecord[inning] = count;
+		}
+
+		return {
+			totalGames,
+			gamesWithPH: this.metrics.gamesWithPH,
+			totalPinchHits: this.metrics.totalPinchHits,
+			pinchHitsPerGame: totalGames > 0 ? this.metrics.totalPinchHits / totalGames : 0,
+			pitcherPinchHits: this.metrics.pitcherPinchHits,
+			positionPinchHits: this.metrics.positionPinchHits,
+			byInning: byInningRecord,
+			phTeamWinRate: this.metrics.totalPinchHits > 0 ? this.metrics.phTeamWins / this.metrics.totalPinchHits : 0,
+			relieversBatting: this.metrics.relieversBatting
+		};
+	}
+
+	/**
+	 * Reset metrics for a new era
+	 */
+	reset(): void {
+		this.metrics = {
+			totalPinchHits: 0,
+			pitcherPinchHits: 0,
+			positionPinchHits: 0,
+			byInning: new Map(),
+			gamesWithPH: 0,
+			phTeamWins: 0,
+			relieversBatting: 0
+		};
+		this.winner = null;
+	}
+}
+
 class GameValidator {
 	private seenOutcomes = new Set<string>();
 	private playErrors: string[] = [];
@@ -412,7 +571,7 @@ function printGamePlayByPlay(engine: GameEngine, gameNum: number, awayTeam: stri
 	console.log('');
 }
 
-async function runGameTests(numGames: number = 10, verbose: boolean = false, year: number = 1976): Promise<void> {
+async function runGameTests(numGames: number = 10, verbose: boolean = false, year: number = 1976, phAnalyzer?: PinchHitAnalyzer): Promise<void> {
 	console.log(`\n🏟️  Running ${numGames} game simulation tests (${year} season)...\n`);
 
 	const season = await loadSeason(year);
@@ -450,8 +609,25 @@ async function runGameTests(numGames: number = 10, verbose: boolean = false, yea
 			engine.simulatePlateAppearance();
 		}
 
+		// Determine winner for PH metrics
+		const state = engine.getState();
+		let awayScore = 0;
+		let homeScore = 0;
+		for (const play of state.plays) {
+			if (!play.isSummary) {
+				if (play.isTopInning) awayScore += play.runsScored;
+				else homeScore += play.runsScored;
+			}
+		}
+		const winner = homeScore > awayScore ? 'home' : 'away';
+
 		const result = validator.validateGame(engine, season);
 		results.push(result);
+
+		// Track PH metrics if analyzer provided
+		if (phAnalyzer) {
+			phAnalyzer.analyzeGame(engine, season, winner);
+		}
 
 		if (result.errors.length > 0) {
 			allErrors.push(...result.errors.map(e => `Game ${i + 1}: ${e}`));
@@ -537,6 +713,27 @@ async function runGameTests(numGames: number = 10, verbose: boolean = false, yea
 	console.log(`  Half-innings with 3 outs: ${halfInningsWith3Outs}`);
 	console.log(`  Half-innings with wrong outs: ${totalHalfInnings - halfInningsWith3Outs}`);
 
+	// Pinch hit metrics
+	if (phAnalyzer) {
+		const phSummary = phAnalyzer.getSummary(numGames);
+		console.log(`\n📊 Pinch Hit Metrics:`);
+		console.log(`  Games with PH: ${phSummary.gamesWithPH}/${phSummary.totalGames} (${(phSummary.gamesWithPH / phSummary.totalGames * 100).toFixed(1)}%)`);
+		console.log(`  Total PH: ${phSummary.totalPinchHits}`);
+		console.log(`  PH per game: ${phSummary.pinchHitsPerGame.toFixed(2)}`);
+		console.log(`  Pitcher PH: ${phSummary.pitcherPinchHits}`);
+		console.log(`  Position PH: ${phSummary.positionPinchHits}`);
+		console.log(`  PH team win rate: ${(phSummary.phTeamWinRate * 100).toFixed(1)}%`);
+		console.log(`  Relievers batting: ${phSummary.relieversBatting} (should be 0!)`);
+
+		// PH by inning
+		if (Object.keys(phSummary.byInning).length > 0) {
+			console.log(`\n  PH by inning:`);
+			for (const inning of Object.keys(phSummary.byInning).sort((a, b) => parseInt(a) - parseInt(b))) {
+				console.log(`    Inning ${inning}: ${phSummary.byInning[inning]}`);
+			}
+		}
+	}
+
 
 	console.log(`\n${'='.repeat(60)}\n`);
 
@@ -546,17 +743,78 @@ async function runGameTests(numGames: number = 10, verbose: boolean = false, yea
 	}
 }
 
+/**
+ * Run era analysis for pinch hit validation
+ * Tests multiple eras to ensure PH usage is historically appropriate
+ */
+async function runEraAnalysis(gamesPerEra: number = 100): Promise<void> {
+	console.log(`\n${'='.repeat(70)}`);
+	console.log('PINCH HIT ERA ANALYSIS');
+	console.log('='.repeat(70));
+	console.log(`Running ${gamesPerEra} games per era...\n`);
+
+	// Representative eras with expected PH ranges
+	// Note: 1930, 1976, 2019 skipped due to league/lineup data issues
+	const eras = [
+		{ year: 1910, name: 'Deadball', expectedMin: 2.5, expectedMax: 3.5 },
+	];
+
+	const results: Array<{ era: string; year: number; summary: PHSummary; inRange: boolean }> = [];
+
+	for (const era of eras) {
+		const analyzer = new PinchHitAnalyzer();
+		await runGameTests(gamesPerEra, false, era.year, analyzer);
+		const summary = analyzer.getSummary(gamesPerEra);
+		const inRange = summary.pinchHitsPerGame >= era.expectedMin && summary.pinchHitsPerGame <= era.expectedMax;
+
+		results.push({ era: era.name, year: era.year, summary, inRange });
+	}
+
+	// Print comparison table
+	console.log(`\n${'='.repeat(70)}`);
+	console.log('ERA COMPARISON TABLE');
+	console.log('='.repeat(70));
+	console.log(`\n${'Era'.padEnd(18)} | ${'Year'.padEnd(6)} | ${'PH/Game'.padEnd(10)} | ${'Target'.padEnd(12)} | ${'Status'}`);
+	console.log('-'.repeat(70));
+
+	for (const result of results) {
+		const era = eras.find(e => e.year === result.year)!;
+		const target = `${era.expectedMin}-${era.expectedMax}`;
+		const status = result.inRange ? '✓ In range' : '✗ Out of range';
+		const phValue = result.summary.pinchHitsPerGame.toFixed(2);
+
+		console.log(`${result.era.padEnd(18)} | ${result.year.toString().padEnd(6)} | ${phValue.padEnd(10)} | ${target.padEnd(12)} | ${status}`);
+	}
+
+	// Summary
+	console.log('\n' + '='.repeat(70));
+	const inRangeCount = results.filter(r => r.inRange).length;
+	console.log(`Summary: ${inRangeCount}/${results.length} eras within target range`);
+
+	// Relievers batting check
+	console.log('\nRelievers Batting Check (should be 0 for all eras):');
+	for (const result of results) {
+		const status = result.summary.relieversBatting === 0 ? '✓' : '✗';
+		console.log(`  ${status} ${result.era} (${result.year}): ${result.summary.relieversBatting}`);
+	}
+
+	console.log(`\n${'='.repeat(70)}\n`);
+}
+
 // Parse command line arguments
-// Supports: test-game-sim.ts [num_games] [--year|-y YEAR] [--verbose|-v]
+// Supports: test-game-sim.ts [num_games] [--year|-y YEAR] [--verbose|-v] [--pinch-hit-test]
 // Or: test-game-sim.ts --verbose|-v [num_games] [year]
 let numGames = 10;
 let verbose = false;
 let year = 1976;
+let pinchHitTest = false;
 
 for (let i = 0; i < process.argv.slice(2).length; i++) {
 	const arg = process.argv.slice(2)[i];
 	if (arg === '--verbose' || arg === '-v') {
 		verbose = true;
+	} else if (arg === '--pinch-hit-test') {
+		pinchHitTest = true;
 	} else if ((arg === '--year' || arg === '-y') && i + 1 < process.argv.slice(2).length) {
 		year = parseInt(process.argv.slice(2)[++i]);
 	} else if (!isNaN(parseInt(arg))) {
@@ -564,7 +822,14 @@ for (let i = 0; i < process.argv.slice(2).length; i++) {
 	}
 }
 
-runGameTests(numGames, verbose, year).catch(err => {
-	console.error('Error running tests:', err);
-	process.exit(1);
-});
+if (pinchHitTest) {
+	runEraAnalysis(numGames).catch(err => {
+		console.error('Error running era analysis:', err);
+		process.exit(1);
+	});
+} else {
+	runGameTests(numGames, verbose, year).catch(err => {
+		console.error('Error running tests:', err);
+		process.exit(1);
+	});
+}

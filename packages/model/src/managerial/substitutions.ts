@@ -23,6 +23,8 @@ export interface PinchHitOptions {
 	randomness?: number;
 	/** Lower thresholds to increase PH frequency (for season-based frequency control) */
 	relaxedThresholds?: boolean;
+	/** DH game - uses stricter pinch hitting criteria (high leverage + platoon advantage only) */
+	useDH?: boolean;
 }
 
 /**
@@ -38,7 +40,80 @@ export function shouldPinchHit(
 	// Handle legacy API where randomness was passed as a number
 	const randomness = typeof options === 'number' ? options : (options.randomness ?? 0.15);
 	const relaxedThresholds = typeof options === 'object' ? options.relaxedThresholds ?? false : false;
+	const isDHGame = typeof options === 'object' ? options.useDH ?? false : false;
 	const { inning, outs, bases, scoreDiff } = gameState;
+
+	// ============================================================================
+	// DH GAMES: Stricter pinch hitting criteria (high leverage + platoon only)
+	// ============================================================================
+	if (isDHGame) {
+		const leverage = calculateLeverageIndex(gameState);
+
+		// DH: Require high leverage (LI >= 2.0)
+		if (leverage < 2.0) {
+			return { shouldPinchHit: false };
+		}
+
+		// DH: Must have platoon disadvantage vs current pitcher
+		const hasDisadvantage = isPlatoonDisadvantage(currentBatter.handedness, opposingPitcher.handedness);
+		if (!hasDisadvantage) {
+			return { shouldPinchHit: false };
+		}
+
+		// DH: Find better option with strict requirements
+		const betterOption = findBestPinchHitter(bench, opposingPitcher, currentBatter, false);
+		if (!betterOption) {
+			return { shouldPinchHit: false };
+		}
+
+		// DH: Verify significant improvement (15%+ OPS increase)
+		const getOPS = (b: BatterStats) => {
+			const rates = opposingPitcher.handedness === 'L' ? b.rates.vsLeft : b.rates.vsRight;
+			const obp = rates.walk + rates.single + rates.double + rates.triple + rates.homeRun;
+			const slg = rates.single * 1 + rates.double * 2 + rates.triple * 3 + rates.homeRun * 4;
+			return obp + slg;
+		};
+		const currentOPS = getOPS(currentBatter);
+		const betterOPS = getOPS(betterOption);
+
+		if (betterOPS < currentOPS * 1.15) {
+			return { shouldPinchHit: false };
+		}
+
+		// DH: Calculate probability with situational boosters
+		let phChance = 0.60; // Base chance
+
+		// Late inning bonus
+		if (inning >= 8) phChance += 0.30;
+
+		// Trailing by 1-2 runs bonus
+		if (scoreDiff < 0 && scoreDiff >= -2) phChance += 0.20;
+
+		// Baserunner bonuses
+		const hasRunners = bases.some(b => b !== null);
+		if (hasRunners) {
+			// Bases loaded
+			if (bases.every(b => b !== null)) phChance += 0.15;
+			// Winning run at bat or on base
+			else if (bases[2] !== null || (bases[1] !== null && outs < 2)) phChance += 0.20;
+		}
+
+		phChance = Math.min(phChance, 0.95);
+
+		if (Math.random() < phChance) {
+			return {
+				shouldPinchHit: true,
+				pinchHitterId: betterOption.id,
+				reason: `Pinch hit for ${currentBatter.name} (${betterOption.name})`
+			};
+		}
+
+		return { shouldPinchHit: false };
+	}
+
+	// ============================================================================
+	// NON-DH GAMES: Standard pinch hitting logic
+	// ============================================================================
 
 	// Early game: rarely PH
 	if (inning < 6) {

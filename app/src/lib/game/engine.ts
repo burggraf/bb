@@ -10,6 +10,7 @@ import {
 	shouldPullPitcher,
 	shouldPinchHit,
 	selectReliever,
+	type PinchHitDecision,
 	type BatterStats as ModelBatterStats,
 	type PitcherStats as ModelPitcherStats
 } from '@bb/model';
@@ -26,7 +27,7 @@ import type {
 import { transition, createBaserunningState } from './state-machine/index.js';
 import { isHit } from './state-machine/outcome-types.js';
 import type { PitcherRole, BullpenState } from '@bb/model';
-import { buildLineup } from './lineup-builder.js';
+import { buildLineup, usesDH } from './lineup-builder.js';
 import { validateLineup, type LineupValidationResult } from './lineup-validator.js';
 
 /**
@@ -322,6 +323,9 @@ export class GameEngine {
 	private usedPinchHitters: Set<string>;
 	// Track removed players (cannot return to game)
 	private removedPlayers: Set<string>;
+	// Track relievers (pitchers who entered mid-game - should never bat in non-DH games)
+	// Using ES2022 private field syntax for better tsx compatibility
+	#relievers: Set<string> = new Set();
 
 	constructor(
 		season: SeasonPackage,
@@ -606,6 +610,14 @@ export class GameEngine {
 	}
 
 	/**
+	 * Get the set of relievers (pitchers who entered mid-game)
+	 * Used for testing and validation
+	 */
+	getRelievers(): Set<string> {
+		return this.#relievers;
+	}
+
+	/**
 	 * Validate a lineup after a substitution
 	 * Returns true if the lineup is valid, false otherwise
 	 */
@@ -741,6 +753,9 @@ export class GameEngine {
 			// Mark the old pitcher as removed so they can't return
 			this.removedPlayers.add(pitcherId);
 
+			// Mark the new pitcher as a reliever (entered mid-game, should never bat in non-DH games)
+			this.#relievers.add(pitchingDecision.newPitcher);
+
 			// Update stamina tracking - create role for new pitcher
 			const newPitcherStats = this.season.pitchers[pitchingDecision.newPitcher];
 			const newPitcherRole: PitcherRole = {
@@ -782,11 +797,21 @@ export class GameEngine {
 		const currentBatter = this.season.batters[currentBatterId];
 		if (!currentBatter) return false;
 
+		// Check if current batter is a reliever who should never bat (non-DH games)
+		const currentBatterSlot = battingTeam.players.find(p => p.playerId === currentBatterId);
+		const battingTeamLeague = this.season.teams[battingTeam.teamId]?.league ?? 'NL';
+		const gameUsesDH = usesDH(battingTeamLeague, this.season.meta.year);
+
+		// Non-DH: Relievers should never bat - always pinch hit
+		const mustPHForReliever = !gameUsesDH &&
+			currentBatterSlot?.position === 1 &&
+			this.#relievers.has(currentBatterId);
+
 		// Season-based frequency control: target PH rate divided by total PAs per game
-		// Multiplied by 10 to account for shouldPinchHit rejecting ~90% of candidates
+		// Skip this check if we MUST PH for a reliever (non-DH games)
 		// 1976: (2.8 PH/game / 70 PAs) * 10 = ~40% should consider PH
 		const phConsiderationRate = (this.season.norms.substitutions.pinchHitsPerGame / 70) * 10;
-		const shouldConsiderPH = Math.random() < phConsiderationRate;
+		const shouldConsiderPH = mustPHForReliever || Math.random() < phConsiderationRate;
 		if (!shouldConsiderPH) return false;
 
 		// Get available bench players
@@ -803,13 +828,43 @@ export class GameEngine {
 		if (availableBench.length > 0) {
 			const opposingPitcher = this.season.pitchers[pitchingTeam.pitcher!];
 			if (opposingPitcher) {
-				const phDecision = shouldPinchHit(
-					mgrState,
-					toModelBatter(currentBatter),
-					availableBench,
-					toModelPitcher(opposingPitcher),
-					this.managerialOptions.randomness ?? 0.15
-				);
+				let phDecision: PinchHitDecision;
+
+				// When we MUST PH for a reliever (non-DH games), skip the normal decision logic
+				// and directly pick the best available batter
+				if (mustPHForReliever) {
+					// Find the best available PH by OPS
+					// Model batters use vsLeft/vsRight, not vsLHP/vsRHP
+					const getOPS = (b: ModelBatterStats) => {
+						const rates = opposingPitcher.handedness === 'L' ? b.rates.vsLeft : b.rates.vsRight;
+						const obp = rates.walk + rates.hitByPitch + rates.single + rates.double + rates.triple + rates.homeRun;
+						const slg = rates.single * 1 + rates.double * 2 + rates.triple * 3 + rates.homeRun * 4;
+						return obp + slg;
+					};
+
+					// Sort by OPS descending
+					const sortedBench = [...availableBench].sort((a, b) => getOPS(b) - getOPS(a));
+					const bestPH = sortedBench[0];
+
+					if (bestPH) {
+						phDecision = {
+							shouldPinchHit: true,
+							pinchHitterId: bestPH.id,
+							reason: `PH for reliever ${currentBatter.name}`
+						};
+					} else {
+						phDecision = { shouldPinchHit: false };
+					}
+				} else {
+					// Normal PH decision logic
+					phDecision = shouldPinchHit(
+						mgrState,
+						toModelBatter(currentBatter),
+						availableBench,
+						toModelPitcher(opposingPitcher),
+						{ randomness: this.managerialOptions.randomness ?? 0.15, useDH: gameUsesDH }
+					);
+				}
 
 				if (phDecision.shouldPinchHit && phDecision.pinchHitterId) {
 					// Find the batter's position in the lineup
