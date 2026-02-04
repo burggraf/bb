@@ -116,14 +116,14 @@ export function selectStartingPitcher(pitchers: PitcherStats[]): PitcherStats {
 	// Calculate quality score for each starter
 	// Quality = (gamesStarted weight) + (era inverse) + (whip inverse) + (cg bonus)
 	const scored = starters.map(p => {
-		const eraScore = 10 / p.era; // Lower ERA = higher score
-		const whipScore = 5 / p.whip; // Lower WHIP = higher score
+		const eraScore = 5 / p.era; // Lower ERA = higher score
+		const whipScore = 2 / p.whip; // Lower WHIP = higher score
 		const cgRate = p.gamesStarted > 0 ? p.completeGames / p.gamesStarted : 0;
 		const cgBonus = cgRate * 10; // Complete games add value
 
 		return {
 			pitcher: p,
-			score: p.gamesStarted + eraScore + whipScore + cgBonus
+			score: p.gamesStarted * 2 + eraScore + whipScore + cgBonus
 		};
 	});
 
