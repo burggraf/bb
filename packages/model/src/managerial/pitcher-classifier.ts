@@ -25,6 +25,15 @@ function hasClosers(norms: LeaguePitchingNorms): boolean {
  * Determine pitcher's primary role from stats
  */
 function getPitcherRole(pitcher: ExtendedPitcherStats): 'starter' | 'reliever' {
+	// Fallback: if gamesStarted data is missing (all zeros), use avgBfpAsStarter
+	if (pitcher.gamesStarted === 0 && pitcher.avgBfpAsStarter !== null && pitcher.avgBfpAsStarter > 0) {
+		return 'starter';
+	}
+	if (pitcher.games === 0) {
+		// No game data at all, treat as reliever
+		return 'reliever';
+	}
+
 	const startRate = pitcher.gamesStarted / pitcher.games;
 	if (startRate >= STARTER_START_RATE_THRESHOLD) return 'starter';
 	if (startRate <= RELIEVER_START_RATE_THRESHOLD) return 'reliever';
