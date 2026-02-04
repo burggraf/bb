@@ -12,7 +12,11 @@ import {
 	selectReliever,
 	type PinchHitDecision,
 	type BatterStats as ModelBatterStats,
-	type PitcherStats as ModelPitcherStats
+	type PitcherStats as ModelPitcherStats,
+	classifyPitchers,
+	calculateLeagueNorms,
+	type EnhancedBullpenState,
+	type LeaguePitchingNorms
 } from '@bb/model';
 import type {
 	GameState,
@@ -26,7 +30,7 @@ import type {
 } from './types.js';
 import { transition, createBaserunningState } from './state-machine/index.js';
 import { isHit } from './state-machine/outcome-types.js';
-import type { PitcherRole, BullpenState } from '@bb/model';
+import type { PitcherRole } from '@bb/model';
 import { buildLineup, usesDH } from './lineup-builder.js';
 import { validateLineup, type LineupValidationResult } from './lineup-validator.js';
 
@@ -334,7 +338,7 @@ export class GameEngine {
 	private managerialOptions: ManagerialOptions;
 	// Track pitcher stamina and bullpen state
 	private pitcherStamina: Map<string, PitcherRole>;
-	private bullpenStates: Map<string, BullpenState>;
+	private bullpenStates: Map<string, EnhancedBullpenState>;
 	// Track used pinch hitters (so they don't enter multiple times)
 	private usedPinchHitters: Set<string>;
 	// Track removed players (cannot return to game)
@@ -527,42 +531,42 @@ export class GameEngine {
 			return;
 		}
 
-		// Create pitcher role for starter with BFP data
+		// Calculate league norms from all pitchers in season
+		const allPitchers = Object.values(this.season.pitchers);
+		const numTeams = Object.keys(this.season.teams).length;
+		const leagueNorms: LeaguePitchingNorms = calculateLeagueNorms(
+			allPitchers as any,
+			this.season.meta.year,
+			numTeams
+		);
+
+		// Use classifier to assign roles
+		// Include the designated starter so classifier knows who's starting
+		const allTeamPitchers = [...teamPitchers, starterStats];
+		const classification = classifyPitchers(allTeamPitchers as any, leagueNorms);
+
+		// Override the starter to be the designated one
 		const starter: PitcherRole = {
 			pitcherId: starterId,
 			role: 'starter',
 			stamina: 100,
 			pitchesThrown: 0,
 			battersFace: 0,
-			avgBfpAsStarter: starterStats?.avgBfpAsStarter ?? null,
-			avgBfpAsReliever: starterStats?.avgBfpAsReliever ?? null,
+			avgBfpAsStarter: starterStats.avgBfpAsStarter ?? null,
+			avgBfpAsReliever: starterStats.avgBfpAsReliever ?? null,
 			hitsAllowed: 0,
 			walksAllowed: 0,
 			runsAllowed: 0
 		};
 		this.pitcherStamina.set(starterId, starter);
 
-		// Remaining pitchers are bullpen
-		const relievers: PitcherRole[] = teamPitchers.map((p) => {
-			const stats = this.season.pitchers[p.id];
-			return {
-				pitcherId: p.id,
-				role: p.id.includes('closer') ? 'closer' : 'reliever',
-				stamina: 100,
-				pitchesThrown: 0,
-				battersFace: 0,
-				avgBfpAsStarter: stats?.avgBfpAsStarter ?? null,
-				avgBfpAsReliever: stats?.avgBfpAsReliever ?? null,
-				hitsAllowed: 0,
-				walksAllowed: 0,
-				runsAllowed: 0
-			};
-		});
-
+		// Store enhanced bullpen state
 		this.bullpenStates.set(teamId, {
 			starter,
-			relievers,
-			closer: relievers.find((r) => r.role === 'closer')
+			relievers: classification.relievers,
+			closer: classification.closer,
+			setup: classification.setup,
+			longRelief: classification.longRelief
 		});
 
 		// Note: The starting pitcher is already set in the lineup by buildLineup
@@ -1624,9 +1628,11 @@ export class GameEngine {
 		if (!pitcher || !pitcherRole || !bullpen) return false;
 
 		// Filter bullpen to exclude removed pitchers (they cannot re-enter the game)
-		const filteredBullpen: BullpenState = {
+		const filteredBullpen: EnhancedBullpenState = {
 			starter: bullpen.starter,
 			closer: bullpen.closer && !this.removedPlayers.has(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
+			setup: bullpen.setup?.filter(r => !this.removedPlayers.has(r.pitcherId)),
+			longRelief: bullpen.longRelief?.filter(r => !this.removedPlayers.has(r.pitcherId)),
 			relievers: bullpen.relievers.filter(r => !this.removedPlayers.has(r.pitcherId))
 		};
 
@@ -1875,9 +1881,11 @@ export class GameEngine {
 							const bullpen = this.bullpenStates.get(battingTeam.teamId);
 							if (bullpen && bullpen.relievers.length > 0) {
 								// Filter bullpen to exclude removed pitchers (they cannot re-enter the game)
-								const filteredBullpen: BullpenState = {
+								const filteredBullpen: EnhancedBullpenState = {
 									starter: bullpen.starter,
 									closer: bullpen.closer && !this.removedPlayers.has(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
+									setup: bullpen.setup?.filter(r => !this.removedPlayers.has(r.pitcherId)),
+									longRelief: bullpen.longRelief?.filter(r => !this.removedPlayers.has(r.pitcherId)),
 									relievers: bullpen.relievers.filter(r => !this.removedPlayers.has(r.pitcherId))
 								};
 

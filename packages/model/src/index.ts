@@ -48,8 +48,10 @@ export {
 	shouldPullPitcher,
 	selectReliever,
 	calculateLeverageIndex,
-	reduceStamina
-} from './managerial/pitching.js';
+	reduceStamina,
+	calculateLeagueNorms,
+	classifyPitchers
+} from './managerial/index.js';
 export {
 	shouldPinchHit,
 	isAvailableOnBench,
@@ -60,7 +62,9 @@ export type {
 	LineupSlot,
 	PitcherRole,
 	BullpenState,
+	EnhancedBullpenState,
 	GameState,
 	PitchingDecision,
-	PinchHitDecision
+	PinchHitDecision,
+	LeaguePitchingNorms
 } from './managerial/index.js';
