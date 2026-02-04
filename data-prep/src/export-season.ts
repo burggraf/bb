@@ -172,39 +172,29 @@ function getSeasonNorms(
   // - Bullpen fatigue (recent extra-inning games, short rest)
   // - Saving bullpen for future games
   // - Trust in "hot hand"
-  //
-  // We scale up the percentiles to match actual historical pitcher usage:
-  // - Early era (pre-1950): Use p50/p75/p90 directly (managers let starters go deep)
-  // - Middle era (1950-1990): Scale up slightly (managers more aggressive but still patient)
-  // - Modern era (post-1990): Scale up more (bullpen specialization + strategic pulling)
+  // Data-driven pull threshold calibration using actual historical usage
+  // Base thresholds from percentiles, scaled based on expected pitchers per game
 
-  let consider: number;
-  let likely: number;
-  let hardLimit: number;
+  const baseConsider = medianBFP ?? 21;
+  const baseLikely = p75BFP ?? 24;
+  const baseHardLimit = p90BFP ?? 27;
 
-  if (year < 1950) {
-    // Deadball/early era: Starters routinely went deep, use p50/p75/p90 directly
-    consider = medianBFP ?? 21;
-    likely = p75BFP ?? 24;
-    hardLimit = p90BFP ?? 27;
-  } else if (year < 1980) {
-    // Integration era: Slight scaling
-    consider = (medianBFP ?? 21) * 1.10;
-    likely = (p75BFP ?? 24) * 1.08;
-    hardLimit = p90BFP ?? 27;
-  } else if (year < 2000) {
-    // Modern pre-closer era: Moderate scaling
-    consider = (medianBFP ?? 21) * 1.20;
-    likely = (p75BFP ?? 24) * 1.15;
-    hardLimit = (p90BFP ?? 27) * 1.10;
-  } else {
-    // Modern closer era: Moderate scaling with proper ordering
-    // Apply uniform scaling to all thresholds to maintain consider < likely < hardLimit
-    const scaleFactor = 1.20;
-    consider = (medianBFP ?? 21) * scaleFactor;
-    likely = (p75BFP ?? 24) * scaleFactor;
-    hardLimit = (p90BFP ?? 27) * scaleFactor;
-  }
+  // Calculate expected pitchers per team (total divided by 2)
+  const expectedPitchersPerTeam = (actualPitchersPerGame ?? 4.0) / 2;
+
+  // Derive scaling factor from expected usage:
+  // - FEWER pitchers expected = HIGHER thresholds (let starters go longer, pull later)
+  // - MORE pitchers expected = LOWER thresholds (pull starters earlier, use more relievers)
+  // Formula: inverted correlation - 1.8 base, minus 0.15 per expected pitcher
+  // Examples: 1.5 → 1.58, 3.0 → 1.35, 4.5 → 1.13
+  const scaleFactor = 1.8 - (expectedPitchersPerTeam * 0.15);
+
+  // Clamp scaling to reasonable bounds (0.7 to 1.8)
+  const clampedScale = Math.max(0.7, Math.min(1.8, scaleFactor));
+
+  const consider = baseConsider * clampedScale;
+  const likely = baseLikely * clampedScale;
+  const hardLimit = baseHardLimit * clampedScale;
 
   const pullThresholds = {
     consider: Math.round(consider * 10) / 10,
