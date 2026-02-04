@@ -9,7 +9,16 @@
  */
 
 // Types
-export type { GameState, PitcherRole, BullpenState, PitchingDecision } from './types.js';
+export type {
+	GameState,
+	PitcherRole,
+	BullpenState,
+	PitchingDecision,
+	EnhancedBullpenState,
+	PitcherQuality,
+	LeaguePitchingNorms,
+	RelieverSelectionOptions
+} from './types.js';
 
 // Lineup
 export { generateLineup, type LineupOptions, type LineupSlot } from './lineup.js';

@@ -55,6 +55,54 @@ export interface BullpenState {
 }
 
 /**
+ * Enhanced bullpen state with role-specific reliever categories
+ */
+export interface EnhancedBullpenState extends BullpenState {
+	/** Setup men for 7th-8th innings (modern era) */
+	setup?: PitcherRole[];
+	/** Long relievers for early game/extra innings */
+	longRelief?: PitcherRole[];
+}
+
+/**
+ * Quality metrics for a pitcher (era-normalized)
+ */
+export interface PitcherQuality {
+	id: string;
+	qualityScore: number; // Higher = better, era-normalized
+	isWorkhorse: boolean; // High complete game rate
+	inningsPerGame: number; // For reliever classification
+	role: 'starter' | 'reliever';
+}
+
+/**
+ * League-average pitching stats for a season (calculated, not from export)
+ */
+export interface LeaguePitchingNorms {
+	avgERA: number;
+	avgWHIP: number;
+	avgSavesPerTeam: number;
+	avgCGRate: number; // completeGames / gamesStarted
+	year: number;
+}
+
+/**
+ * Extended options for reliever selection with platoon info
+ */
+export interface RelieverSelectionOptions {
+	/** Upcoming batters for platoon consideration */
+	upcomingBatters?: Array<{
+		handedness: 'L' | 'R' | 'S';
+	}>;
+	/** League norms for era detection */
+	leagueNorms?: LeaguePitchingNorms;
+	/** Season year */
+	year?: number;
+	/** Is DH game (affects bullpen usage) */
+	usesDH?: boolean;
+}
+
+/**
  * Decision about whether to change pitchers
  */
 export interface PitchingDecision {
