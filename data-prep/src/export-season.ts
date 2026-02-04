@@ -56,6 +56,7 @@ function parseNumber(value: string): number {
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import type { EventRates } from '@bb/model';
+import { exportSeasonAsSqlite } from './export-sqlite.js';
 
 /**
  * Modern trajectory distribution for imputing unknown outs.
@@ -1964,7 +1965,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     games,
   };
 
-  // Write to file
+  // Write to file (for backward compatibility - JSON export)
   fs.writeFileSync(outputPath, JSON.stringify(season, null, 2));
   console.log(`\n✅ Season exported to ${outputPath}`);
 
@@ -1976,6 +1977,7 @@ async function main() {
   const year = parseInt(process.argv[2]) || 1976;
   const dbPath = process.argv[3] || '../baseball.duckdb';
   const outputPath = process.argv[4] || `../app/static/seasons/${year}.json`;
+  const format = process.argv[5] || 'sqlite';
 
   // Ensure output directory exists
   const outputDir = outputPath.substring(0, outputPath.lastIndexOf('/'));
@@ -1983,7 +1985,20 @@ async function main() {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  await exportSeason(year, dbPath, outputPath);
+  // Export season data (common for both formats)
+  const tmpPath = outputPath + '.tmp';
+  const season = await exportSeason(year, dbPath, tmpPath);
+
+  // Output in requested format
+  if (format === 'sqlite') {
+    // Remove temporary JSON file
+    fs.unlinkSync(tmpPath);
+    // Export to SQLite
+    await exportSeasonAsSqlite(season, outputPath, true);
+  } else {
+    // Rename temp file to final output
+    fs.renameSync(tmpPath, outputPath);
+  }
 }
 
 main();
