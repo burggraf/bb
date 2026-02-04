@@ -13,7 +13,9 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@bb/model": "workspace:*"
+		"@bb/model": "workspace:*",
+		"pako": "^2.1.0",
+		"wa-sqlite": "^1.0.0"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",
