@@ -54,3 +54,6 @@ export { calculateLeagueNorms } from './norms-calculator.js';
 
 // Pitcher Quality
 export { calculatePitcherQuality } from './pitcher-quality.js';
+
+// Pitcher Classifier
+export { classifyPitchers } from './pitcher-classifier.js';
