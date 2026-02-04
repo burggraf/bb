@@ -43,6 +43,8 @@ export interface PitcherRole {
 	walksAllowed: number;
 	/** Runs allowed in current appearance */
 	runsAllowed: number;
+	/** Is this pitcher a workhorse (high complete game rate)? */
+	isWorkhorse?: boolean;
 }
 
 /**

@@ -209,7 +209,9 @@ export function shouldPullPitcher(
 
 		// Hard limit: exceeded hard limit threshold
 		const hardLimit = typicalBfp * pullThresholds.hardLimit;
-		if (pitcher.battersFace >= hardLimit) {
+		// Workhorses get extended hard limit
+		const workhorseBonus = pitcher.isWorkhorse ? 1.2 : 1.0;
+		if (pitcher.battersFace >= hardLimit * workhorseBonus) {
 			return { shouldChange: true, reason: `Exceeded limit (${pitcher.battersFace} BFP)` };
 		}
 
@@ -243,9 +245,12 @@ export function shouldPullPitcher(
 					pullChance += 0.15; // Losing
 				}
 
-				// Late game with lead: let them finish
+				// Late game with lead: workhorses get extra leeway to finish
 				if (inning >= 8 && scoreDiff > 0 && roughness < 0.3) {
 					pullChance -= 0.25;
+					if (pitcher.isWorkhorse) {
+						pullChance -= 0.15; // Extra bonus for workhorses
+					}
 				}
 			} else {
 				// Modern/analytics era: performance matters less, adherence to limits matters more

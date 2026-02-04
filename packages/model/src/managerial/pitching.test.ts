@@ -102,15 +102,16 @@ describe('Pitching Management', () => {
 		it('should consider pulling at average BFP through 6th', () => {
 			mockState.inning = 6;
 			mockPitcher.battersFace = 27; // Average starter BFP
-			// With randomness = 0, 30% chance means most tests will pass
-			// This test might occasionally fail
+			// With randomness = 0, the pull chance is deterministic based on era thresholds
+			// For 1976 era: consider=0.70, likely=0.90, so at 27 BFP (exceeding likelyThreshold of 24.3),
+			// the pull chance is high (~65% after dominating performance bonus)
 			const decisions = Array.from({ length: 100 }, () =>
 				shouldPullPitcher(mockState, mockPitcher, mockBullpen, 0)
 			);
 			const pullCount = decisions.filter((d) => d.shouldChange).length;
-			// Should pull roughly 30% of the time
-			expect(pullCount).toBeGreaterThan(10);
-			expect(pullCount).toBeLessThan(60);
+			// Should pull roughly 65% of the time with dominating performance
+			expect(pullCount).toBeGreaterThan(50);
+			expect(pullCount).toBeLessThan(80);
 		});
 
 		it('should pull for high leverage situation with tired reliever', () => {

@@ -1,6 +1,6 @@
 // pitcher-classifier.ts
 import type { ExtendedPitcherStats } from '../types.js';
-import type { EnhancedBullpenState, LeaguePitchingNorms, PitcherRole } from './types.js';
+import type { EnhancedBullpenState, LeaguePitchingNorms, PitcherRole, PitcherQuality } from './types.js';
 import { calculatePitcherQuality } from './pitcher-quality.js';
 
 // Role classification thresholds
@@ -35,10 +35,10 @@ function getPitcherRole(pitcher: ExtendedPitcherStats): 'starter' | 'reliever' {
 /**
  * Create PitcherRole from ExtendedPitcherStats
  */
-function createPitcherRole(pitcher: ExtendedPitcherStats, role: 'starter' | 'reliever'): PitcherRole {
+function createPitcherRole(pitcher: ExtendedPitcherStats, quality: PitcherQuality): PitcherRole {
 	return {
 		pitcherId: pitcher.id,
-		role: role === 'starter' ? 'starter' : 'reliever',
+		role: quality.role === 'starter' ? 'starter' : 'reliever',
 		stamina: 100,
 		pitchesThrown: 0,
 		battersFace: 0,
@@ -46,7 +46,8 @@ function createPitcherRole(pitcher: ExtendedPitcherStats, role: 'starter' | 'rel
 		avgBfpAsReliever: pitcher.avgBfpAsReliever,
 		hitsAllowed: 0,
 		walksAllowed: 0,
-		runsAllowed: 0
+		runsAllowed: 0,
+		isWorkhorse: quality.isWorkhorse
 	};
 }
 
@@ -79,7 +80,7 @@ export function classifyPitchers(
 	}
 
 	// Best starter is the ace
-	const starter = createPitcherRole(starters[0]!.pitcher, 'starter');
+	const starter = createPitcherRole(starters[0]!.pitcher, starters[0]!.quality);
 
 	// Determine if this era uses closers
 	const eraHasClosers = hasClosers(norms);
@@ -95,32 +96,32 @@ export function classifyPitchers(
 		const closerIdx = relievers.findIndex(r => r.pitcher.saves > 0);
 		const effectiveCloserIdx = closerIdx >= 0 ? closerIdx : 0;
 		if (relievers[effectiveCloserIdx]!.pitcher.saves >= CLOSER_SAVE_THRESHOLD || relievers[0]!.quality.qualityScore > CLOSER_QUALITY_THRESHOLD) {
-			closer = createPitcherRole(relievers[effectiveCloserIdx]!.pitcher, 'reliever');
+			closer = createPitcherRole(relievers[effectiveCloserIdx]!.pitcher, relievers[effectiveCloserIdx]!.quality);
 			relievers.splice(effectiveCloserIdx, 1);
 		}
 
 		// Next 1-2 are setup men (by quality score, after closer removed)
 		const setupCount = Math.min(2, relievers.length);
 		for (let i = 0; i < setupCount; i++) {
-			setup.push(createPitcherRole(relievers[i]!.pitcher, 'reliever'));
+			setup.push(createPitcherRole(relievers[i]!.pitcher, relievers[i]!.quality));
 		}
 		relievers.splice(0, setupCount);
 
 		// Long relievers have higher innings per game (remaining after setup removed)
 		for (const r of relievers) {
 			if (r.quality.inningsPerGame > LONG_RELIEVER_IP_THRESHOLD) {
-				longRelief.push(createPitcherRole(r.pitcher, 'reliever'));
+				longRelief.push(createPitcherRole(r.pitcher, r.quality));
 			} else {
-				remaining.push(createPitcherRole(r.pitcher, 'reliever'));
+				remaining.push(createPitcherRole(r.pitcher, r.quality));
 			}
 		}
 	} else {
 		// No closers - all relievers go to longRelief or remaining
 		for (const r of relievers) {
 			if (r.quality.inningsPerGame > LONG_RELIEVER_IP_THRESHOLD) {
-				longRelief.push(createPitcherRole(r.pitcher, 'reliever'));
+				longRelief.push(createPitcherRole(r.pitcher, r.quality));
 			} else {
-				remaining.push(createPitcherRole(r.pitcher, 'reliever'));
+				remaining.push(createPitcherRole(r.pitcher, r.quality));
 			}
 		}
 	}
