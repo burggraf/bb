@@ -115,6 +115,46 @@ The app uses Svelte 5 runes (`$state`, `$derived`, etc.). Key patterns:
 3. Update `getAvailableYears()` in `season-loader.ts` to include new year
 4. Season data loads in browser via `fetch('/seasons/YEAR.json')`
 
+### Pitcher Selection & Bullpen Management
+
+**Starter Selection:**
+- Uses quality score combining `gamesStarted`, ERA, WHIP, and complete game rate
+- Filters to pitchers with >30% `gamesStarted/games` ratio
+- Quality formula: `gamesStarted * 2 + (5/era) + (2/whip) + (cgRate * 10)`
+- Workhorse pitchers (15%+ CG rate) get extended pull thresholds
+
+**Bullpen Classification (`packages/model/src/managerial/pitcher-classifier.ts`):**
+- Pitchers classified into roles: `starter`, `closer`, `setup`, `longRelief`, `reliever`
+- Era-aware closer detection:
+  - Pre-1950: No closers
+  - 1950-1969: Emerging (`avgSavesPerTeam > 5`)
+  - 1970-1989: Established (`avgSavesPerTeam > 12`)
+  - 1990+: Modern era (always closers)
+- Role determination:
+  - Starter: `gamesStarted/games >= 0.5` or swingman with 15+ starts
+  - Reliever: `gamesStarted/games <= 0.2` or swingman with fewer starts
+  - Closer: First reliever with 5+ saves or quality score > 1.2
+  - Setup: Top 1-2 relievers by quality score (IP/G <= 1.5)
+  - LongRelief: Relievers with IP/G > 1.3
+
+**Reliever Selection (`packages/model/src/managerial/pitching.ts`):**
+- **Save situations (9th+, lead 1-3):** closer → setup → reliever
+- **Late & close (7th-8th, 2 runs or less):** setup → closer (8th only) → reliever
+- **Early game (1-6):** longRelief → reliever
+- **Blowout (5+ run diff):** avoid closer/setup, use rested reliever
+- **Extra innings:** Use best available (closer → setup → reliever → longRelief)
+
+**Workhorse Handling:**
+- Pitchers with `completeGames/gamesStarted >= 0.15` flagged as workhorses
+- Workhorses get +20% extended hard limits in `shouldPullPitcher()`
+- Extra leeway in late/close games when pitching well (additional -15% pull chance)
+
+**Era-Appropriate Pitcher Usage (validated across 1910-2024):**
+- 1910-1950: 1.0-1.5 pitchers per team (complete game era)
+- 1960-1980: 1.5-2.0 pitchers per team (transitioning)
+- 1990-2000: 2.0-4.0 pitchers per team (modern specialization)
+- 2010-2024: 3.0-4.5 pitchers per team (analytics era)
+
 ### Common Issues
 
 - **Model package not found:** Run `pnpm install` from root to link workspace packages
