@@ -19,24 +19,30 @@ export async function exportSeasonAsSqlite(
     fs.unlinkSync(outputPath);
   }
 
-  // Create SQLite database
   const db = new Database(outputPath);
-  createSeasonSchema(db);
 
-  // Enable WAL mode for better performance
-  db.pragma('journal_mode = WAL');
+  try {
+    createSeasonSchema(db);
 
-  // Insert data in transactions
-  insertMeta(db, season);
-  insertNorms(db, season);
-  insertBatters(db, season.batters);
-  insertPitchers(db, season.pitchers);
-  insertLeagueAverages(db, season.league);
-  insertTeams(db, season.teams);
-  insertGames(db, season.games);
+    // Enable WAL mode for better performance
+    db.pragma('journal_mode = WAL');
 
-  db.close();
-  console.log(`\n✅ Season exported to ${outputPath}`);
+    // Insert data in transactions
+    insertMeta(db, season);
+    insertNorms(db, season);
+    insertBatters(db, season.batters);
+    insertPitchers(db, season.pitchers);
+    insertLeagueAverages(db, season.league);
+    insertTeams(db, season.teams);
+    insertGames(db, season.games);
+
+    console.log(`\n✅ Season exported to ${outputPath}`);
+  } catch (error) {
+    console.error('❌ Error exporting season:', error);
+    throw error;
+  } finally {
+    db.close();
+  }
 
   // Compress if requested
   if (compress) {
@@ -54,14 +60,12 @@ export async function exportSeasonAsSqlite(
 function insertMeta(db: Database.Database, season: SeasonPackage): void {
   const stmt = db.prepare('INSERT OR REPLACE INTO meta (year, generated_at, version) VALUES (?, ?, ?)');
   stmt.run(season.meta.year, season.meta.generatedAt, season.meta.version);
-  stmt.finalize();
   console.log('  ✓ Meta data');
 }
 
 function insertNorms(db: Database.Database, season: SeasonPackage): void {
   const stmt = db.prepare('INSERT OR REPLACE INTO norms (year, era, norms_json) VALUES (?, ?, ?)');
   stmt.run(season.norms.year, season.norms.era, JSON.stringify(season.norms));
-  stmt.finalize();
   console.log('  ✓ Season norms');
 }
 
@@ -120,8 +124,6 @@ function insertBatters(db: Database.Database, batters: SeasonPackage['batters'])
   });
 
   insertMany(Object.values(batters));
-  insertBatter.finalize();
-  insertRates.finalize();
   console.log(`  ✓ ${Object.keys(batters).length} batters`);
 }
 
@@ -184,8 +186,6 @@ function insertPitchers(db: Database.Database, pitchers: SeasonPackage['pitchers
   });
 
   insertMany(Object.values(pitchers));
-  insertPitcher.finalize();
-  insertRates.finalize();
   console.log(`  ✓ ${Object.keys(pitchers).length} pitchers`);
 }
 
@@ -218,14 +218,12 @@ function insertLeagueAverages(db: Database.Database, league: SeasonPackage['leag
     vsRHP.fielders_choice, vsRHP.reached_on_error, vsRHP.catcher_interference
   );
 
-  stmt.finalize();
   console.log('  ✓ League averages');
 
   // Insert pitcher-batter league averages
   const pbStmt = db.prepare('INSERT OR REPLACE INTO pitcher_batter_league (split, rates_json) VALUES (?, ?)');
   pbStmt.run('vsLHP', JSON.stringify(league.pitcherBatter.vsLHP));
   pbStmt.run('vsRHP', JSON.stringify(league.pitcherBatter.vsRHP));
-  pbStmt.finalize();
   console.log('  ✓ Pitcher-batter league averages');
 }
 
@@ -237,7 +235,6 @@ function insertTeams(db: Database.Database, teams: SeasonPackage['teams']): void
     }
   });
   insertMany(Object.values(teams));
-  stmt.finalize();
   console.log(`  ✓ ${Object.keys(teams).length} teams`);
 }
 
@@ -249,6 +246,5 @@ function insertGames(db: Database.Database, games: SeasonPackage['games']): void
     }
   });
   insertMany(games);
-  stmt.finalize();
   console.log(`  ✓ ${games.length} games`);
 }
