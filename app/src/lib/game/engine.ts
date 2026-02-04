@@ -13,6 +13,7 @@ import {
 	type PinchHitDecision,
 	type BatterStats as ModelBatterStats,
 	type PitcherStats as ModelPitcherStats,
+	type ExtendedPitcherStats,
 	classifyPitchers,
 	calculateLeagueNorms,
 	type EnhancedBullpenState,
@@ -50,13 +51,24 @@ function toModelBatter(batter: BatterStats): ModelBatterStats {
 }
 
 /**
- * Convert app PitcherStats to model PitcherStats
+ * Convert app PitcherStats to model ExtendedPitcherStats
  */
-function toModelPitcher(pitcher: PitcherStats): ModelPitcherStats {
+function toModelPitcher(pitcher: PitcherStats): ExtendedPitcherStats {
 	return {
 		id: pitcher.id,
 		name: pitcher.name,
 		handedness: pitcher.throws,
+		throws: pitcher.throws,
+		teamId: pitcher.teamId,
+		games: pitcher.games,
+		gamesStarted: pitcher.gamesStarted,
+		completeGames: pitcher.completeGames,
+		saves: pitcher.saves,
+		inningsPitched: pitcher.inningsPitched,
+		whip: pitcher.whip,
+		era: pitcher.era,
+		avgBfpAsStarter: pitcher.avgBfpAsStarter,
+		avgBfpAsReliever: pitcher.avgBfpAsReliever,
 		rates: {
 			vsLeft: pitcher.rates.vsLHB,
 			vsRight: pitcher.rates.vsRHB
@@ -532,18 +544,18 @@ export class GameEngine {
 		}
 
 		// Calculate league norms from all pitchers in season
-		const allPitchers = Object.values(this.season.pitchers);
+		const allPitchers = Object.values(this.season.pitchers).map(toModelPitcher);
 		const numTeams = Object.keys(this.season.teams).length;
 		const leagueNorms: LeaguePitchingNorms = calculateLeagueNorms(
-			allPitchers as any,
+			allPitchers,
 			this.season.meta.year,
 			numTeams
 		);
 
 		// Use classifier to assign roles
 		// Include the designated starter so classifier knows who's starting
-		const allTeamPitchers = [...teamPitchers, starterStats];
-		const classification = classifyPitchers(allTeamPitchers as any, leagueNorms);
+		const allTeamPitchers = [...teamPitchers, starterStats].map(toModelPitcher);
+		const classification = classifyPitchers(allTeamPitchers, leagueNorms);
 
 		// Override the starter to be the designated one
 		const starter: PitcherRole = {
