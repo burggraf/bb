@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import type { EventRates } from '@bb/model';
 
 /**
  * Create all tables for season SQLite database
@@ -150,4 +151,52 @@ export function createSeasonSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_pitchers_team ON pitchers(team_id);
     CREATE INDEX IF NOT EXISTS idx_games_date ON games(date);
   `);
+}
+
+/**
+ * Convert EventRates from camelCase (TypeScript) to snake_case (SQL)
+ */
+export function eventRatesToSQL(rates: EventRates): Record<string, number> {
+  return {
+    single: rates.single,
+    double: rates.double,
+    triple: rates.triple,
+    home_run: rates.homeRun,
+    walk: rates.walk,
+    hit_by_pitch: rates.hitByPitch,
+    strikeout: rates.strikeout,
+    ground_out: rates.groundOut,
+    fly_out: rates.flyOut,
+    line_out: rates.lineOut,
+    pop_out: rates.popOut,
+    sacrifice_fly: rates.sacrificeFly,
+    sacrifice_bunt: rates.sacrificeBunt,
+    fielders_choice: rates.fieldersChoice,
+    reached_on_error: rates.reachedOnError,
+    catcher_interference: rates.catcherInterference,
+  };
+}
+
+/**
+ * Convert EventRates from snake_case (SQL) to camelCase (TypeScript)
+ */
+export function sqlToEventRates(row: Record<string, number>): EventRates {
+  return {
+    single: row.single,
+    double: row.double,
+    triple: row.triple,
+    homeRun: row.home_run,
+    walk: row.walk,
+    hitByPitch: row.hit_by_pitch,
+    strikeout: row.strikeout,
+    groundOut: row.ground_out,
+    flyOut: row.fly_out,
+    lineOut: row.line_out,
+    popOut: row.pop_out,
+    sacrificeFly: row.sacrifice_fly,
+    sacrificeBunt: row.sacrifice_bunt,
+    fieldersChoice: row.fielders_choice,
+    reachedOnError: row.reached_on_error,
+    catcherInterference: row.catcher_interference,
+  };
 }
