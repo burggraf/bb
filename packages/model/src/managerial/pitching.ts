@@ -438,6 +438,21 @@ export function selectReliever(
 	const isEnhanced = 'setup' in bullpen || 'longRelief' in bullpen;
 	const enhancedBullpen = bullpen as EnhancedBullpenState;
 
+	// === BLOWOUT (5+ run difference) ===
+	// Use any rested reliever, save closer/setup
+	if (Math.abs(pitchingScoreDiff) >= 5) {
+		// Use regular relievers first
+		const available = bullpen.relievers.find(r => r.pitcherId !== excludePitcherId);
+		if (available) return available;
+		// Then long relief if available
+		if (isEnhanced && enhancedBullpen.longRelief && enhancedBullpen.longRelief.length > 0) {
+			const available = enhancedBullpen.longRelief.find(r => r.pitcherId !== excludePitcherId);
+			if (available) return available;
+		}
+		// Desperate times
+		return enhancedBullpen.setup?.[0] ?? enhancedBullpen.closer;
+	}
+
 	// === SAVE SITUATION: 9th inning+, leading by 1-3 runs ===
 	if (inning >= 9 && pitchingScoreDiff > 0 && pitchingScoreDiff <= 3) {
 		// Use closer if available
@@ -458,8 +473,9 @@ export function selectReliever(
 		return undefined;
 	}
 
-	// === LATE INNINGS (7th-8th): HIGH LEVERAGE ===
-	if (inning >= 7 && inning <= 8) {
+	// === LATE & CLOSE (7th-8th, close game) ===
+	// Check score differential for close game condition
+	if (inning >= 7 && inning <= 8 && Math.abs(pitchingScoreDiff) <= 2) {
 		// Prefer setup men in enhanced bullpens
 		if (isEnhanced && enhancedBullpen.setup && enhancedBullpen.setup.length > 0) {
 			const availableSetup = enhancedBullpen.setup.find(isAvailable);
@@ -499,32 +515,26 @@ export function selectReliever(
 		return undefined;
 	}
 
-	// === EXTRA INNINGS (10th+): HIGH LEVERAGE ===
-	if (inning > 9) {
-		// Use best available: closer, setup, or regular reliever
-		if (bullpen.closer && isAvailable(bullpen.closer)) {
-			return bullpen.closer;
-		}
-
-		if (isEnhanced && enhancedBullpen.setup) {
-			const availableSetup = enhancedBullpen.setup.find(isAvailable);
-			if (availableSetup) return availableSetup;
-		}
-
-		const availableReliever = bullpen.relievers.find(isAvailable);
-		if (availableReliever) return availableReliever;
-
-		if (isEnhanced && enhancedBullpen.longRelief) {
-			const availableLong = enhancedBullpen.longRelief.find(isAvailable);
-			if (availableLong) return availableLong;
-		}
-
-		return undefined;
+	// === DEFAULT: EXTRA INNINGS OR OTHER CASES ===
+	// Use best available: closer, setup, or regular reliever
+	if (bullpen.closer && isAvailable(bullpen.closer)) {
+		return bullpen.closer;
 	}
 
-	// Fallback: any available reliever
-	const anyAvailable = bullpen.relievers.find(isAvailable);
-	return anyAvailable;
+	if (isEnhanced && enhancedBullpen.setup) {
+		const availableSetup = enhancedBullpen.setup.find(isAvailable);
+		if (availableSetup) return availableSetup;
+	}
+
+	const availableReliever = bullpen.relievers.find(isAvailable);
+	if (availableReliever) return availableReliever;
+
+	if (isEnhanced && enhancedBullpen.longRelief) {
+		const availableLong = enhancedBullpen.longRelief.find(isAvailable);
+		if (availableLong) return availableLong;
+	}
+
+	return undefined;
 }
 
 /**
