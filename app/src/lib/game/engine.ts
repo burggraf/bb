@@ -2303,9 +2303,12 @@ export class GameEngine {
 			// Always audit and fix the lineup for the team that just finished batting
 			// This resolves any temporary pinch hitters (position 11) and ensures
 			// the current pitcher is in the batting order for non-DH games
-			// When the game is complete, we suppress the "Lineup adjustment" play messages
-			// but still normalize the lineup so final lineups don't show position 11 (PH)
-			this.auditLineupAtHalfInningEnd(battingTeam, battingTeam.teamId, this.isComplete());
+			// When the game is complete (or will be over without another turn), we suppress
+			// the "Lineup adjustment" play messages but still normalize the lineup so final
+			// lineups don't show position 11 (PH)
+			const teamThatJustFinished = state.isTopInning ? 'away' : 'home';
+			const suppressPlays = this.isComplete() || this.willGameBeOverAfterHalfInning(teamThatJustFinished);
+			this.auditLineupAtHalfInningEnd(battingTeam, battingTeam.teamId, suppressPlays);
 
 			// Only validate lineup if the game is NOT complete
 			// If the game is over (e.g., bottom of 11th, final out), we don't need to validate
@@ -2435,6 +2438,34 @@ export class GameEngine {
 
 		// Continue playing
 		return false;
+	}
+
+	/**
+	 * Predict whether the game will be over after the current half-inning ends.
+	 * This is used to suppress unnecessary lineup adjustment messages when the other
+	 * team won't get another chance to bat.
+	 */
+	private willGameBeOverAfterHalfInning(teamThatJustFinished: 'home' | 'away'): boolean {
+		// Calculate current score
+		let awayScore = 0;
+		let homeScore = 0;
+		for (const play of this.state.plays) {
+			if (play.isTopInning) {
+				awayScore += play.runsScored;
+			} else {
+				homeScore += play.runsScored;
+			}
+		}
+
+		if (teamThatJustFinished === 'home') {
+			// Home team just finished batting in bottom of an inning
+			// Game is over if: inning is 9+ and home team is trailing (away team wins without batting again)
+			return this.state.inning >= 9 && awayScore > homeScore;
+		} else {
+			// Away team just finished batting in top of an inning
+			// Game is NOT over yet - home team always gets their chance in the bottom half
+			return false;
+		}
 	}
 
 	private getCurrentBatter(): BatterStats {
