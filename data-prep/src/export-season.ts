@@ -502,6 +502,12 @@ WITH raw_batter_stats AS (
     p.throws as pitcher_throws,
     e.batting_team_id,
     COUNT(*) as pa,
+    -- Traditional stats from validation.lahman_batting_season_agg
+    COALESCE(lbs.at_bats, 0) as at_bats,
+    COALESCE(lbs.batting_average, 0) as batting_average,
+    COALESCE(lbs.on_base_percentage, 0) as on_base_percentage,
+    COALESCE(lbs.slugging_percentage, 0) as slugging_percentage,
+    COALESCE(lbs.ops, 0) as ops,
     -- Strikeouts
     SUM(CASE WHEN e.plate_appearance_result = 'StrikeOut' THEN 1 ELSE 0 END) as strikeouts,
     -- Hits
@@ -529,11 +535,12 @@ WITH raw_batter_stats AS (
   JOIN dim.players b ON e.batter_id = b.player_id
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN game.games g ON e.game_id = g.game_id
+  LEFT JOIN validation.lahman_batting_season_agg lbs ON e.batter_id = lbs.player_id AND lbs.season = ${year}
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
     AND e.plate_appearance_result != 'IntentionalWalk'
     AND e.no_play_flag = false
-  GROUP BY e.batter_id, b.last_name, b.first_name, b.bats, p.throws, e.batting_team_id
+  GROUP BY e.batter_id, b.last_name, b.first_name, b.bats, p.throws, e.batting_team_id, lbs.at_bats, lbs.batting_average, lbs.on_base_percentage, lbs.slugging_percentage, lbs.ops
 ),
 -- Find primary team for each batter (most PAs)
 batter_primary_team AS (
@@ -557,6 +564,12 @@ aggregated AS (
     r.name,
     r.bats,
     bt.primary_team_id,
+    -- Traditional stats (these are season totals, not split by handedness)
+    MAX(r.at_bats) as at_bats,
+    MAX(r.batting_average) as batting_average,
+    MAX(r.on_base_percentage) as on_base_percentage,
+    MAX(r.slugging_percentage) as slugging_percentage,
+    MAX(r.ops) as ops,
     -- vs LHP
     SUM(CASE WHEN pitcher_throws = 'L' THEN pa ELSE 0 END) as pa_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN strikeouts ELSE 0 END) as strikeouts_vs_l,
@@ -619,6 +632,20 @@ WITH raw_pitcher_batter_stats AS (
     p.throws as pitcher_throws,
     e.batting_team_id,
     COUNT(*) as pa,
+    -- Traditional stats from validation.lahman_batting_season_agg
+    COALESCE(lbs.at_bats, 0) as at_bats,
+    COALESCE(lbs.hits, 0) as hits,
+    COALESCE(lbs.batting_average, 0) as batting_average,
+    COALESCE(lbs.on_base_percentage, 0) as on_base_percentage,
+    COALESCE(lbs.slugging_percentage, 0) as slugging_percentage,
+    COALESCE(lbs.ops, 0) as ops,
+    COALESCE(lbs.walks, 0) as walks,
+    COALESCE(lbs.hit_by_pitch, 0) as hit_by_pitch,
+    COALESCE(lbs.sacrifice_bunts, 0) as sacrifice_bunts,
+    COALESCE(lbs.sacrifice_flies, 0) as sacrifice_flies,
+    -- Event-level stats for platoon split calculations
+    SUM(CASE WHEN e.plate_appearance_result = 'Walk' THEN 1 ELSE 0 END) as walks_events,
+    SUM(CASE WHEN e.plate_appearance_result = 'HitByPitch' THEN 1 ELSE 0 END) as hbp,
     -- Strikeouts
     SUM(CASE WHEN e.plate_appearance_result = 'StrikeOut' THEN 1 ELSE 0 END) as strikeouts,
     -- Hits
@@ -626,18 +653,15 @@ WITH raw_pitcher_batter_stats AS (
     SUM(CASE WHEN e.plate_appearance_result IN ('Double', 'GroundRuleDouble') THEN 1 ELSE 0 END) as doubles,
     SUM(CASE WHEN e.plate_appearance_result = 'Triple' THEN 1 ELSE 0 END) as triples,
     SUM(CASE WHEN e.plate_appearance_result IN ('HomeRun', 'InsideTheParkHomeRun') THEN 1 ELSE 0 END) as home_runs,
-    -- Walks
-    SUM(CASE WHEN e.plate_appearance_result = 'Walk' THEN 1 ELSE 0 END) as walks,
-    SUM(CASE WHEN e.plate_appearance_result = 'HitByPitch' THEN 1 ELSE 0 END) as hbp,
     -- Ball-in-play outs by trajectory (includes bunt variants mapped to equivalents)
     SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory IN ('GroundBall', 'GroundBallBunt') THEN 1 ELSE 0 END) as ground_outs,
     SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory IN ('Fly', 'FoulBunt') THEN 1 ELSE 0 END) as fly_outs,
     SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory IN ('LineDrive', 'LineDriveBunt') THEN 1 ELSE 0 END) as line_outs,
     SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND e.batted_trajectory IN ('PopUp', 'PopUpBunt', 'UnspecifiedBunt') THEN 1 ELSE 0 END) as pop_outs,
     SUM(CASE WHEN e.plate_appearance_result = 'InPlayOut' AND (e.batted_trajectory IS NULL OR e.batted_trajectory IN ('Unknown', 'Unspecified')) THEN 1 ELSE 0 END) as unknown_outs,
-    -- Sacrifices
-    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeFly' THEN 1 ELSE 0 END) as sacrifice_flies,
-    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeHit' THEN 1 ELSE 0 END) as sacrifice_bunts,
+    -- Sacrifices (for event-level split calculations)
+    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeFly' THEN 1 ELSE 0 END) as sacrifice_flies_events,
+    SUM(CASE WHEN e.plate_appearance_result = 'SacrificeHit' THEN 1 ELSE 0 END) as sacrifice_bunts_events,
     -- Other
     SUM(CASE WHEN e.plate_appearance_result = 'FieldersChoice' THEN 1 ELSE 0 END) as fielders_choices,
     SUM(CASE WHEN e.plate_appearance_result = 'ReachedOnError' THEN 1 ELSE 0 END) as reached_on_errors,
@@ -646,6 +670,7 @@ WITH raw_pitcher_batter_stats AS (
   JOIN dim.players b ON e.batter_id = b.player_id
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN game.games g ON e.game_id = g.game_id
+  LEFT JOIN validation.lahman_batting_season_agg lbs ON e.batter_id = lbs.player_id AND lbs.season = ${year}
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
     AND e.plate_appearance_result != 'IntentionalWalk'
@@ -657,7 +682,7 @@ WITH raw_pitcher_batter_stats AS (
       JOIN game.games g2 ON e2.game_id = g2.game_id
       WHERE EXTRACT(YEAR FROM g2.date) = ${year}
     )
-  GROUP BY e.batter_id, b.last_name, b.first_name, b.bats, p.throws, e.batting_team_id
+  GROUP BY e.batter_id, b.last_name, b.first_name, b.bats, p.throws, e.batting_team_id, lbs.at_bats, lbs.hits, lbs.batting_average, lbs.on_base_percentage, lbs.slugging_percentage, lbs.ops, lbs.walks, lbs.hit_by_pitch, lbs.sacrifice_bunts, lbs.sacrifice_flies
 ),
 -- Find primary team for each pitcher-batter (most PAs)
 pitcher_batter_primary_team AS (
@@ -681,6 +706,17 @@ aggregated AS (
     r.name,
     r.bats,
     pbt.primary_team_id,
+    -- Traditional stats from lahman tables (season totals, not split by handedness)
+    MAX(r.at_bats) as at_bats,
+    MAX(r.hits) as hits,
+    MAX(r.batting_average) as batting_average,
+    MAX(r.on_base_percentage) as on_base_percentage,
+    MAX(r.slugging_percentage) as slugging_percentage,
+    MAX(r.ops) as ops,
+    MAX(r.walks) as walks,
+    MAX(r.hit_by_pitch) as hit_by_pitch,
+    MAX(r.sacrifice_bunts) as sacrifice_bunts,
+    MAX(r.sacrifice_flies) as sacrifice_flies,
     -- vs LHP
     SUM(CASE WHEN pitcher_throws = 'L' THEN pa ELSE 0 END) as pa_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN strikeouts ELSE 0 END) as strikeouts_vs_l,
@@ -688,15 +724,15 @@ aggregated AS (
     SUM(CASE WHEN pitcher_throws = 'L' THEN doubles ELSE 0 END) as doubles_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN triples ELSE 0 END) as triples_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN home_runs ELSE 0 END) as hr_vs_l,
-    SUM(CASE WHEN pitcher_throws = 'L' THEN walks ELSE 0 END) as walks_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN walks_events ELSE 0 END) as walks_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN hbp ELSE 0 END) as hbp_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN ground_outs ELSE 0 END) as ground_outs_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN fly_outs ELSE 0 END) as fly_outs_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN line_outs ELSE 0 END) as line_outs_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN pop_outs ELSE 0 END) as pop_outs_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN unknown_outs ELSE 0 END) as unknown_outs_vs_l,
-    SUM(CASE WHEN pitcher_throws = 'L' THEN sacrifice_flies ELSE 0 END) as sacrifice_flies_vs_l,
-    SUM(CASE WHEN pitcher_throws = 'L' THEN sacrifice_bunts ELSE 0 END) as sacrifice_bunts_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN sacrifice_flies_events ELSE 0 END) as sacrifice_flies_vs_l,
+    SUM(CASE WHEN pitcher_throws = 'L' THEN sacrifice_bunts_events ELSE 0 END) as sacrifice_bunts_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN fielders_choices ELSE 0 END) as fielders_choices_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN reached_on_errors ELSE 0 END) as reached_on_errors_vs_l,
     SUM(CASE WHEN pitcher_throws = 'L' THEN catcher_interferences ELSE 0 END) as catcher_interferences_vs_l,
@@ -707,15 +743,15 @@ aggregated AS (
     SUM(CASE WHEN pitcher_throws = 'R' THEN doubles ELSE 0 END) as doubles_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN triples ELSE 0 END) as triples_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN home_runs ELSE 0 END) as hr_vs_r,
-    SUM(CASE WHEN pitcher_throws = 'R' THEN walks ELSE 0 END) as walks_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN walks_events ELSE 0 END) as walks_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN hbp ELSE 0 END) as hbp_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN ground_outs ELSE 0 END) as ground_outs_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN fly_outs ELSE 0 END) as fly_outs_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN line_outs ELSE 0 END) as line_outs_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN pop_outs ELSE 0 END) as pop_outs_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN unknown_outs ELSE 0 END) as unknown_outs_vs_r,
-    SUM(CASE WHEN pitcher_throws = 'R' THEN sacrifice_flies ELSE 0 END) as sacrifice_flies_vs_r,
-    SUM(CASE WHEN pitcher_throws = 'R' THEN sacrifice_bunts ELSE 0 END) as sacrifice_bunts_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN sacrifice_flies_events ELSE 0 END) as sacrifice_flies_vs_r,
+    SUM(CASE WHEN pitcher_throws = 'R' THEN sacrifice_bunts_events ELSE 0 END) as sacrifice_bunts_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN fielders_choices ELSE 0 END) as fielders_choices_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN reached_on_errors ELSE 0 END) as reached_on_errors_vs_r,
     SUM(CASE WHEN pitcher_throws = 'R' THEN catcher_interferences ELSE 0 END) as catcher_interferences_vs_r
@@ -739,6 +775,14 @@ WITH raw_pitcher_stats AS (
     b.bats as batter_bats,
     e.fielding_team_id,
     COUNT(*) as pa,
+    -- Traditional stats from validation.lahman_pitching and lahman_pitching_season_agg
+    COALESCE(lp.games, 0) as games,
+    COALESCE(lp.games_started, 0) as games_started,
+    COALESCE(lp.complete_games, 0) as complete_games,
+    COALESCE(lp.saves, 0) as saves,
+    COALESCE(lp.innings_pitched, 0) as innings_pitched,
+    COALESCE(lps.whip, 0) as whip,
+    COALESCE(lps.era, 0) as era,
     -- Strikeouts
     SUM(CASE WHEN e.plate_appearance_result = 'StrikeOut' THEN 1 ELSE 0 END) as strikeouts,
     -- Hits
@@ -766,11 +810,13 @@ WITH raw_pitcher_stats AS (
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN dim.players b ON e.batter_id = b.player_id
   JOIN game.games g ON e.game_id = g.game_id
+  LEFT JOIN validation.lahman_pitching lp ON e.pitcher_id = lp.player_id AND lp.season = ${year}
+  LEFT JOIN validation.lahman_pitching_season_agg lps ON e.pitcher_id = lps.player_id AND lps.season = ${year}
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
     AND e.plate_appearance_result != 'IntentionalWalk'
     AND e.no_play_flag = false
-  GROUP BY e.pitcher_id, p.last_name, p.first_name, p.throws, b.bats, e.fielding_team_id
+  GROUP BY e.pitcher_id, p.last_name, p.first_name, p.throws, b.bats, e.fielding_team_id, lp.games, lp.games_started, lp.complete_games, lp.saves, lp.innings_pitched, lps.whip, lps.era
 ),
 -- Find primary team for each pitcher (most PAs)
 pitcher_primary_team AS (
@@ -794,6 +840,14 @@ aggregated AS (
     r.name,
     r.throws,
     pt.primary_team_id,
+    -- Traditional stats from lahman tables (season totals, not split by handedness)
+    MAX(r.games) as games,
+    MAX(r.games_started) as games_started,
+    MAX(r.complete_games) as complete_games,
+    MAX(r.saves) as saves,
+    MAX(r.innings_pitched) as innings_pitched,
+    MAX(r.whip) as whip,
+    MAX(r.era) as era,
     -- vs LHB
     SUM(CASE WHEN batter_bats = 'L' THEN pa ELSE 0 END) as pa_vs_l,
     SUM(CASE WHEN batter_bats = 'L' THEN strikeouts ELSE 0 END) as strikeouts_vs_l,
@@ -1261,6 +1315,12 @@ export interface SeasonPackage {
     primaryPosition: number;
     /** All positions played, with appearance counts */
     positionEligibility: Record<number, number>;
+    /** Traditional stats from lahman_batting_season_agg */
+    pa: number;
+    avg: number;
+    obp: number;
+    slg: number;
+    ops: number;
     rates: {
       vsLHP: EventRates;
       vsRHP: EventRates;
@@ -1275,6 +1335,14 @@ export interface SeasonPackage {
     avgBfpAsStarter: number | null;
     /** Average batters faced when relieving (for fatigue modeling) */
     avgBfpAsReliever: number | null;
+    /** Traditional stats from lahman_pitching and lahman_pitching_season_agg */
+    games: number;
+    gamesStarted: number;
+    completeGames: number;
+    saves: number;
+    inningsPitched: number;
+    whip: number;
+    era: number;
     rates: {
       vsLHB: EventRates;
       vsRHB: EventRates;
@@ -1450,6 +1518,12 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       teamId: row.primary_team_id,
       primaryPosition,
       positionEligibility,
+      // Traditional stats from lahman_batting_season_agg
+      pa: parseNumber(row.at_bats) + parseNumber(row.walks) + parseNumber(row.hit_by_pitch) + parseNumber(row.sacrifice_bunts) + parseNumber(row.sacrifice_flies), // PA = AB + BB + HBP + SH + SF
+      avg: parseNumber(row.batting_average),
+      obp: parseNumber(row.on_base_percentage),
+      slg: parseNumber(row.slugging_percentage),
+      ops: parseNumber(row.ops),
       rates: {
         vsLHP: calcEventRates({
           singles: parseNumber(row.singles_vs_l),
@@ -1530,6 +1604,14 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       teamId: row.primary_team_id,
       avgBfpAsStarter: bfpData.avgBfpAsStarter,
       avgBfpAsReliever: bfpData.avgBfpAsReliever,
+      // Traditional stats from lahman tables
+      games: parseNumber(row.games),
+      gamesStarted: parseNumber(row.games_started),
+      completeGames: parseNumber(row.complete_games),
+      saves: parseNumber(row.saves),
+      inningsPitched: parseNumber(row.innings_pitched),
+      whip: parseNumber(row.whip),
+      era: parseNumber(row.era),
       rates: {
         vsLHB: calcEventRates({
           singles: parseNumber(row.singles_vs_l),
@@ -1583,6 +1665,10 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   const league: SeasonPackage['league'] = {
     vsLHP: getZeroRates(),
     vsRHP: getZeroRates(),
+    pitcherBatter: {
+      vsLHP: getZeroRates(),
+      vsRHP: getZeroRates(),
+    },
   };
 
   for (const row of leagueRaw) {
@@ -1787,6 +1873,12 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       teamId: pitcherInfo.teamId,
       primaryPosition: 1, // Pitcher
       positionEligibility: { 1: 1 }, // Only eligible at pitcher
+      // Traditional stats - 0 for pitchers who use league average
+      pa: totalPA,
+      avg: totalPA >= PA_THRESHOLD ? parseFloat(row.at_bats) > 0 ? parseFloat(row.hits) / parseFloat(row.at_bats) : 0 : 0,
+      obp: totalPA >= PA_THRESHOLD ? parseFloat(row.on_base_percentage) : 0,
+      slg: totalPA >= PA_THRESHOLD ? parseFloat(row.slugging_percentage) : 0,
+      ops: totalPA >= PA_THRESHOLD ? parseFloat(row.ops) : 0,
       rates,
     };
 

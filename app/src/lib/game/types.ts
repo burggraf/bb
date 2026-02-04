@@ -65,6 +65,12 @@ export interface BatterStats {
 	primaryPosition: number;
 	/** All positions player can play, with appearance counts */
 	positionEligibility: Record<number, number>;
+	/** Traditional stats from lahman_batting_season_agg */
+	pa: number;
+	avg: number;
+	obp: number;
+	slg: number;
+	ops: number;
 	rates: SplitRates;
 }
 
@@ -77,6 +83,14 @@ export interface PitcherStats {
 	avgBfpAsStarter: number | null;
 	/** Average batters faced when relieving (for fatigue modeling) */
 	avgBfpAsReliever: number | null;
+	/** Traditional stats from lahman_pitching and lahman_pitching_season_agg */
+	games: number;
+	gamesStarted: number;
+	completeGames: number;
+	saves: number;
+	inningsPitched: number;
+	whip: number;
+	era: number;
 	rates: {
 		vsLHB: EventRates;
 		vsRHB: EventRates;
@@ -171,7 +185,9 @@ export interface SeasonPackage {
 	};
 	/** Season-wide norms for era-appropriate managerial decisions */
 	norms: SeasonNorms;
+	/** Batter stats including traditional metrics from lahman tables */
 	batters: Record<string, BatterStats>;
+	/** Pitcher stats including traditional metrics from lahman tables */
 	pitchers: Record<string, PitcherStats>;
 	league: {
 		vsLHP: EventRates;

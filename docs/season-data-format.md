@@ -105,6 +105,12 @@ Map of player ID to batter statistics. Includes both position players and pitche
     "positionEligibility": {
       "5": 41328                      // Position number -> outs played
     },
+    // Traditional stats from Lahman data (season totals, not split by handedness)
+    "pa": 1088,                      // Plate appearances (AB + BB + HBP + SH + SF)
+    "avg": 0.323,                     // Batting average
+    "obp": 0.404,                     // On-base percentage
+    "slg": 0.466,                     // Slugging percentage
+    "ops": 0.870,                     // On-base plus slugging
     "rates": {
       "vsLHP": {                      // vs Left-Handed Pitcher
         "single": 0.1822,
@@ -174,6 +180,14 @@ Map of player ID to pitcher statistics. Each pitcher has **platoon splits** - se
     "teamId": "BAL",                  // Primary team ID
     "avgBfpAsStarter": 29.86,         // Avg batters faced when starting (null if never started)
     "avgBfpAsReliever": 32.84,        // Avg batters faced when relieving (null if never relieved)
+    // Traditional stats from Lahman data (season totals, not split by handedness)
+    "games": 40,                      // Games played
+    "gamesStarted": 34,               // Games started
+    "completeGames": 14,              // Complete games
+    "saves": 9,                       // Saves
+    "inningsPitched": 313.2,          // Innings pitched
+    "whip": 1.083,                    // Walks + hits per inning pitched
+    "era": 2.915,                     // Earned run average
     "rates": {
       "vsLHB": {                      // vs Left-Handed Batter
         "single": 0.1667,
@@ -318,12 +332,20 @@ pnpm exec tsx src/export-season.ts 1976
 - `dim.teams` - Team information
 - `game.games` - Game schedule and DH usage
 - `defensive_stats` - Positional data (outs played by position)
+- `validation.lahman_batting_season_agg` - Traditional batting stats (avg, obp, slg, ops)
+- `validation.lahman_pitching` - Pitching game stats (games, games_started, complete_games, saves, innings_pitched)
+- `validation.lahman_pitching_season_agg` - Pitching rate stats (whip, era)
 
 **Filters applied:**
 - Minimum 25 PA for batters (to appear in file)
 - Minimum 25 PA for pitchers
 - Intentional walks excluded
 - No-play events excluded
+
+**Data joining:**
+- Player stats are joined with Lahman validation tables via `player_id`
+- Traditional stats (avg, obp, slg, ops, whip, era, etc.) come from Lahman data
+- Platoon split rates are calculated from event-level data
 
 **Compression:**
 - Exported as uncompressed JSON first

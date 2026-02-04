@@ -1,124 +1,699 @@
 {
   "meta": {
-    "generatedAt": "2026-02-02T18:47:14.000Z",
-    "totalYears":      115,
-    "totalCompressedSize": 11886592
+    "generatedAt": "2026-02-04T17:20:35.270Z",
+    "totalYears": 115,
+    "totalCompressedSize": 13362588
   },
   "seasons": [
-    {"year": 1910, "file": "1910.json.gz", "compressedSize": 68284},
-    {"year": 1911, "file": "1911.json.gz", "compressedSize": 70564},
-    {"year": 1912, "file": "1912.json.gz", "compressedSize": 70935},
-    {"year": 1913, "file": "1913.json.gz", "compressedSize": 69358},
-    {"year": 1914, "file": "1914.json.gz", "compressedSize": 97315},
-    {"year": 1915, "file": "1915.json.gz", "compressedSize": 97585},
-    {"year": 1916, "file": "1916.json.gz", "compressedSize": 67343},
-    {"year": 1917, "file": "1917.json.gz", "compressedSize": 66444},
-    {"year": 1918, "file": "1918.json.gz", "compressedSize": 61570},
-    {"year": 1919, "file": "1919.json.gz", "compressedSize": 64632},
-    {"year": 1920, "file": "1920.json.gz", "compressedSize": 64895},
-    {"year": 1921, "file": "1921.json.gz", "compressedSize": 66323},
-    {"year": 1922, "file": "1922.json.gz", "compressedSize": 67765},
-    {"year": 1923, "file": "1923.json.gz", "compressedSize": 66629},
-    {"year": 1924, "file": "1924.json.gz", "compressedSize": 68655},
-    {"year": 1925, "file": "1925.json.gz", "compressedSize": 69608},
-    {"year": 1926, "file": "1926.json.gz", "compressedSize": 68663},
-    {"year": 1927, "file": "1927.json.gz", "compressedSize": 68245},
-    {"year": 1928, "file": "1928.json.gz", "compressedSize": 67884},
-    {"year": 1929, "file": "1929.json.gz", "compressedSize": 69496},
-    {"year": 1930, "file": "1930.json.gz", "compressedSize": 68272},
-    {"year": 1931, "file": "1931.json.gz", "compressedSize": 67026},
-    {"year": 1932, "file": "1932.json.gz", "compressedSize": 66094},
-    {"year": 1933, "file": "1933.json.gz", "compressedSize": 63618},
-    {"year": 1934, "file": "1934.json.gz", "compressedSize": 64782},
-    {"year": 1935, "file": "1935.json.gz", "compressedSize": 64769},
-    {"year": 1936, "file": "1936.json.gz", "compressedSize": 67746},
-    {"year": 1937, "file": "1937.json.gz", "compressedSize": 68975},
-    {"year": 1938, "file": "1938.json.gz", "compressedSize": 66962},
-    {"year": 1939, "file": "1939.json.gz", "compressedSize": 71023},
-    {"year": 1940, "file": "1940.json.gz", "compressedSize": 66020},
-    {"year": 1941, "file": "1941.json.gz", "compressedSize": 66194},
-    {"year": 1942, "file": "1942.json.gz", "compressedSize": 64352},
-    {"year": 1943, "file": "1943.json.gz", "compressedSize": 65960},
-    {"year": 1944, "file": "1944.json.gz", "compressedSize": 63206},
-    {"year": 1945, "file": "1945.json.gz", "compressedSize": 67488},
-    {"year": 1946, "file": "1946.json.gz", "compressedSize": 72147},
-    {"year": 1947, "file": "1947.json.gz", "compressedSize": 67596},
-    {"year": 1948, "file": "1948.json.gz", "compressedSize": 68120},
-    {"year": 1949, "file": "1949.json.gz", "compressedSize": 67495},
-    {"year": 1950, "file": "1950.json.gz", "compressedSize": 65738},
-    {"year": 1951, "file": "1951.json.gz", "compressedSize": 67778},
-    {"year": 1952, "file": "1952.json.gz", "compressedSize": 70129},
-    {"year": 1953, "file": "1953.json.gz", "compressedSize": 68641},
-    {"year": 1954, "file": "1954.json.gz", "compressedSize": 70615},
-    {"year": 1955, "file": "1955.json.gz", "compressedSize": 73369},
-    {"year": 1956, "file": "1956.json.gz", "compressedSize": 71642},
-    {"year": 1957, "file": "1957.json.gz", "compressedSize": 75041},
-    {"year": 1958, "file": "1958.json.gz", "compressedSize": 73781},
-    {"year": 1959, "file": "1959.json.gz", "compressedSize": 73811},
-    {"year": 1960, "file": "1960.json.gz", "compressedSize": 73542},
-    {"year": 1961, "file": "1961.json.gz", "compressedSize": 82743},
-    {"year": 1962, "file": "1962.json.gz", "compressedSize": 91770},
-    {"year": 1963, "file": "1963.json.gz", "compressedSize": 91374},
-    {"year": 1964, "file": "1964.json.gz", "compressedSize": 91116},
-    {"year": 1965, "file": "1965.json.gz", "compressedSize": 91337},
-    {"year": 1966, "file": "1966.json.gz", "compressedSize": 91332},
-    {"year": 1967, "file": "1967.json.gz", "compressedSize": 92597},
-    {"year": 1968, "file": "1968.json.gz", "compressedSize": 90972},
-    {"year": 1969, "file": "1969.json.gz", "compressedSize": 111181},
-    {"year": 1970, "file": "1970.json.gz", "compressedSize": 111688},
-    {"year": 1971, "file": "1971.json.gz", "compressedSize": 110458},
-    {"year": 1972, "file": "1972.json.gz", "compressedSize": 107045},
-    {"year": 1973, "file": "1973.json.gz", "compressedSize": 104278},
-    {"year": 1974, "file": "1974.json.gz", "compressedSize": 105443},
-    {"year": 1975, "file": "1975.json.gz", "compressedSize": 105130},
-    {"year": 1976, "file": "1976.json.gz", "compressedSize": 105200},
-    {"year": 1977, "file": "1977.json.gz", "compressedSize": 114769},
-    {"year": 1978, "file": "1978.json.gz", "compressedSize": 113805},
-    {"year": 1979, "file": "1979.json.gz", "compressedSize": 115786},
-    {"year": 1980, "file": "1980.json.gz", "compressedSize": 118292},
-    {"year": 1981, "file": "1981.json.gz", "compressedSize": 101201},
-    {"year": 1982, "file": "1982.json.gz", "compressedSize": 115440},
-    {"year": 1983, "file": "1983.json.gz", "compressedSize": 116546},
-    {"year": 1984, "file": "1984.json.gz", "compressedSize": 115767},
-    {"year": 1985, "file": "1985.json.gz", "compressedSize": 116925},
-    {"year": 1986, "file": "1986.json.gz", "compressedSize": 117614},
-    {"year": 1987, "file": "1987.json.gz", "compressedSize": 119392},
-    {"year": 1988, "file": "1988.json.gz", "compressedSize": 119700},
-    {"year": 1989, "file": "1989.json.gz", "compressedSize": 119924},
-    {"year": 1990, "file": "1990.json.gz", "compressedSize": 122108},
-    {"year": 1991, "file": "1991.json.gz", "compressedSize": 121485},
-    {"year": 1992, "file": "1992.json.gz", "compressedSize": 121275},
-    {"year": 1993, "file": "1993.json.gz", "compressedSize": 133581},
-    {"year": 1994, "file": "1994.json.gz", "compressedSize": 115033},
-    {"year": 1995, "file": "1995.json.gz", "compressedSize": 131215},
-    {"year": 1996, "file": "1996.json.gz", "compressedSize": 136017},
-    {"year": 1997, "file": "1997.json.gz", "compressedSize": 136361},
-    {"year": 1998, "file": "1998.json.gz", "compressedSize": 140220},
-    {"year": 1999, "file": "1999.json.gz", "compressedSize": 143360},
-    {"year": 2000, "file": "2000.json.gz", "compressedSize": 146412},
-    {"year": 2001, "file": "2001.json.gz", "compressedSize": 146902},
-    {"year": 2002, "file": "2002.json.gz", "compressedSize": 146765},
-    {"year": 2003, "file": "2003.json.gz", "compressedSize": 146522},
-    {"year": 2004, "file": "2004.json.gz", "compressedSize": 149178},
-    {"year": 2005, "file": "2005.json.gz", "compressedSize": 143198},
-    {"year": 2006, "file": "2006.json.gz", "compressedSize": 147253},
-    {"year": 2007, "file": "2007.json.gz", "compressedSize": 149982},
-    {"year": 2008, "file": "2008.json.gz", "compressedSize": 151056},
-    {"year": 2009, "file": "2009.json.gz", "compressedSize": 146882},
-    {"year": 2010, "file": "2010.json.gz", "compressedSize": 146341},
-    {"year": 2011, "file": "2011.json.gz", "compressedSize": 149077},
-    {"year": 2012, "file": "2012.json.gz", "compressedSize": 149687},
-    {"year": 2013, "file": "2013.json.gz", "compressedSize": 148982},
-    {"year": 2014, "file": "2014.json.gz", "compressedSize": 148299},
-    {"year": 2015, "file": "2015.json.gz", "compressedSize": 150448},
-    {"year": 2016, "file": "2016.json.gz", "compressedSize": 151583},
-    {"year": 2017, "file": "2017.json.gz", "compressedSize": 150509},
-    {"year": 2018, "file": "2018.json.gz", "compressedSize": 152695},
-    {"year": 2019, "file": "2019.json.gz", "compressedSize": 158772},
-    {"year": 2020, "file": "2020.json.gz", "compressedSize": 105097},
-    {"year": 2021, "file": "2021.json.gz", "compressedSize": 163659},
-    {"year": 2022, "file": "2022.json.gz", "compressedSize": 157165},
-    {"year": 2023, "file": "2023.json.gz", "compressedSize": 158322},
-    {"year": 2024, "file": "2024.json.gz", "compressedSize": 155537}
+    {
+      "year": 1910,
+      "file": "1910.json.gz",
+      "compressedSize": 79593,
+      "generatedAt": "2026-02-04T17:20:38.321Z"
+    },
+    {
+      "year": 1911,
+      "file": "1911.json.gz",
+      "compressedSize": 81984,
+      "generatedAt": "2026-02-04T17:20:41.378Z"
+    },
+    {
+      "year": 1912,
+      "file": "1912.json.gz",
+      "compressedSize": 82647,
+      "generatedAt": "2026-02-04T17:20:44.454Z"
+    },
+    {
+      "year": 1913,
+      "file": "1913.json.gz",
+      "compressedSize": 80591,
+      "generatedAt": "2026-02-04T17:20:47.764Z"
+    },
+    {
+      "year": 1914,
+      "file": "1914.json.gz",
+      "compressedSize": 109518,
+      "generatedAt": "2026-02-04T17:20:51.111Z"
+    },
+    {
+      "year": 1915,
+      "file": "1915.json.gz",
+      "compressedSize": 111671,
+      "generatedAt": "2026-02-04T17:20:54.231Z"
+    },
+    {
+      "year": 1916,
+      "file": "1916.json.gz",
+      "compressedSize": 77518,
+      "generatedAt": "2026-02-04T17:20:57.227Z"
+    },
+    {
+      "year": 1917,
+      "file": "1917.json.gz",
+      "compressedSize": 75730,
+      "generatedAt": "2026-02-04T17:21:00.277Z"
+    },
+    {
+      "year": 1918,
+      "file": "1918.json.gz",
+      "compressedSize": 71850,
+      "generatedAt": "2026-02-04T17:21:04.351Z"
+    },
+    {
+      "year": 1919,
+      "file": "1919.json.gz",
+      "compressedSize": 75269,
+      "generatedAt": "2026-02-04T17:21:07.559Z"
+    },
+    {
+      "year": 1920,
+      "file": "1920.json.gz",
+      "compressedSize": 75019,
+      "generatedAt": "2026-02-04T17:21:10.941Z"
+    },
+    {
+      "year": 1921,
+      "file": "1921.json.gz",
+      "compressedSize": 76567,
+      "generatedAt": "2026-02-04T17:21:14.238Z"
+    },
+    {
+      "year": 1922,
+      "file": "1922.json.gz",
+      "compressedSize": 78399,
+      "generatedAt": "2026-02-04T17:21:17.401Z"
+    },
+    {
+      "year": 1923,
+      "file": "1923.json.gz",
+      "compressedSize": 76965,
+      "generatedAt": "2026-02-04T17:21:20.554Z"
+    },
+    {
+      "year": 1924,
+      "file": "1924.json.gz",
+      "compressedSize": 79859,
+      "generatedAt": "2026-02-04T17:21:24.210Z"
+    },
+    {
+      "year": 1925,
+      "file": "1925.json.gz",
+      "compressedSize": 81217,
+      "generatedAt": "2026-02-04T17:21:27.934Z"
+    },
+    {
+      "year": 1926,
+      "file": "1926.json.gz",
+      "compressedSize": 79082,
+      "generatedAt": "2026-02-04T17:21:31.838Z"
+    },
+    {
+      "year": 1927,
+      "file": "1927.json.gz",
+      "compressedSize": 79317,
+      "generatedAt": "2026-02-04T17:21:35.501Z"
+    },
+    {
+      "year": 1928,
+      "file": "1928.json.gz",
+      "compressedSize": 78790,
+      "generatedAt": "2026-02-04T17:21:38.739Z"
+    },
+    {
+      "year": 1929,
+      "file": "1929.json.gz",
+      "compressedSize": 80156,
+      "generatedAt": "2026-02-04T17:21:42.028Z"
+    },
+    {
+      "year": 1930,
+      "file": "1930.json.gz",
+      "compressedSize": 79212,
+      "generatedAt": "2026-02-04T17:21:45.232Z"
+    },
+    {
+      "year": 1931,
+      "file": "1931.json.gz",
+      "compressedSize": 77253,
+      "generatedAt": "2026-02-04T17:21:48.514Z"
+    },
+    {
+      "year": 1932,
+      "file": "1932.json.gz",
+      "compressedSize": 76221,
+      "generatedAt": "2026-02-04T17:21:51.859Z"
+    },
+    {
+      "year": 1933,
+      "file": "1933.json.gz",
+      "compressedSize": 74276,
+      "generatedAt": "2026-02-04T17:21:55.096Z"
+    },
+    {
+      "year": 1934,
+      "file": "1934.json.gz",
+      "compressedSize": 75213,
+      "generatedAt": "2026-02-04T17:21:58.362Z"
+    },
+    {
+      "year": 1935,
+      "file": "1935.json.gz",
+      "compressedSize": 75279,
+      "generatedAt": "2026-02-04T17:22:01.605Z"
+    },
+    {
+      "year": 1936,
+      "file": "1936.json.gz",
+      "compressedSize": 78675,
+      "generatedAt": "2026-02-04T17:22:04.975Z"
+    },
+    {
+      "year": 1937,
+      "file": "1937.json.gz",
+      "compressedSize": 79845,
+      "generatedAt": "2026-02-04T17:22:08.761Z"
+    },
+    {
+      "year": 1938,
+      "file": "1938.json.gz",
+      "compressedSize": 77891,
+      "generatedAt": "2026-02-04T17:22:12.191Z"
+    },
+    {
+      "year": 1939,
+      "file": "1939.json.gz",
+      "compressedSize": 82064,
+      "generatedAt": "2026-02-04T17:22:15.466Z"
+    },
+    {
+      "year": 1940,
+      "file": "1940.json.gz",
+      "compressedSize": 78145,
+      "generatedAt": "2026-02-04T17:22:18.925Z"
+    },
+    {
+      "year": 1941,
+      "file": "1941.json.gz",
+      "compressedSize": 77886,
+      "generatedAt": "2026-02-04T17:22:22.371Z"
+    },
+    {
+      "year": 1942,
+      "file": "1942.json.gz",
+      "compressedSize": 75806,
+      "generatedAt": "2026-02-04T17:22:25.763Z"
+    },
+    {
+      "year": 1943,
+      "file": "1943.json.gz",
+      "compressedSize": 77255,
+      "generatedAt": "2026-02-04T17:22:29.122Z"
+    },
+    {
+      "year": 1944,
+      "file": "1944.json.gz",
+      "compressedSize": 74188,
+      "generatedAt": "2026-02-04T17:22:32.495Z"
+    },
+    {
+      "year": 1945,
+      "file": "1945.json.gz",
+      "compressedSize": 79498,
+      "generatedAt": "2026-02-04T17:22:35.877Z"
+    },
+    {
+      "year": 1946,
+      "file": "1946.json.gz",
+      "compressedSize": 86285,
+      "generatedAt": "2026-02-04T17:22:39.340Z"
+    },
+    {
+      "year": 1947,
+      "file": "1947.json.gz",
+      "compressedSize": 79492,
+      "generatedAt": "2026-02-04T17:22:42.893Z"
+    },
+    {
+      "year": 1948,
+      "file": "1948.json.gz",
+      "compressedSize": 80375,
+      "generatedAt": "2026-02-04T17:22:46.509Z"
+    },
+    {
+      "year": 1949,
+      "file": "1949.json.gz",
+      "compressedSize": 79843,
+      "generatedAt": "2026-02-04T17:22:50.204Z"
+    },
+    {
+      "year": 1950,
+      "file": "1950.json.gz",
+      "compressedSize": 77989,
+      "generatedAt": "2026-02-04T17:22:53.499Z"
+    },
+    {
+      "year": 1951,
+      "file": "1951.json.gz",
+      "compressedSize": 80048,
+      "generatedAt": "2026-02-04T17:22:56.781Z"
+    },
+    {
+      "year": 1952,
+      "file": "1952.json.gz",
+      "compressedSize": 82670,
+      "generatedAt": "2026-02-04T17:23:00.146Z"
+    },
+    {
+      "year": 1953,
+      "file": "1953.json.gz",
+      "compressedSize": 80282,
+      "generatedAt": "2026-02-04T17:23:03.441Z"
+    },
+    {
+      "year": 1954,
+      "file": "1954.json.gz",
+      "compressedSize": 83238,
+      "generatedAt": "2026-02-04T17:23:06.745Z"
+    },
+    {
+      "year": 1955,
+      "file": "1955.json.gz",
+      "compressedSize": 87000,
+      "generatedAt": "2026-02-04T17:23:10.070Z"
+    },
+    {
+      "year": 1956,
+      "file": "1956.json.gz",
+      "compressedSize": 84906,
+      "generatedAt": "2026-02-04T17:23:13.531Z"
+    },
+    {
+      "year": 1957,
+      "file": "1957.json.gz",
+      "compressedSize": 87285,
+      "generatedAt": "2026-02-04T17:23:16.935Z"
+    },
+    {
+      "year": 1958,
+      "file": "1958.json.gz",
+      "compressedSize": 86417,
+      "generatedAt": "2026-02-04T17:23:20.466Z"
+    },
+    {
+      "year": 1959,
+      "file": "1959.json.gz",
+      "compressedSize": 86633,
+      "generatedAt": "2026-02-04T17:23:23.857Z"
+    },
+    {
+      "year": 1960,
+      "file": "1960.json.gz",
+      "compressedSize": 86274,
+      "generatedAt": "2026-02-04T17:23:27.311Z"
+    },
+    {
+      "year": 1961,
+      "file": "1961.json.gz",
+      "compressedSize": 94990,
+      "generatedAt": "2026-02-04T17:23:31.089Z"
+    },
+    {
+      "year": 1962,
+      "file": "1962.json.gz",
+      "compressedSize": 106523,
+      "generatedAt": "2026-02-04T17:23:35.416Z"
+    },
+    {
+      "year": 1963,
+      "file": "1963.json.gz",
+      "compressedSize": 106076,
+      "generatedAt": "2026-02-04T17:23:39.324Z"
+    },
+    {
+      "year": 1964,
+      "file": "1964.json.gz",
+      "compressedSize": 106373,
+      "generatedAt": "2026-02-04T17:23:43.026Z"
+    },
+    {
+      "year": 1965,
+      "file": "1965.json.gz",
+      "compressedSize": 105656,
+      "generatedAt": "2026-02-04T17:23:46.626Z"
+    },
+    {
+      "year": 1966,
+      "file": "1966.json.gz",
+      "compressedSize": 106679,
+      "generatedAt": "2026-02-04T17:23:50.021Z"
+    },
+    {
+      "year": 1967,
+      "file": "1967.json.gz",
+      "compressedSize": 108038,
+      "generatedAt": "2026-02-04T17:23:53.475Z"
+    },
+    {
+      "year": 1968,
+      "file": "1968.json.gz",
+      "compressedSize": 104520,
+      "generatedAt": "2026-02-04T17:23:56.967Z"
+    },
+    {
+      "year": 1969,
+      "file": "1969.json.gz",
+      "compressedSize": 126763,
+      "generatedAt": "2026-02-04T17:24:00.440Z"
+    },
+    {
+      "year": 1970,
+      "file": "1970.json.gz",
+      "compressedSize": 128838,
+      "generatedAt": "2026-02-04T17:24:03.863Z"
+    },
+    {
+      "year": 1971,
+      "file": "1971.json.gz",
+      "compressedSize": 126743,
+      "generatedAt": "2026-02-04T17:24:07.312Z"
+    },
+    {
+      "year": 1972,
+      "file": "1972.json.gz",
+      "compressedSize": 123187,
+      "generatedAt": "2026-02-04T17:24:10.665Z"
+    },
+    {
+      "year": 1973,
+      "file": "1973.json.gz",
+      "compressedSize": 117172,
+      "generatedAt": "2026-02-04T17:24:14.150Z"
+    },
+    {
+      "year": 1974,
+      "file": "1974.json.gz",
+      "compressedSize": 118207,
+      "generatedAt": "2026-02-04T17:24:17.896Z"
+    },
+    {
+      "year": 1975,
+      "file": "1975.json.gz",
+      "compressedSize": 118649,
+      "generatedAt": "2026-02-04T17:24:21.563Z"
+    },
+    {
+      "year": 1976,
+      "file": "1976.json.gz",
+      "compressedSize": 118272,
+      "generatedAt": "2026-02-04T17:24:25.050Z"
+    },
+    {
+      "year": 1977,
+      "file": "1977.json.gz",
+      "compressedSize": 127101,
+      "generatedAt": "2026-02-04T17:24:28.494Z"
+    },
+    {
+      "year": 1978,
+      "file": "1978.json.gz",
+      "compressedSize": 125087,
+      "generatedAt": "2026-02-04T17:24:32.054Z"
+    },
+    {
+      "year": 1979,
+      "file": "1979.json.gz",
+      "compressedSize": 127851,
+      "generatedAt": "2026-02-04T17:24:35.518Z"
+    },
+    {
+      "year": 1980,
+      "file": "1980.json.gz",
+      "compressedSize": 130160,
+      "generatedAt": "2026-02-04T17:24:38.998Z"
+    },
+    {
+      "year": 1981,
+      "file": "1981.json.gz",
+      "compressedSize": 114639,
+      "generatedAt": "2026-02-04T17:24:42.460Z"
+    },
+    {
+      "year": 1982,
+      "file": "1982.json.gz",
+      "compressedSize": 127607,
+      "generatedAt": "2026-02-04T17:24:46.017Z"
+    },
+    {
+      "year": 1983,
+      "file": "1983.json.gz",
+      "compressedSize": 128287,
+      "generatedAt": "2026-02-04T17:24:49.531Z"
+    },
+    {
+      "year": 1984,
+      "file": "1984.json.gz",
+      "compressedSize": 127679,
+      "generatedAt": "2026-02-04T17:24:52.995Z"
+    },
+    {
+      "year": 1985,
+      "file": "1985.json.gz",
+      "compressedSize": 129517,
+      "generatedAt": "2026-02-04T17:24:56.649Z"
+    },
+    {
+      "year": 1986,
+      "file": "1986.json.gz",
+      "compressedSize": 130553,
+      "generatedAt": "2026-02-04T17:25:00.220Z"
+    },
+    {
+      "year": 1987,
+      "file": "1987.json.gz",
+      "compressedSize": 133050,
+      "generatedAt": "2026-02-04T17:25:03.681Z"
+    },
+    {
+      "year": 1988,
+      "file": "1988.json.gz",
+      "compressedSize": 132283,
+      "generatedAt": "2026-02-04T17:25:07.164Z"
+    },
+    {
+      "year": 1989,
+      "file": "1989.json.gz",
+      "compressedSize": 132981,
+      "generatedAt": "2026-02-04T17:25:10.644Z"
+    },
+    {
+      "year": 1990,
+      "file": "1990.json.gz",
+      "compressedSize": 135579,
+      "generatedAt": "2026-02-04T17:25:14.140Z"
+    },
+    {
+      "year": 1991,
+      "file": "1991.json.gz",
+      "compressedSize": 134500,
+      "generatedAt": "2026-02-04T17:25:17.670Z"
+    },
+    {
+      "year": 1992,
+      "file": "1992.json.gz",
+      "compressedSize": 134575,
+      "generatedAt": "2026-02-04T17:25:21.186Z"
+    },
+    {
+      "year": 1993,
+      "file": "1993.json.gz",
+      "compressedSize": 148887,
+      "generatedAt": "2026-02-04T17:25:24.685Z"
+    },
+    {
+      "year": 1994,
+      "file": "1994.json.gz",
+      "compressedSize": 128341,
+      "generatedAt": "2026-02-04T17:25:28.147Z"
+    },
+    {
+      "year": 1995,
+      "file": "1995.json.gz",
+      "compressedSize": 147142,
+      "generatedAt": "2026-02-04T17:25:31.688Z"
+    },
+    {
+      "year": 1996,
+      "file": "1996.json.gz",
+      "compressedSize": 150771,
+      "generatedAt": "2026-02-04T17:25:35.301Z"
+    },
+    {
+      "year": 1997,
+      "file": "1997.json.gz",
+      "compressedSize": 153555,
+      "generatedAt": "2026-02-04T17:25:38.833Z"
+    },
+    {
+      "year": 1998,
+      "file": "1998.json.gz",
+      "compressedSize": 157444,
+      "generatedAt": "2026-02-04T17:25:42.882Z"
+    },
+    {
+      "year": 1999,
+      "file": "1999.json.gz",
+      "compressedSize": 161563,
+      "generatedAt": "2026-02-04T17:25:46.622Z"
+    },
+    {
+      "year": 2000,
+      "file": "2000.json.gz",
+      "compressedSize": 164785,
+      "generatedAt": "2026-02-04T17:25:50.139Z"
+    },
+    {
+      "year": 2001,
+      "file": "2001.json.gz",
+      "compressedSize": 165534,
+      "generatedAt": "2026-02-04T17:25:53.714Z"
+    },
+    {
+      "year": 2002,
+      "file": "2002.json.gz",
+      "compressedSize": 164991,
+      "generatedAt": "2026-02-04T17:25:57.253Z"
+    },
+    {
+      "year": 2003,
+      "file": "2003.json.gz",
+      "compressedSize": 165246,
+      "generatedAt": "2026-02-04T17:26:00.850Z"
+    },
+    {
+      "year": 2004,
+      "file": "2004.json.gz",
+      "compressedSize": 168116,
+      "generatedAt": "2026-02-04T17:26:04.491Z"
+    },
+    {
+      "year": 2005,
+      "file": "2005.json.gz",
+      "compressedSize": 160222,
+      "generatedAt": "2026-02-04T17:26:08.026Z"
+    },
+    {
+      "year": 2006,
+      "file": "2006.json.gz",
+      "compressedSize": 166076,
+      "generatedAt": "2026-02-04T17:26:11.582Z"
+    },
+    {
+      "year": 2007,
+      "file": "2007.json.gz",
+      "compressedSize": 169545,
+      "generatedAt": "2026-02-04T17:26:15.180Z"
+    },
+    {
+      "year": 2008,
+      "file": "2008.json.gz",
+      "compressedSize": 170708,
+      "generatedAt": "2026-02-04T17:26:18.758Z"
+    },
+    {
+      "year": 2009,
+      "file": "2009.json.gz",
+      "compressedSize": 166403,
+      "generatedAt": "2026-02-04T17:26:22.390Z"
+    },
+    {
+      "year": 2010,
+      "file": "2010.json.gz",
+      "compressedSize": 165268,
+      "generatedAt": "2026-02-04T17:26:26.045Z"
+    },
+    {
+      "year": 2011,
+      "file": "2011.json.gz",
+      "compressedSize": 166437,
+      "generatedAt": "2026-02-04T17:26:29.601Z"
+    },
+    {
+      "year": 2012,
+      "file": "2012.json.gz",
+      "compressedSize": 168701,
+      "generatedAt": "2026-02-04T17:26:33.195Z"
+    },
+    {
+      "year": 2013,
+      "file": "2013.json.gz",
+      "compressedSize": 167802,
+      "generatedAt": "2026-02-04T17:26:36.863Z"
+    },
+    {
+      "year": 2014,
+      "file": "2014.json.gz",
+      "compressedSize": 166242,
+      "generatedAt": "2026-02-04T17:26:40.597Z"
+    },
+    {
+      "year": 2015,
+      "file": "2015.json.gz",
+      "compressedSize": 170009,
+      "generatedAt": "2026-02-04T17:26:44.267Z"
+    },
+    {
+      "year": 2016,
+      "file": "2016.json.gz",
+      "compressedSize": 171503,
+      "generatedAt": "2026-02-04T17:26:47.968Z"
+    },
+    {
+      "year": 2017,
+      "file": "2017.json.gz",
+      "compressedSize": 171018,
+      "generatedAt": "2026-02-04T17:26:52.054Z"
+    },
+    {
+      "year": 2018,
+      "file": "2018.json.gz",
+      "compressedSize": 173251,
+      "generatedAt": "2026-02-04T17:26:56.047Z"
+    },
+    {
+      "year": 2019,
+      "file": "2019.json.gz",
+      "compressedSize": 179828,
+      "generatedAt": "2026-02-04T17:26:59.838Z"
+    },
+    {
+      "year": 2020,
+      "file": "2020.json.gz",
+      "compressedSize": 113302,
+      "generatedAt": "2026-02-04T17:27:03.541Z"
+    },
+    {
+      "year": 2021,
+      "file": "2021.json.gz",
+      "compressedSize": 185801,
+      "generatedAt": "2026-02-04T17:27:08.234Z"
+    },
+    {
+      "year": 2022,
+      "file": "2022.json.gz",
+      "compressedSize": 218035,
+      "generatedAt": "2026-02-04T17:27:14.910Z"
+    },
+    {
+      "year": 2023,
+      "file": "2023.json.gz",
+      "compressedSize": 215300,
+      "generatedAt": "2026-02-04T17:27:20.940Z"
+    },
+    {
+      "year": 2024,
+      "file": "2024.json.gz",
+      "compressedSize": 213441,
+      "generatedAt": "2026-02-04T17:27:26.820Z"
+    }
   ]
 }
