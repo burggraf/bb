@@ -423,6 +423,16 @@ export function selectReliever(
 	bullpen: BullpenState | EnhancedBullpenState,
 	excludePitcherId?: string
 ): PitcherRole | undefined {
+	// Game situation thresholds based on standard MLB bullpen usage patterns
+	const BLOWOUT_RUN_THRESHOLD = 5;  // 5+ runs = low leverage, use any rested reliever
+	const SAVE_RUN_MIN = 1;           // Minimum lead for closer to enter
+	const SAVE_RUN_MAX = 3;           // Maximum lead for closer to enter
+	const CLOSE_GAME_RUN_THRESHOLD = 2; // 2 runs or less = high leverage
+	const LATE_INNING_MIN = 7;        // Setup men typically enter in 7th/8th
+	const LATE_INNING_MAX = 8;
+	const SAVE_INNING_MIN = 9;        // Closer typically enters in 9th+
+	const EARLY_INNING_MAX = 6;       // Long relievers for innings 1-6
+
 	const { inning, scoreDiff } = gameState;
 
 	// Determine if this is the home or away pitching
@@ -440,7 +450,7 @@ export function selectReliever(
 
 	// === BLOWOUT (5+ run difference) ===
 	// Use any rested reliever, save closer/setup
-	if (Math.abs(pitchingScoreDiff) >= 5) {
+	if (Math.abs(pitchingScoreDiff) >= BLOWOUT_RUN_THRESHOLD) {
 		// Use regular relievers first
 		const available = bullpen.relievers.find(r => r.pitcherId !== excludePitcherId);
 		if (available) return available;
@@ -454,7 +464,7 @@ export function selectReliever(
 	}
 
 	// === SAVE SITUATION: 9th inning+, leading by 1-3 runs ===
-	if (inning >= 9 && pitchingScoreDiff > 0 && pitchingScoreDiff <= 3) {
+	if (inning >= SAVE_INNING_MIN && pitchingScoreDiff >= SAVE_RUN_MIN && pitchingScoreDiff <= SAVE_RUN_MAX) {
 		// Use closer if available
 		if (enhancedBullpen.closer && isAvailable(enhancedBullpen.closer)) {
 			return enhancedBullpen.closer;
@@ -475,7 +485,7 @@ export function selectReliever(
 
 	// === LATE & CLOSE (7th-8th, close game) ===
 	// Check score differential for close game condition
-	if (inning >= 7 && inning <= 8 && Math.abs(pitchingScoreDiff) <= 2) {
+	if (inning >= LATE_INNING_MIN && inning <= LATE_INNING_MAX && Math.abs(pitchingScoreDiff) <= CLOSE_GAME_RUN_THRESHOLD) {
 		// Prefer setup men in enhanced bullpens
 		if (isEnhanced && enhancedBullpen.setup && enhancedBullpen.setup.length > 0) {
 			const availableSetup = enhancedBullpen.setup.find(isAvailable);
@@ -495,7 +505,7 @@ export function selectReliever(
 	}
 
 	// === EARLY/MIDDLE INNINGS (1st-6th) ===
-	if (inning <= 6) {
+	if (inning <= EARLY_INNING_MAX) {
 		// Prefer long relievers in early innings
 		if (isEnhanced && enhancedBullpen.longRelief && enhancedBullpen.longRelief.length > 0) {
 			const availableLong = enhancedBullpen.longRelief.find(isAvailable);
