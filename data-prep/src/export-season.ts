@@ -1965,7 +1965,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     games,
   };
 
-  // Write to file (for backward compatibility - JSON export)
+  // Write to file (JSON format)
   fs.writeFileSync(outputPath, JSON.stringify(season, null, 2));
   console.log(`\n✅ Season exported to ${outputPath}`);
 
@@ -1979,6 +1979,12 @@ async function main() {
   const outputPath = process.argv[4] || `../app/static/seasons/${year}.json`;
   const format = process.argv[5] || 'sqlite';
 
+  // Validate format option
+  if (format !== 'sqlite' && format !== 'json') {
+    console.error(`Invalid format: "${format}". Must be 'sqlite' or 'json'.`);
+    process.exit(1);
+  }
+
   // Ensure output directory exists
   const outputDir = outputPath.substring(0, outputPath.lastIndexOf('/'));
   if (!fs.existsSync(outputDir)) {
@@ -1991,10 +1997,10 @@ async function main() {
 
   // Output in requested format
   if (format === 'sqlite') {
+    // Export to SQLite (delete temp file AFTER successful export)
+    await exportSeasonAsSqlite(season, outputPath, true);
     // Remove temporary JSON file
     fs.unlinkSync(tmpPath);
-    // Export to SQLite
-    await exportSeasonAsSqlite(season, outputPath, true);
   } else {
     // Rename temp file to final output
     fs.renameSync(tmpPath, outputPath);
