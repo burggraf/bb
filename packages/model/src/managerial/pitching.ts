@@ -2,7 +2,7 @@
  * Pitching Management - Bullpen usage and pitching changes
  */
 
-import type { GameState, PitcherRole, BullpenState, PitchingDecision } from './types.js';
+import type { GameState, PitcherRole, BullpenState, EnhancedBullpenState, PitchingDecision } from './types.js';
 
 /**
  * Options for customizing pitch count limits by era
@@ -418,8 +418,12 @@ export function shouldPullPitcher(
  * @param excludePitcherId - Optional pitcher ID to exclude from selection (e.g., current pitcher)
  * @returns Selected reliever, or undefined if no relievers available
  */
-export function selectReliever(gameState: GameState, bullpen: BullpenState, excludePitcherId?: string): PitcherRole | undefined {
-	const { inning, outs, scoreDiff } = gameState;
+export function selectReliever(
+	gameState: GameState,
+	bullpen: BullpenState | EnhancedBullpenState,
+	excludePitcherId?: string
+): PitcherRole | undefined {
+	const { inning, scoreDiff } = gameState;
 
 	// Determine if this is the home or away pitching
 	const isHomePitching = !gameState.isTopInning;
@@ -427,33 +431,100 @@ export function selectReliever(gameState: GameState, bullpen: BullpenState, excl
 	// Adjust score diff to be from pitching team's perspective
 	const pitchingScoreDiff = isHomePitching ? scoreDiff : -scoreDiff;
 
-	// Save situation: 9th inning+, leading by 1-3 runs
+	// Helper to check if pitcher is available
+	const isAvailable = (p: PitcherRole): boolean => p.pitcherId !== excludePitcherId;
+
+	// Check if this is an enhanced bullpen with role-specific relievers
+	const isEnhanced = 'setup' in bullpen || 'longRelief' in bullpen;
+	const enhancedBullpen = bullpen as EnhancedBullpenState;
+
+	// === SAVE SITUATION: 9th inning+, leading by 1-3 runs ===
 	if (inning >= 9 && pitchingScoreDiff > 0 && pitchingScoreDiff <= 3) {
-		const available = bullpen.closer && bullpen.closer.pitcherId !== excludePitcherId
-			? bullpen.closer
-			: bullpen.relievers.find(r => r.pitcherId !== excludePitcherId);
-		return available;
+		// Use closer if available
+		if (enhancedBullpen.closer && isAvailable(enhancedBullpen.closer)) {
+			return enhancedBullpen.closer;
+		}
+
+		// Fall back to setup men if closer unavailable
+		if (isEnhanced && enhancedBullpen.setup) {
+			const availableSetup = enhancedBullpen.setup.find(isAvailable);
+			if (availableSetup) return availableSetup;
+		}
+
+		// Fall back to regular relievers
+		const availableReliever = bullpen.relievers.find(isAvailable);
+		if (availableReliever) return availableReliever;
+
+		return undefined;
 	}
 
-	// High leverage, late innings - use best reliever
-	if (inning >= 7) {
-		const available = bullpen.relievers.find(r => r.pitcherId !== excludePitcherId);
-		return available;
+	// === LATE INNINGS (7th-8th): HIGH LEVERAGE ===
+	if (inning >= 7 && inning <= 8) {
+		// Prefer setup men in enhanced bullpens
+		if (isEnhanced && enhancedBullpen.setup && enhancedBullpen.setup.length > 0) {
+			const availableSetup = enhancedBullpen.setup.find(isAvailable);
+			if (availableSetup) return availableSetup;
+		}
+
+		// Fall back to regular relievers
+		const availableReliever = bullpen.relievers.find(isAvailable);
+		if (availableReliever) return availableReliever;
+
+		// Last resort: use closer (not ideal, but better than no one)
+		if (bullpen.closer && isAvailable(bullpen.closer)) {
+			return bullpen.closer;
+		}
+
+		return undefined;
 	}
 
-	// Earlier: use middle reliever (not necessarily the best)
-	// Select from relievers excluding closer if available, and also excluding the specified pitcher
-	let availableRelievers = bullpen.relievers.filter((r) => r.pitcherId !== excludePitcherId);
-	if (bullpen.closer && bullpen.closer.pitcherId !== excludePitcherId) {
-		availableRelievers = availableRelievers.filter((r) => r.pitcherId !== bullpen.closer!.pitcherId);
+	// === EARLY/MIDDLE INNINGS (1st-6th) ===
+	if (inning <= 6) {
+		// Prefer long relievers in early innings
+		if (isEnhanced && enhancedBullpen.longRelief && enhancedBullpen.longRelief.length > 0) {
+			const availableLong = enhancedBullpen.longRelief.find(isAvailable);
+			if (availableLong) return availableLong;
+		}
+
+		// Fall back to regular relievers (middle relievers)
+		const availableReliever = bullpen.relievers.find(isAvailable);
+		if (availableReliever) return availableReliever;
+
+		// In a pinch, use setup men (not ideal, but available)
+		if (isEnhanced && enhancedBullpen.setup) {
+			const availableSetup = enhancedBullpen.setup.find(isAvailable);
+			if (availableSetup) return availableSetup;
+		}
+
+		return undefined;
 	}
 
-	if (availableRelievers.length > 0) {
-		return availableRelievers[Math.floor(Math.random() * availableRelievers.length)];
+	// === EXTRA INNINGS (10th+): HIGH LEVERAGE ===
+	if (inning > 9) {
+		// Use best available: closer, setup, or regular reliever
+		if (bullpen.closer && isAvailable(bullpen.closer)) {
+			return bullpen.closer;
+		}
+
+		if (isEnhanced && enhancedBullpen.setup) {
+			const availableSetup = enhancedBullpen.setup.find(isAvailable);
+			if (availableSetup) return availableSetup;
+		}
+
+		const availableReliever = bullpen.relievers.find(isAvailable);
+		if (availableReliever) return availableReliever;
+
+		if (isEnhanced && enhancedBullpen.longRelief) {
+			const availableLong = enhancedBullpen.longRelief.find(isAvailable);
+			if (availableLong) return availableLong;
+		}
+
+		return undefined;
 	}
 
-	// No relievers available
-	return undefined;
+	// Fallback: any available reliever
+	const anyAvailable = bullpen.relievers.find(isAvailable);
+	return anyAvailable;
 }
 
 /**
