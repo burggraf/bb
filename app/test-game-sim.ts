@@ -871,7 +871,9 @@ if (pinchHitTest) {
 		process.exit(1);
 	});
 } else {
-	runGameTests(numGames, verbose, year).catch(err => {
+	// Always track PH metrics for analysis
+	const analyzer = new PinchHitAnalyzer();
+	runGameTests(numGames, verbose, year, analyzer).catch(err => {
 		console.error('Error running tests:', err);
 		process.exit(1);
 	});
