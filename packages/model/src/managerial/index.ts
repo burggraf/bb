@@ -6,6 +6,7 @@
  * - Pitcher management (bullpen usage)
  * - Pinch-hitter selection
  * - Platoon advantage
+ * - League norms calculation
  */
 
 // Types
@@ -47,3 +48,6 @@ export {
 	getAvailableBench,
 	type PinchHitDecision
 } from './substitutions.js';
+
+// League Norms
+export { calculateLeagueNorms } from './norms-calculator.js';

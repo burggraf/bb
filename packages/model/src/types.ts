@@ -88,6 +88,24 @@ export interface PitcherStats {
 }
 
 /**
+ * Extended pitcher statistics including traditional stats
+ * Used for managerial decisions and era normalization
+ */
+export interface ExtendedPitcherStats extends PitcherStats {
+  throws: 'L' | 'R';
+  teamId: string;
+  games: number;
+  gamesStarted: number;
+  completeGames: number;
+  saves: number;
+  inningsPitched: number;
+  whip: number;
+  era: number;
+  avgBfpAsStarter: number | null;
+  avgBfpAsReliever: number | null;
+}
+
+/**
  * League averages for a season
  */
 export interface LeagueAverages {

@@ -16,6 +16,7 @@ export type {
   SplitRates,
   BatterStats,
   PitcherStats,
+  ExtendedPitcherStats,
   LeagueAverages,
   Matchup,
   ProbabilityDistribution,
