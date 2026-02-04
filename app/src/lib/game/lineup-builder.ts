@@ -5,7 +5,7 @@
  * - Position assignment prioritizes "up the middle" positions (C → SS → 2B → CF → 3B → 1B → LF/RF)
  * - Traditional batting order construction (leadoff high OBP, cleanup power, etc.)
  * - Historical DH rules (AL 1973+, NL 2022+)
- * - Starting pitcher selection by BFP as starter
+ * - Starting pitcher selection by quality score (ERA, WHIP, CG rate)
  */
 
 import type {
@@ -94,22 +94,43 @@ export function usesDH(league: string, year: number): boolean {
 }
 
 /**
- * Select the starting pitcher
- * Chooses pitcher with highest avgBfpAsStarter (most games started)
+ * Select the starting pitcher based on quality score
+ * Considers gamesStarted, ERA, WHIP, and complete game rate
  */
-function selectStartingPitcher(pitchers: PitcherStats[]): PitcherStats {
+export function selectStartingPitcher(pitchers: PitcherStats[]): PitcherStats {
 	if (pitchers.length === 0) {
 		throw new Error('No pitchers available for selection');
 	}
 
-	// Sort by avgBfpAsStarter descending (nulls treated as 0)
-	const sorted = [...pitchers].sort((a, b) => {
-		const aBfp = a.avgBfpAsStarter ?? 0;
-		const bBfp = b.avgBfpAsStarter ?? 0;
-		return bBfp - aBfp;
+	// Filter to pitchers who actually started games (start rate > 30%)
+	const starters = pitchers.filter(p => {
+		const startRate = p.gamesStarted / p.games;
+		return startRate >= 0.3;
 	});
 
-	return sorted[0]!;
+	if (starters.length === 0) {
+		// Fallback: use pitcher with most gamesStarted
+		return pitchers.sort((a, b) => b.gamesStarted - a.gamesStarted)[0]!;
+	}
+
+	// Calculate quality score for each starter
+	// Quality = (gamesStarted weight) + (era inverse) + (whip inverse) + (cg bonus)
+	const scored = starters.map(p => {
+		const eraScore = 10 / p.era; // Lower ERA = higher score
+		const whipScore = 5 / p.whip; // Lower WHIP = higher score
+		const cgRate = p.gamesStarted > 0 ? p.completeGames / p.gamesStarted : 0;
+		const cgBonus = cgRate * 10; // Complete games add value
+
+		return {
+			pitcher: p,
+			score: p.gamesStarted + eraScore + whipScore + cgBonus
+		};
+	});
+
+	// Sort by score descending
+	scored.sort((a, b) => b.score - a.score);
+
+	return scored[0]!.pitcher;
 }
 
 /**
