@@ -822,15 +822,18 @@ export class GameEngine {
 	/**
 	 * Create an augmented batters record that includes pitchers who aren't in batters
 	 * Some pitchers might not have batting stats, but they can still play position 1
+	 * Also ensures that two-way players (pitchers with batting stats) have correct primaryPosition
 	 */
 	private createAugmentedBattersRecord(): Record<string, BatterStats> {
 		const augmentedBatters: Record<string, BatterStats> = { ...this.season.batters };
 
-		// Add pitchers who aren't already in batters
+		// Add or update pitchers - this handles both:
+		// 1. Pitchers who aren't in batters at all
+		// 2. Two-way players who are in batters but need primaryPosition=1 when pitching
 		for (const [id, pitcher] of Object.entries(this.season.pitchers)) {
-			if (!augmentedBatters[id]) {
+			const existing = augmentedBatters[id];
+			if (!existing) {
 				// Create a minimal BatterStats entry for this pitcher
-				// Pitchers can only play position 1 (their primary position)
 				augmentedBatters[id] = {
 					id: pitcher.id,
 					name: pitcher.name,
@@ -841,6 +844,18 @@ export class GameEngine {
 					rates: {
 						vsLHP: { out: 1, single: 0, double: 0, triple: 0, homeRun: 0, walk: 0, hitByPitch: 0 },
 						vsRHP: { out: 1, single: 0, double: 0, triple: 0, homeRun: 0, walk: 0, hitByPitch: 0 }
+					}
+				};
+			} else if (existing.primaryPosition !== 1) {
+				// Two-way player: override primaryPosition to 1 when they're pitching
+				// Keep their original stats but mark them as a pitcher for validation purposes
+				augmentedBatters[id] = {
+					...existing,
+					primaryPosition: 1,
+					// Merge position eligibility - ensure they can pitch
+					positionEligibility: {
+						...existing.positionEligibility,
+						1: (existing.positionEligibility[1] || 0) + 1 // Add/increment pitching eligibility
 					}
 				};
 			}
@@ -1067,15 +1082,43 @@ export class GameEngine {
 			const vacatedPitcherSlots: Array<{ index: number; position: number }> = [];
 			const currentPitcherId = lineup.pitcher;
 			if (currentPitcherId) {
-				// Find and remove ALL occurrences of the current pitcher in the lineup
+				// Find and track ALL occurrences of the current pitcher in the lineup
 				// (regardless of position - they could be at position 1, or at a field position from a double switch)
 				for (let i = 0; i < lineup.players.length; i++) {
 					if (lineup.players[i].playerId === currentPitcherId) {
 						// This is the current pitcher - we'll need to fill this slot
 						vacatedPitcherSlots.push({ index: i, position: lineup.players[i].position });
-						// Clear this slot
-						lineup.players[i] = { playerId: null, position: 0 };
 					}
+				}
+
+				// PRE-CHECK: Before making any changes, verify we have enough bench pitchers to fill all vacated slots
+				// If we can't fill them, skip the PH insertion to avoid creating an invalid lineup
+				const vacatedPitcherSlotsCount = vacatedPitcherSlots.filter(s => s.position === 1).length;
+				if (vacatedPitcherSlotsCount > 0) {
+					const currentLineupPlayerIds = lineup.players.map(p => p.playerId).filter((id): id is string => id !== null);
+					const allTeamBatters = Object.values(this.season.batters)
+						.filter(b => b.teamId === teamId);
+					const availableBenchPitchers = allTeamBatters.filter(b =>
+						!currentLineupPlayerIds.includes(b.id) &&
+						!this.usedPinchHitters.has(b.id) &&
+						!this.removedPlayers.has(b.id) &&
+						b.primaryPosition === 1  // Only pitchers can play position 1
+					);
+
+					if (availableBenchPitchers.length < vacatedPitcherSlotsCount) {
+						// Not enough bench pitchers - skip the PH insertion
+						console.warn(`Cannot insert PH for pitcher: need ${vacatedPitcherSlotsCount} bench pitcher(s), but only ${availableBenchPitchers.length} available`);
+						// Add the PH IDs to usedPinchHitters so they can be reused later
+						for (const phId of phAssignments.keys()) {
+							this.usedPinchHitters.add(phId);
+						}
+						return;
+					}
+				}
+
+				// Now that we've verified availability, clear the pitcher slots
+				for (const slot of vacatedPitcherSlots) {
+					lineup.players[slot.index] = { playerId: null, position: 0 };
 				}
 			}
 
@@ -1670,7 +1713,7 @@ export class GameEngine {
 			currentInning: this.state.inning,
 			year: this.season.meta.year,
 			usesDH: pitchingTeamUsesDH,
-			pullThresholds: this.season.norms.pitching.pullThresholds,
+			pullThresholds: this.season.norms.pitching.pullThresholds ?? { consider: 16, likely: 18, hardLimit: 21 },
 			// Calculate era minimum reliever caps based on year (fallback if not in season data)
 			eraMinRelieverCaps: (() => {
 				const y = this.season.meta.year;

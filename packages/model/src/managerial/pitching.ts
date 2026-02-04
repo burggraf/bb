@@ -207,17 +207,16 @@ export function shouldPullPitcher(
 		// === STARTER LOGIC: Era-specific complete game considerations ===
 		typicalBfp = avgBfp ?? options?.seasonStarterBFP ?? 27;
 
-		// Hard limit: exceeded hard limit threshold
-		const hardLimit = typicalBfp * pullThresholds.hardLimit;
+		// Pull thresholds are now absolute BFP values (not fractions of typicalBfp)
+		const hardLimit = pullThresholds.hardLimit;
+		const considerThreshold = pullThresholds.consider;
+		const likelyThreshold = pullThresholds.likely;
+
 		// Workhorses get extended hard limit
 		const workhorseBonus = pitcher.isWorkhorse ? 1.2 : 1.0;
 		if (pitcher.battersFace >= hardLimit * workhorseBonus) {
 			return { shouldChange: true, reason: `Exceeded limit (${pitcher.battersFace} BFP)` };
 		}
-
-		// Consider pull threshold
-		const considerThreshold = typicalBfp * pullThresholds.consider;
-		const likelyThreshold = typicalBfp * pullThresholds.likely;
 
 		if (pitcher.battersFace >= considerThreshold) {
 			// Calculate base pull chance based on BFP progress

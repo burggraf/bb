@@ -33,7 +33,7 @@ async function loadSeason(year: number): Promise<SeasonPackage> {
 		const dest: any[] = [];
 		// Use pipeline with array to collect data
 		await new Promise((resolve, reject) => {
-			source.pipe(gzip).on('data', (chunk: any) => dest.push(chunk)).on('end', () => resolve(Buffer.concat(dest).toString())).on('error', reject);
+			source.on('error', reject).pipe(gzip).on('data', (chunk: any) => dest.push(chunk)).on('end', () => resolve(Buffer.concat(dest).toString())).on('error', reject);
 		});
 		data = dest.length > 0 ? Buffer.concat(dest).toString() : '';
 	} catch {

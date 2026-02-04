@@ -146,75 +146,15 @@ export interface SeasonNorms {
 function getSeasonNorms(
   year: number,
   medianBFP?: number,
+  p75BFP?: number,
   p90BFP?: number,
   relieverBFP?: { early: number; middle: number; late: number },
   actualPitchersPerGame?: number
 ): SeasonNorms {
-  // Use actual data when available, otherwise fall back to era defaults
+  // Use actual data when available, otherwise fall back to defaults
   const avgStarterBFP = medianBFP ?? 27;
 
-  // Calculate pull thresholds based on actual BFP distribution
-  // These are FRACTIONS of avgBFP that the engine will multiply to get absolute thresholds
-  // Tuned to produce historically accurate pitcher usage per team (not total per game)
-  const calculatePullThresholds = (avgBFP: number, p90: number) => {
-    // Earlier eras: higher thresholds (starters went deeper)
-    // Later eras: lower thresholds (quicker hooks)
-    // All values represent fractions of avgBFP
-    if (year >= 2009) {
-      // Analytics era: Starters typically go 5-6 innings, need to balance with bullpen usage
-      return {
-        consider: 1.05,  // Start considering at 105% of average (let them go slightly over)
-        likely: 1.35,    // Likely pull at 135% of average
-        hardLimit: 1.60  // Hard limit at 160% of average
-      };
-    } else if (year >= 1995) {
-      // Modern era: Starters typically 6-7 innings
-      return {
-        consider: 1.10,
-        likely: 1.40,
-        hardLimit: 1.65
-      };
-    } else if (year >= 1973) {
-      // DH era: Starters still going 6-7 innings typically
-      return {
-        consider: 1.15,
-        likely: 1.45,
-        hardLimit: 1.70
-      };
-    } else if (year >= 1960) {
-      // Expansion era: Starters routinely go 7+ innings
-      return {
-        consider: 1.20,
-        likely: 1.50,
-        hardLimit: 1.75
-      };
-    } else if (year >= 1940) {
-      // Integration era: High complete game rates, starters go deep
-      return {
-        consider: 1.30,
-        likely: 1.55,
-        hardLimit: 1.85
-      };
-    } else if (year >= 1920) {
-      // Lively ball era
-      return {
-        consider: 1.35,
-        likely: 1.60,
-        hardLimit: 1.90
-      };
-    } else {
-      // Deadball era: Complete games very common
-      return {
-        consider: 1.40,
-        likely: 1.70,
-        hardLimit: 2.00
-      };
-    }
-  };
-
-  const pullThresholds = calculatePullThresholds(avgStarterBFP, p90BFP ?? avgStarterBFP * 1.3);
-
-  // Use actual pitchers per game when available, otherwise estimate from era
+  // Calculate expected pitchers per game for reference
   const estimatedPitchersPerGame = actualPitchersPerGame ?? (
     year >= 2009 ? 8.0 :
     year >= 1995 ? 7.3 :
@@ -224,6 +164,21 @@ function getSeasonNorms(
     year >= 1920 ? 3.2 :
     3.0
   );
+
+  // Pull thresholds: Use actual historical percentiles from season data
+  // The percentiles represent real pitcher usage patterns, including:
+  // - Complete games where starters go 9 innings
+  // - Deep outings where starters go 7-8 innings
+  // - Short outings where starters get pulled early
+  // Using these produces historically realistic pitcher usage
+  const pullThresholds = {
+    // Consider pulling around median (typical starter outing)
+    consider: medianBFP ?? 18,
+    // Likely pull around 75th percentile (above-average outing)
+    likely: p75BFP ?? 20,
+    // Hard limit at 90th percentile (elite deep outing)
+    hardLimit: p90BFP ?? 23
+  };
 
   if (year >= 2010) {
     // Modern era: Strict pitch limits, 100-pitch standard, high bullpen usage
@@ -1092,102 +1047,53 @@ ORDER BY ds.player_id, outs_played DESC;
 
 function getPitcherBfpSQL(year: number): string {
   return `
-WITH first_pitchers AS (
-  -- Find the first pitcher for each game and side
-  SELECT DISTINCT
-    e.game_id,
-    e.side,
-    e.pitcher_id as starter_id
-  FROM event.events e
-  JOIN game.games g ON e.game_id = g.game_id
-  WHERE EXTRACT(YEAR FROM g.date) = ${year}
-    AND e.plate_appearance_result IS NOT NULL
-    AND e.plate_appearance_result != 'IntentionalWalk'
-    AND e.no_play_flag = false
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY e.game_id, e.side ORDER BY e.event_id) = 1
-),
-pitcher_roles AS (
-  SELECT
-    e.pitcher_id,
-    e.game_id,
-    CASE
-      WHEN fp.starter_id IS NOT NULL THEN 'starter'
-      ELSE 'reliever'
-    END as role
-  FROM event.events e
-  JOIN game.games g ON e.game_id = g.game_id
-  LEFT JOIN first_pitchers fp ON e.game_id = fp.game_id AND e.side = fp.side AND e.pitcher_id = fp.starter_id
-  WHERE EXTRACT(YEAR FROM g.date) = ${year}
-    AND e.plate_appearance_result IS NOT NULL
-    AND e.plate_appearance_result != 'IntentionalWalk'
-    AND e.no_play_flag = false
-),
-pitcher_bfp AS (
-  SELECT
-    pitcher_id,
-    role,
-    COUNT(*) as bfp,
-    COUNT(DISTINCT game_id) as games
-  FROM pitcher_roles
-  GROUP BY pitcher_id, role
-)
+-- Use lahman data for reliable BFP estimates based on innings pitched
 SELECT
-  pb.pitcher_id,
-  -- Average BFP as starter (only pitchers who started at least 5 games)
+  lp.player_id as pitcher_id,
+  -- Average BFP as starter (innings per start * ~3 batters per inning)
   CASE
-    WHEN MAX(CASE WHEN role = 'starter' THEN games END) >= 5
-    THEN COALESCE(SUM(CASE WHEN role = 'starter' THEN bfp END), 0) / NULLIF(MAX(CASE WHEN role = 'starter' THEN games END), 0)
+    WHEN lp.games_started >= 5
+    THEN ROUND((lp.innings_pitched / NULLIF(lp.games_started, 0)) * 3.0, 1)
     ELSE NULL
   END as avg_bfp_as_starter,
-  -- Average BFP as reliever (only pitchers who relieved at least 5 games)
+  -- Average BFP as reliever
   CASE
-    WHEN MAX(CASE WHEN role = 'reliever' THEN games END) >= 5
-    THEN COALESCE(SUM(CASE WHEN role = 'reliever' THEN bfp END), 0) / NULLIF(MAX(CASE WHEN role = 'reliever' THEN games END), 0)
+    WHEN (lp.games - lp.games_started) >= 5
+    THEN ROUND((lp.innings_pitched / NULLIF(lp.games - lp.games_started, 0)) * 3.0, 1)
     ELSE NULL
   END as avg_bfp_as_reliever
-FROM pitcher_bfp pb
-GROUP BY pb.pitcher_id
-HAVING COALESCE(SUM(CASE WHEN role = 'starter' THEN bfp END), 0) + COALESCE(SUM(CASE WHEN role = 'reliever' THEN bfp END), 0) >= 25
-ORDER BY COALESCE(SUM(CASE WHEN role = 'starter' THEN bfp END), 0) + COALESCE(SUM(CASE WHEN role = 'reliever' THEN bfp END), 0) DESC;
+FROM validation.lahman_pitching lp
+WHERE lp.season = ${year}
+  AND lp.innings_pitched > 0
+ORDER BY lp.innings_pitched DESC;
 `;
 }
 
 /**
- * Query season-specific median BFP for starters
- * This represents the "typical deep outing" - what pitchers commonly achieved
+ * Query season-specific median and 90th percentile BFP for starters
+ * Uses lahman innings_pitched data which is more reliable than tracking pitcher changes
+ * BFP is estimated as innings_pitched / games_started * ~3 batters per inning
  */
 function getSeasonStaminaSQL(year: number): string {
   return `
-WITH first_pitchers AS (
-  SELECT DISTINCT
-    e.game_id,
-    e.side,
-    e.pitcher_id as starter_id
-  FROM event.events e
-  JOIN game.games g ON e.game_id = g.game_id
-  WHERE EXTRACT(YEAR FROM g.date) = ${year}
-    AND e.plate_appearance_result IS NOT NULL
-    AND e.plate_appearance_result != 'IntentionalWalk'
-    AND e.no_play_flag = false
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY e.game_id, e.side ORDER BY e.event_id) = 1
-),
-starter_outings AS (
-  SELECT
-    fp.starter_id as pitcher_id,
-    e.game_id,
-    COUNT(*) as bfp
-  FROM event.events e
-  JOIN first_pitchers fp ON e.game_id = fp.game_id AND e.side = fp.side AND e.pitcher_id = fp.starter_id
-  JOIN game.games g ON e.game_id = g.game_id
-  WHERE EXTRACT(YEAR FROM g.date) = ${year}
-    AND e.plate_appearance_result IS NOT NULL
-    AND e.plate_appearance_result != 'IntentionalWalk'
-    AND e.no_play_flag = false
-  GROUP BY fp.starter_id, e.game_id
-)
 SELECT
-  ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY bfp), 1) as deep_outing_bfp
-FROM starter_outings;
+  ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY bfp_estimate), 1) as median_bfp,
+  ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY bfp_estimate), 1) as p75_bfp,
+  ROUND(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY bfp_estimate), 1) as p90_bfp,
+  ROUND(AVG(bfp_estimate), 1) as avg_bfp,
+  MIN(bfp_estimate) as min_bfp,
+  MAX(bfp_estimate) as max_bfp,
+  COUNT(*) as total_pitchers
+FROM (
+  SELECT
+    lp.player_id,
+    lp.innings_pitched / NULLIF(lp.games_started, 0) * 3.0 as bfp_estimate
+  FROM validation.lahman_pitching lp
+  WHERE lp.season = ${year}
+    AND lp.games_started >= 5  -- Only pitchers who started at least 5 games
+) sub
+WHERE bfp_estimate > 0 AND bfp_estimate < 50
+;
 `;
 }
 
@@ -1957,10 +1863,16 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   console.log('  📊 Season stamina data...');
   const staminaResult = runDuckDB(getSeasonStaminaSQL(year), dbPath);
   const staminaRaw = parseCSV(staminaResult);
-  const deepOutingBFP = staminaRaw.length > 0 && staminaRaw[0].deep_outing_bfp
-    ? parseFloat(staminaRaw[0].deep_outing_bfp)
+  const medianBFP = staminaRaw.length > 0 && staminaRaw[0].median_bfp
+    ? parseFloat(staminaRaw[0].median_bfp)
     : undefined;
-  console.log(`    ✓ Deep outing BFP (90th percentile): ${deepOutingBFP ?? 'N/A'}`);
+  const p75BFP = staminaRaw.length > 0 && staminaRaw[0].p75_bfp
+    ? parseFloat(staminaRaw[0].p75_bfp)
+    : undefined;
+  const p90BFP = staminaRaw.length > 0 && staminaRaw[0].p90_bfp
+    ? parseFloat(staminaRaw[0].p90_bfp)
+    : undefined;
+  console.log(`    ✓ Starter BFP - Median: ${medianBFP ?? 'N/A'}, 75th: ${p75BFP ?? 'N/A'}, 90th: ${p90BFP ?? 'N/A'}`);
 
   // Get reliever BFP by inning group
   console.log('  📊 Reliever BFP by inning group...');
@@ -1996,18 +1908,9 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     : undefined;
   console.log(`    ✓ Actual pitchers per game: ${actualPitchersPerGame ?? 'N/A'}`);
 
-  // Get 90th percentile BFP for calculating hard limits
-  console.log('  📊 Starter BFP percentiles...');
-  const p90BFPResult = runDuckDB(getStarterBFP90SQL(year), dbPath);
-  const p90BPFRaw = parseCSV(p90BFPResult);
-  const p90BFP = p90BPFRaw.length > 0
-    ? parseFloat(p90BPFRaw[0].p90_bfp)
-    : undefined;
-  console.log(`    ✓ 90th percentile BFP: ${p90BFP ?? 'N/A'}`);
-
   // Get era-appropriate norms
   console.log('  📋 Season norms...');
-  const norms = getSeasonNorms(year, deepOutingBFP, p90BFP, relieverBFP, actualPitchersPerGame);
+  const norms = getSeasonNorms(year, medianBFP, p75BFP, p90BFP, relieverBFP, actualPitchersPerGame);
   console.log(`    ✓ Era: ${norms.era}, Starter limit: ${norms.pitching.starterPitches.typicalLimit} pitches`);
   console.log(`    ✓ Pull thresholds: consider=${norms.pitching.pullThresholds.consider.toFixed(1)}, likely=${norms.pitching.pullThresholds.likely.toFixed(1)}, hardLimit=${norms.pitching.pullThresholds.hardLimit.toFixed(1)}`);
 
