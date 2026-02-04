@@ -281,6 +281,54 @@ describe('Double Switch Bug', () => {
 		expect(pitcherSlot).toBeGreaterThanOrEqual(0);
 		expect(homeTeam.players[pitcherSlot!].playerId).toBe(homeTeam.pitcher);
 	});
+
+	it('does not move pitcher to pinch hitter spot when PH replaces position player', () => {
+		// Bug: When a pinch hitter replaces a position player (not the pitcher),
+		// the "lineup adjustment" message was incorrectly showing the pitcher
+		// replacing the PH in the batting order. The pitcher should stay at position 1.
+		//
+		// Example from real game:
+		// - Kershaw is the pitcher at position 1 (batting 9th)
+		// - Toles pinch hits for Kendrick (LF, batting 4th)
+		// - Expected: Toles is replaced by a bench player in the 4th spot
+		// - Bug was: "Kershaw replaces Toles, batting 4th" - WRONG
+
+		const state = engine.getState();
+		const homeTeam = state.homeLineup;
+
+		// Find the pitcher's original batting position
+		const originalPitcherSlot = homeTeam.players.findIndex(p => p.position === 1);
+		const originalPitcherId = homeTeam.pitcher;
+		const originalPitcherBattingOrder = originalPitcherSlot + 1;
+
+		// Find a position player to PH for (not the pitcher) - use player 4 (1B)
+		const positionPlayerIndex = homeTeam.players.findIndex(p => p.position === 4);
+		const positionPlayerId = homeTeam.players[positionPlayerIndex].playerId!;
+
+		// Manually create a PH scenario: replace position player with PH
+		const phId = 'ph-1';
+		homeTeam.players[positionPlayerIndex] = { playerId: phId, position: 11 }; // 11 = PH
+
+		// Mark the replaced player as removed
+		(engine as any).removedPlayers.add(positionPlayerId);
+		(engine as any).usedPinchHitters.add(phId);
+
+		// Simulate to end of inning to trigger lineup audit
+		// We need to call auditLineupAtHalfInningEnd
+		const teamId = homeTeam.teamId;
+		(engine as any).auditLineupAtHalfInningEnd(homeTeam, teamId);
+
+		// After audit:
+		// 1. The pitcher should STILL be at the same batting position (position 1)
+		const newPitcherSlot = homeTeam.players.findIndex(p => p.position === 1);
+		expect(newPitcherSlot).toBe(originalPitcherSlot);
+		expect(homeTeam.pitcher).toBe(originalPitcherId);
+		expect(homeTeam.players[originalPitcherSlot].playerId).toBe(originalPitcherId);
+
+		// 2. The PH slot should have a bench player, not the pitcher
+		expect(homeTeam.players[positionPlayerIndex].playerId).not.toBe(originalPitcherId);
+		expect(homeTeam.players[positionPlayerIndex].position).not.toBe(1);
+	});
 });
 
 describe('Pitcher Re-Entry Bug', () => {

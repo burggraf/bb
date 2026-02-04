@@ -16,9 +16,30 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 // Load season data directly from file system (Node.js compatible)
+// Handles both .json.gz and .json files
 async function loadSeason(year: number): Promise<SeasonPackage> {
-	const seasonPath = join(process.cwd(), 'static', 'seasons', `${year}.json`);
-	const data = readFileSync(seasonPath, 'utf-8');
+	const { createReadStream } = await import('fs');
+	const { createGunzip } = await import('zlib');
+	const { pipeline } = await import('stream/promises');
+
+	const seasonPathGz = join(process.cwd(), 'static', 'seasons', `${year}.json.gz`);
+	const seasonPathJson = join(process.cwd(), 'static', 'seasons', `${year}.json`);
+
+	// Try .json.gz first, then fall back to .json
+	let data: string;
+	try {
+		const gzip = createGunzip();
+		const source = createReadStream(seasonPathGz);
+		const dest: any[] = [];
+		// Use pipeline with array to collect data
+		await new Promise((resolve, reject) => {
+			source.pipe(gzip).on('data', (chunk: any) => dest.push(chunk)).on('end', () => resolve(Buffer.concat(dest).toString())).on('error', reject);
+		});
+		data = dest.length > 0 ? Buffer.concat(dest).toString() : '';
+	} catch {
+		// Fall back to uncompressed JSON
+		data = readFileSync(seasonPathJson, 'utf-8');
+	}
 	return JSON.parse(data) as SeasonPackage;
 }
 

@@ -17,6 +17,14 @@ export interface LineupValidationResult {
 }
 
 /**
+ * Options for lineup validation
+ */
+export interface ValidateLineupOptions {
+	/** Allow players at positions they're not rated for (emergency roster exhaustion) */
+	allowEmergencyPositions?: boolean;
+}
+
+/**
  * Position names for error messages
  */
 const POSITION_NAMES: Record<number, string> = {
@@ -76,21 +84,24 @@ function isPlayerEligibleAtPosition(
  *
  * Validation rules:
  * 1. All 9 positions (1-9) must have a non-null player ID
- * 2. Each player must be eligible at their assigned position
+ * 2. Each player must be eligible at their assigned position (unless allowEmergencyPositions is true)
  * 3. No player can appear twice in the field
  * 4. Position 1 must always be a pitcher
  *
  * @param lineupSlots - Array of {playerId, position} tuples (length 9 for full lineup)
  * @param batters - Record of all batters in the season
+ * @param options - Optional validation settings
  * @returns Validation result with errors and warnings
  */
 export function validateLineup(
 	lineupSlots: Array<{ playerId: string | null; position: number }>,
-	batters: Record<string, BatterStats>
+	batters: Record<string, BatterStats>,
+	options?: ValidateLineupOptions
 ): LineupValidationResult {
 	const errors: string[] = [];
 	const warnings: string[] = [];
 	const seenPlayers = new Set<string>();
+	const seenPositions = new Set<number>();
 
 	// Rule 1: Check all 9 positions have non-null player IDs
 	for (let i = 0; i < lineupSlots.length; i++) {
@@ -103,6 +114,7 @@ export function validateLineup(
 	// Rule 2: Check each player is eligible at their position
 	// Rule 3: Check for duplicate players
 	// Rule 4: Check position 1 is a pitcher
+	// Rule 5: Check for duplicate positions (e.g., two players at 2B)
 	for (const slot of lineupSlots) {
 		if (!slot.playerId) continue; // Skip null slots (already reported as error)
 
@@ -112,14 +124,22 @@ export function validateLineup(
 			continue;
 		}
 
-		// Check for duplicates
+		// Check for duplicate players
 		if (seenPlayers.has(slot.playerId)) {
 			errors.push(`Player ${player.name} appears multiple times in the lineup`);
 		}
 		seenPlayers.add(slot.playerId);
 
-		// Check position eligibility
-		if (!isPlayerEligibleAtPosition(player, slot.position)) {
+		// Check for duplicate positions (only for real positions 1-9, not PH/PR/DH)
+		if (slot.position >= 1 && slot.position <= 9) {
+			if (seenPositions.has(slot.position)) {
+				errors.push(`Position ${getPositionName(slot.position)} is assigned to multiple players`);
+			}
+			seenPositions.add(slot.position);
+		}
+
+		// Check position eligibility (unless in emergency mode)
+		if (!options?.allowEmergencyPositions && !isPlayerEligibleAtPosition(player, slot.position)) {
 			const primaryName = getPositionName(player.primaryPosition);
 			errors.push(
 				`Player ${player.name} at ${getPositionName(slot.position)} but only eligible at ${primaryName} (and others per positionEligibility)`
