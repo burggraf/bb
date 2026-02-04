@@ -92,7 +92,7 @@ Era-appropriate managerial norms for pitching changes and substitutions. These e
 
 ### 3. Batters
 
-Map of player ID to batter statistics. Includes both position players and pitchers (who may have limited at-bats).
+Map of player ID to batter statistics. Includes both position players and pitchers (who may have limited at-bats). Each batter has **platoon splits** - separate statistics against left-handed and right-handed pitchers.
 
 ```typescript
 {
@@ -106,8 +106,42 @@ Map of player ID to batter statistics. Includes both position players and pitche
       "5": 41328                      // Position number -> outs played
     },
     "rates": {
-      "vsLHP": EventRates,           // Stats vs left-handed pitchers
-      "vsRHP": EventRates            // Stats vs right-handed pitchers
+      "vsLHP": {                      // vs Left-Handed Pitcher
+        "single": 0.1822,
+        "double": 0.04,
+        "triple": 0.0133,
+        "homeRun": 0.0178,
+        "walk": 0.0756,
+        "hitByPitch": 0.0089,
+        "strikeout": 0.0844,
+        "groundOut": 0.2596,
+        "flyOut": 0.1467,
+        "lineOut": 0.0898,
+        "popOut": 0.0729,
+        "sacrificeFly": 0.0044,
+        "sacrificeBunt": 0,
+        "fieldersChoice": 0,
+        "reachedOnError": 0.0044,
+        "catcherInterference": 0
+      },
+      "vsRHP": {                      // vs Right-Handed Pitcher
+        "single": 0.2201,
+        "double": 0.0626,
+        "triple": 0.0057,
+        "homeRun": 0.0114,
+        "walk": 0.1176,
+        "hitByPitch": 0.0076,
+        "strikeout": 0.0664,
+        "groundOut": 0.2244,
+        "flyOut": 0.1258,
+        "lineOut": 0.0826,
+        "popOut": 0.0625,
+        "sacrificeFly": 0.0019,
+        "sacrificeBunt": 0,
+        "fieldersChoice": 0.0019,
+        "reachedOnError": 0.0095,
+        "catcherInterference": 0
+      }
     }
   }
 }
@@ -129,7 +163,7 @@ Map of player ID to batter statistics. Includes both position players and pitche
 
 ### 4. Pitchers
 
-Map of player ID to pitcher statistics.
+Map of player ID to pitcher statistics. Each pitcher has **platoon splits** - separate statistics against left-handed and right-handed batters.
 
 ```typescript
 {
@@ -141,8 +175,42 @@ Map of player ID to pitcher statistics.
     "avgBfpAsStarter": 29.86,         // Avg batters faced when starting (null if never started)
     "avgBfpAsReliever": 32.84,        // Avg batters faced when relieving (null if never relieved)
     "rates": {
-      "vsLHB": EventRates,           // Stats vs left-handed batters
-      "vsRHB": EventRates            // Stats vs right-handed batters
+      "vsLHB": {                      // vs Left-Handed Batter
+        "single": 0.1667,
+        "double": 0.0238,
+        "triple": 0.0092,
+        "homeRun": 0.0073,
+        "walk": 0.0623,
+        "hitByPitch": 0.0018,
+        "strikeout": 0.1062,
+        "groundOut": 0.2532,
+        "flyOut": 0.1654,
+        "lineOut": 0.0944,
+        "popOut": 0.0841,
+        "sacrificeFly": 0.0092,
+        "sacrificeBunt": 0.0055,
+        "fieldersChoice": 0.0055,
+        "reachedOnError": 0.0055,
+        "catcherInterference": 0
+      },
+      "vsRHB": {                      // vs Right-Handed Batter
+        "single": 0.1414,
+        "double": 0.0296,
+        "triple": 0.0049,
+        "homeRun": 0.0247,
+        "walk": 0.0576,
+        "hitByPitch": 0.0115,
+        "strikeout": 0.148,
+        "groundOut": 0.2361,
+        "flyOut": 0.1558,
+        "lineOut": 0.0705,
+        "popOut": 0.0869,
+        "sacrificeFly": 0.0132,
+        "sacrificeBunt": 0.0082,
+        "fieldersChoice": 0,
+        "reachedOnError": 0.0115,
+        "catcherInterference": 0
+      }
     }
   }
 }
@@ -181,15 +249,23 @@ The core statistical structure - outcome rates per plate appearance. All values 
 
 ### 6. League Averages
 
-League-average outcome rates for the season. Used as the prior in the log5 model.
+League-average outcome rates for the season. Used as the prior in the log5 model. Includes pitcher-batter averages for pitchers with few at-bats.
 
 ```typescript
 {
-  "vsLHP": EventRates,              // League avg vs LHP
-  "vsRHP": EventRates,              // League avg vs RHP
+  "vsLHP": {                        // League avg vs Left-Handed Pitcher
+    "single": 0.168,
+    "double": 0.043,
+    // ... all 17 EventRates fields
+  },
+  "vsRHP": {                        // League avg vs Right-Handed Pitcher
+    "single": 0.171,
+    "double": 0.045,
+    // ... all 17 EventRates fields
+  },
   "pitcherBatter": {
-    "vsLHP": EventRates,            // League avg for pitchers batting vs LHP
-    "vsRHP": EventRates             // League avg for pitchers batting vs RHP
+    "vsLHP": { /* EventRates */ },  // League avg for pitchers batting vs LHP
+    "vsRHP": { /* EventRates */ }   // League avg for pitchers batting vs RHP
   }
 }
 ```
@@ -290,6 +366,22 @@ The engine uses this data to:
 3. Sample outcomes from the probability distribution
 4. Apply era-appropriate pitching changes (using `norms`)
 
+## Platoon Split Naming Convention
+
+**Important:** The data files and model package use different key names for platoon splits:
+
+| Context | Batter Keys | Pitcher Keys |
+|---------|-------------|--------------|
+| **Data files** (season JSON) | `vsLHP`, `vsRHP` | `vsLHB`, `vsRHB` |
+| **Model package** (`@bb/model`) | `vsLeft`, `vsRight` | `vsLeft`, `vsRight` |
+
+- **vsLHP** = "vs Left-Handed Pitcher" (batter facing LHP)
+- **vsRHP** = "vs Right-Handed Pitcher" (batter facing RHP)
+- **vsLHB** = "vs Left-Handed Batter" (pitcher facing LHB)
+- **vsRHB** = "vs Right-Handed Batter" (pitcher facing RHB)
+
+The engine (`app/src/lib/game/engine.ts`) translates between these formats when creating `Matchup` objects for the model.
+
 ## Type Definitions
 
 All TypeScript types are defined in `data-prep/src/export-season.ts`:
@@ -299,5 +391,3 @@ All TypeScript types are defined in `data-prep/src/export-season.ts`:
 - `EventRates` - Outcome probability distribution
 - `BatterStats` - Individual batter statistics
 - `PitcherStats` - Individual pitcher statistics
-
-When the model package uses these, it translates `vsLHP/vsRHP` (batter side) to `vsLeft/vsRight` (generic) using the engine code in `app/src/lib/game/engine.ts`.
