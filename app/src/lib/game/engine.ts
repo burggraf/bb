@@ -672,7 +672,7 @@ export class GameEngine {
 	 * When multiple PHs are assigned to the same position, we need to reassign them
 	 * to ensure each position 1-9 has exactly one player
 	 */
-	private resolveDuplicatePositions(lineup: LineupState): void {
+	private resolveDuplicatePositions(lineup: LineupState, suppressPlays = false): void {
 		const positionCounts = new Map<number, number>();
 		const positionIndices = new Map<number, number[]>(); // position -> array of indices
 
@@ -724,20 +724,22 @@ export class GameEngine {
 						...player,
 						position: newIndex
 					};
-					this.state.plays.unshift({
-						inning: this.state.inning,
-						isTopInning: this.state.isTopInning,
-						outcome: 'out' as Outcome,
-						batterId: '',
-						batterName: '',
-						pitcherId: '',
-						pitcherName: '',
-						description: `Lineup adjustment: ${this.formatName(this.season.batters[player.playerId]?.name || player.playerId)} moved to ${newPosName} (emergency duplicate resolution)`,
-						runsScored: 0,
-						eventType: 'lineupAdjustment',
-						substitutedPlayer: player.playerId,
-						isSummary: true
-					});
+					if (!suppressPlays) {
+						this.state.plays.unshift({
+							inning: this.state.inning,
+							isTopInning: this.state.isTopInning,
+							outcome: 'out' as Outcome,
+							batterId: '',
+							batterName: '',
+							pitcherId: '',
+							pitcherName: '',
+							description: `Lineup adjustment: ${this.formatName(this.season.batters[player.playerId]?.name || player.playerId)} moved to ${newPosName} (emergency duplicate resolution)`,
+							runsScored: 0,
+							eventType: 'lineupAdjustment',
+							substitutedPlayer: player.playerId,
+							isSummary: true
+						});
+					}
 				}
 			}
 		}
@@ -889,7 +891,14 @@ export class GameEngine {
 	 * @param lineup The lineup to audit and fix
 	 * @param teamId The team ID for getting league/era info
 	 */
-	private auditLineupAtHalfInningEnd(lineup: LineupState, teamId: string): void {
+	private auditLineupAtHalfInningEnd(lineup: LineupState, teamId: string, suppressPlays = false): void {
+		// Helper to conditionally add lineup adjustment plays
+		const maybeAddPlay = (play: Play) => {
+			if (!suppressPlays) {
+				this.state.plays.unshift(play);
+			}
+		};
+
 		// Find all pinch hitters (position 11) in the batting order
 		const phSlots: Array<{ index: number; playerId: string }> = [];
 		for (let i = 0; i < lineup.players.length; i++) {
@@ -1057,7 +1066,7 @@ export class GameEngine {
 				pitcherFilledIndices.add(battingIndex);
 
 				const battingOrder = battingIndex + 1;
-				this.state.plays.unshift({
+				maybeAddPlay({
 					inning: this.state.inning,
 					isTopInning: this.state.isTopInning,
 					outcome: 'out' as Outcome,
@@ -1098,7 +1107,7 @@ export class GameEngine {
 						};
 
 						const battingOrder = vacatedSlot.index + 1;
-						this.state.plays.unshift({
+						maybeAddPlay({
 							inning: this.state.inning,
 							isTopInning: this.state.isTopInning,
 							outcome: 'out' as Outcome,
@@ -1140,7 +1149,7 @@ export class GameEngine {
 
 				const battingOrder = assignment.index + 1;
 				const positionName = POSITION_NAMES[assignment.position] ?? `Pos${assignment.position}`;
-				this.state.plays.unshift({
+				maybeAddPlay({
 					inning: this.state.inning,
 					isTopInning: this.state.isTopInning,
 					outcome: 'out' as Outcome,
@@ -1175,7 +1184,7 @@ export class GameEngine {
 
 				const battingOrder = assignment.index + 1;
 				const positionName = POSITION_NAMES[assignment.position] ?? `Pos${assignment.position}`;
-				this.state.plays.unshift({
+				maybeAddPlay({
 					inning: this.state.inning,
 					isTopInning: this.state.isTopInning,
 					outcome: 'out' as Outcome,
@@ -1229,7 +1238,7 @@ export class GameEngine {
 
 						const battingOrder = ph.index + 1;
 						const positionName = POSITION_NAMES[replacedPosition] ?? `Pos${replacedPosition}`;
-						this.state.plays.unshift({
+						maybeAddPlay({
 							inning: this.state.inning,
 							isTopInning: this.state.isTopInning,
 							outcome: 'out' as Outcome,
@@ -1259,7 +1268,7 @@ export class GameEngine {
 								};
 							}
 							const positionName = POSITION_NAMES[replacedPosition] ?? `Pos${replacedPosition}`;
-							this.state.plays.unshift({
+							maybeAddPlay({
 								inning: this.state.inning,
 								isTopInning: this.state.isTopInning,
 								outcome: 'out' as Outcome,
@@ -1268,7 +1277,7 @@ export class GameEngine {
 								pitcherId: '',
 								pitcherName: '',
 								description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game at ${POSITION_NAMES[shuffleResult.phPosition] ?? shuffleResult.phPosition} after shuffle, batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
-							_runsScored: 0,
+								runsScored: 0,
 								eventType: 'lineupAdjustment',
 								substitutedPlayer: ph.playerId,
 								isSummary: true
@@ -1313,7 +1322,7 @@ export class GameEngine {
 								position: finalPosition
 							};
 							const positionName = POSITION_NAMES[finalPosition] ?? `Pos${finalPosition}`;
-							this.state.plays.unshift({
+							maybeAddPlay({
 								inning: this.state.inning,
 								isTopInning: this.state.isTopInning,
 								outcome: 'out' as Outcome,
@@ -1340,7 +1349,7 @@ export class GameEngine {
 
 			// Final fix: resolve any remaining duplicate positions
 			// This can happen when multiple PHs are assigned positions that conflict
-			this.resolveDuplicatePositions(lineup);
+			this.resolveDuplicatePositions(lineup, suppressPlays);
 
 			// Validate the final lineup to ensure no issues
 			const finalValidation = this.validateCurrentLineup(lineup, {
@@ -1405,7 +1414,7 @@ export class GameEngine {
 								playerId: phPlayerId,
 								position: 10 // DH
 							};
-							this.state.plays.unshift({
+							maybeAddPlay({
 								inning: this.state.inning,
 								isTopInning: this.state.isTopInning,
 								outcome: 'out' as Outcome,
@@ -1431,7 +1440,7 @@ export class GameEngine {
 									};
 								}
 								const positionName = POSITION_NAMES[replacedPosition] ?? `Pos${replacedPosition}`;
-								this.state.plays.unshift({
+								maybeAddPlay({
 									inning: this.state.inning,
 									isTopInning: this.state.isTopInning,
 									outcome: 'out' as Outcome,
@@ -1452,7 +1461,7 @@ export class GameEngine {
 									playerId: phPlayerId,
 									position: 10 // DH - emergency mode allows any player to DH
 								};
-								this.state.plays.unshift({
+								maybeAddPlay({
 									inning: this.state.inning,
 									isTopInning: this.state.isTopInning,
 									outcome: 'out' as Outcome,
@@ -1503,7 +1512,7 @@ export class GameEngine {
 								position: validPosition
 							};
 
-							this.state.plays.unshift({
+							maybeAddPlay({
 								inning: this.state.inning,
 								isTopInning: this.state.isTopInning,
 								outcome: 'out' as Outcome,
@@ -1530,7 +1539,7 @@ export class GameEngine {
 							playerId: phPlayerId,
 							position: 10 // DH - any player can DH in emergency
 						};
-						this.state.plays.unshift({
+						maybeAddPlay({
 							inning: this.state.inning,
 							isTopInning: this.state.isTopInning,
 							outcome: 'out' as Outcome,
@@ -2225,14 +2234,16 @@ export class GameEngine {
 			// The play we just added has the correct inning information
 			addHalfInningSummaryWithInning(state, this.season, playInning, playIsTop);
 
-			// Only audit lineup if the game is NOT complete
-			// If the game is over (e.g., bottom of 11th, final out), we don't need to adjust lineups
-			if (!this.isComplete()) {
-				// Audit and fix the lineup for the team that just finished batting
-				// This resolves any temporary pinch hitters (position 11) and ensures
-				// the current pitcher is in the batting order for non-DH games
-				this.auditLineupAtHalfInningEnd(battingTeam, battingTeam.teamId);
+			// Always audit and fix the lineup for the team that just finished batting
+			// This resolves any temporary pinch hitters (position 11) and ensures
+			// the current pitcher is in the batting order for non-DH games
+			// When the game is complete, we suppress the "Lineup adjustment" play messages
+			// but still normalize the lineup so final lineups don't show position 11 (PH)
+			this.auditLineupAtHalfInningEnd(battingTeam, battingTeam.teamId, this.isComplete());
 
+			// Only validate lineup if the game is NOT complete
+			// If the game is over (e.g., bottom of 11th, final out), we don't need to validate
+			if (!this.isComplete()) {
 				// CRITICAL: Validate the lineup after all substitutions
 				// This ensures: all 9 positions (1-9) are filled exactly once,
 				// no player is at position 11 (PH), and each player is eligible for their position
