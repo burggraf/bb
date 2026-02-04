@@ -7,7 +7,8 @@
     "extract": "tsx src/extract-season.ts",
     "stats": "tsx src/calculate-stats.ts",
     "export-all": "tsx src/export-all-seasons.ts",
-    "export-range": "tsx src/export-all-seasons.ts"
+    "export-range": "tsx src/export-all-seasons.ts",
+    "update-manifest": "tsx src/update-manifest.ts"
   },
   "dependencies": {
     "@bb/model": "workspace:*",
