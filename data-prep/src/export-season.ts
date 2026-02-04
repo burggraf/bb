@@ -145,6 +145,7 @@ export interface SeasonNorms {
  */
 function getSeasonNorms(
   year: number,
+  p25BFP?: number,
   medianBFP?: number,
   p75BFP?: number,
   p90BFP?: number,
@@ -165,19 +166,50 @@ function getSeasonNorms(
     3.0
   );
 
-  // Pull thresholds: Use actual historical percentiles from season data
-  // The percentiles represent real pitcher usage patterns, including:
-  // - Complete games where starters go 9 innings
-  // - Deep outings where starters go 7-8 innings
-  // - Short outings where starters get pulled early
-  // Using these produces historically realistic pitcher usage
+  // Pull thresholds: Scale percentiles to account for real-world manager behavior
+  // Real managers often let starters go deeper than statistical "optimal" due to:
+  // - Game situation (pitching well, low pitch count)
+  // - Bullpen fatigue (recent extra-inning games, short rest)
+  // - Saving bullpen for future games
+  // - Trust in "hot hand"
+  //
+  // We scale up the percentiles to match actual historical pitcher usage:
+  // - Early era (pre-1950): Use p50/p75/p90 directly (managers let starters go deep)
+  // - Middle era (1950-1990): Scale up slightly (managers more aggressive but still patient)
+  // - Modern era (post-1990): Scale up more (bullpen specialization + strategic pulling)
+
+  let consider: number;
+  let likely: number;
+  let hardLimit: number;
+
+  if (year < 1950) {
+    // Deadball/early era: Starters routinely went deep, use p50/p75/p90 directly
+    consider = medianBFP ?? 21;
+    likely = p75BFP ?? 24;
+    hardLimit = p90BFP ?? 27;
+  } else if (year < 1980) {
+    // Integration era: Slight scaling
+    consider = (medianBFP ?? 21) * 1.10;
+    likely = (p75BFP ?? 24) * 1.08;
+    hardLimit = p90BFP ?? 27;
+  } else if (year < 2000) {
+    // Modern pre-closer era: Moderate scaling
+    consider = (medianBFP ?? 21) * 1.20;
+    likely = (p75BFP ?? 24) * 1.15;
+    hardLimit = (p90BFP ?? 27) * 1.10;
+  } else {
+    // Modern closer era: Moderate scaling with proper ordering
+    // Apply uniform scaling to all thresholds to maintain consider < likely < hardLimit
+    const scaleFactor = 1.20;
+    consider = (medianBFP ?? 21) * scaleFactor;
+    likely = (p75BFP ?? 24) * scaleFactor;
+    hardLimit = (p90BFP ?? 27) * scaleFactor;
+  }
+
   const pullThresholds = {
-    // Consider pulling around median (typical starter outing)
-    consider: medianBFP ?? 18,
-    // Likely pull around 75th percentile (above-average outing)
-    likely: p75BFP ?? 20,
-    // Hard limit at 90th percentile (elite deep outing)
-    hardLimit: p90BFP ?? 23
+    consider: Math.round(consider * 10) / 10,
+    likely: Math.round(likely * 10) / 10,
+    hardLimit: Math.round(hardLimit * 10) / 10
   };
 
   if (year >= 2010) {
@@ -1077,7 +1109,8 @@ ORDER BY lp.innings_pitched DESC;
 function getSeasonStaminaSQL(year: number): string {
   return `
 SELECT
-  ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY bfp_estimate), 1) as median_bfp,
+  ROUND(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY bfp_estimate), 1) as p25_bfp,
+  ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY bfp_estimate), 1) as p50_bfp,
   ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY bfp_estimate), 1) as p75_bfp,
   ROUND(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY bfp_estimate), 1) as p90_bfp,
   ROUND(AVG(bfp_estimate), 1) as avg_bfp,
@@ -1098,10 +1131,14 @@ WHERE bfp_estimate > 0 AND bfp_estimate < 50
 }
 
 /**
- * Query reliever BFP averages by inning group
- * Early (1-3): long men, spot starters
- * Middle (4-6): middle relievers
- * Late (7+): closers, specialists
+ * Query reliever BFP averages by entry inning group
+ * Early (1-3): long men, spot starters, injury replacements
+ * Middle (4-6): middle relievers, long relief
+ * Late (7+): closers, setup men, specialists
+ *
+ * Uses COUNT(DISTINCT event_id) to handle data duplication
+ * Uses p75 (75th percentile) to get typical BFP while excluding extreme outliers
+ * Filters out appearances > 50 BFP (bullpen games, injury replacements)
  */
 function getRelieverBFPByInningSQL(year: number): string {
   return `
@@ -1123,12 +1160,12 @@ reliever_appearances AS (
     e.pitcher_id,
     e.game_id,
     e.side,
-    e.inning,
-    COUNT(*) as bfp,
-    -- Determine if this is early, middle, or late entry
+    MIN(e.inning) as entry_inning,
+    COUNT(DISTINCT e.event_id) as total_bfp,
+    -- Determine if this is early, middle, or late entry based on when they entered
     CASE
-      WHEN e.inning <= 3 THEN 'early'
-      WHEN e.inning <= 6 THEN 'middle'
+      WHEN MIN(e.inning) <= 3 THEN 'early'
+      WHEN MIN(e.inning) <= 6 THEN 'middle'
       ELSE 'late'
     END as inning_group
   FROM event.events e
@@ -1140,11 +1177,13 @@ reliever_appearances AS (
     AND e.no_play_flag = false
     -- Exclude first pitcher in each game/side (starters)
     AND fp.starter_id IS NULL
-  GROUP BY e.pitcher_id, e.game_id, e.side, e.inning
+  GROUP BY e.pitcher_id, e.game_id, e.side
+  HAVING COUNT(DISTINCT e.event_id) <= 50  -- Filter out extreme outliers (bullpen games)
 )
 SELECT
   inning_group,
-  ROUND(AVG(bfp), 1) as avg_bfp
+  -- Use p75 (75th percentile) to get typical BFP, excluding short specialists and extreme outliers
+  ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY total_bfp), 1) as avg_bfp
 FROM reliever_appearances
 GROUP BY inning_group
 ORDER BY inning_group;
@@ -1859,12 +1898,15 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   }
   console.log(`    ✓ ${games.length} games`);
 
-  // Get season-specific stamina data (90th percentile BFP for starters)
+  // Get season-specific stamina data (percentiles for starter pull thresholds)
   console.log('  📊 Season stamina data...');
   const staminaResult = runDuckDB(getSeasonStaminaSQL(year), dbPath);
   const staminaRaw = parseCSV(staminaResult);
-  const medianBFP = staminaRaw.length > 0 && staminaRaw[0].median_bfp
-    ? parseFloat(staminaRaw[0].median_bfp)
+  const p25BFP = staminaRaw.length > 0 && staminaRaw[0].p25_bfp
+    ? parseFloat(staminaRaw[0].p25_bfp)
+    : undefined;
+  const medianBFP = staminaRaw.length > 0 && staminaRaw[0].p50_bfp
+    ? parseFloat(staminaRaw[0].p50_bfp)
     : undefined;
   const p75BFP = staminaRaw.length > 0 && staminaRaw[0].p75_bfp
     ? parseFloat(staminaRaw[0].p75_bfp)
@@ -1872,7 +1914,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   const p90BFP = staminaRaw.length > 0 && staminaRaw[0].p90_bfp
     ? parseFloat(staminaRaw[0].p90_bfp)
     : undefined;
-  console.log(`    ✓ Starter BFP - Median: ${medianBFP ?? 'N/A'}, 75th: ${p75BFP ?? 'N/A'}, 90th: ${p90BFP ?? 'N/A'}`);
+  console.log(`    ✓ Starter BFP - 25th: ${p25BFP ?? 'N/A'}, 50th: ${medianBFP ?? 'N/A'}, 75th: ${p75BFP ?? 'N/A'}, 90th: ${p90BFP ?? 'N/A'}`);
 
   // Get reliever BFP by inning group
   console.log('  📊 Reliever BFP by inning group...');
@@ -1910,7 +1952,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
 
   // Get era-appropriate norms
   console.log('  📋 Season norms...');
-  const norms = getSeasonNorms(year, medianBFP, p75BFP, p90BFP, relieverBFP, actualPitchersPerGame);
+  const norms = getSeasonNorms(year, p25BFP, medianBFP, p75BFP, p90BFP, relieverBFP, actualPitchersPerGame);
   console.log(`    ✓ Era: ${norms.era}, Starter limit: ${norms.pitching.starterPitches.typicalLimit} pitches`);
   console.log(`    ✓ Pull thresholds: consider=${norms.pitching.pullThresholds.consider.toFixed(1)}, likely=${norms.pitching.pullThresholds.likely.toFixed(1)}, hardLimit=${norms.pitching.pullThresholds.hardLimit.toFixed(1)}`);
 

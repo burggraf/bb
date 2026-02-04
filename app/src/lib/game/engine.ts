@@ -890,18 +890,24 @@ export class GameEngine {
 		const bullpen = this.bullpenStates.get(teamId);
 		if (!bullpen) return false;
 
-		// Check if there are any relievers available (excluding removed and current pitcher)
-		const availableRelievers = bullpen.relievers.filter(
+		// Collect all available relievers from all bullpen slots
+		const allRelievers: PitcherRole[] = [
+			...bullpen.relievers,
+			...(bullpen.setup ?? []),
+			...(bullpen.longRelief ?? [])
+		];
+
+		// Add closer if available
+		if (bullpen.closer) {
+			allRelievers.push(bullpen.closer);
+		}
+
+		// Check if any relievers are available (excluding removed and current pitcher)
+		const availableRelievers = allRelievers.filter(
 			r => !this.removedPlayers.has(r.pitcherId) && r.pitcherId !== currentPitcherId
 		);
 
-		// Also check closer if available
-		const closerAvailable =
-			bullpen.closer &&
-			!this.removedPlayers.has(bullpen.closer.pitcherId) &&
-			bullpen.closer.pitcherId !== currentPitcherId;
-
-		return (availableRelievers.length > 0 || !!closerAvailable);
+		return availableRelievers.length > 0;
 	}
 
 	/**
@@ -1714,19 +1720,9 @@ export class GameEngine {
 			year: this.season.meta.year,
 			usesDH: pitchingTeamUsesDH,
 			pullThresholds: this.season.norms.pitching.pullThresholds ?? { consider: 16, likely: 18, hardLimit: 21 },
-			// Calculate era minimum reliever caps based on year (fallback if not in season data)
-			eraMinRelieverCaps: (() => {
-				const y = this.season.meta.year;
-				if (y < 1940) {
-					return { early: 18, middle: 14, late: 10 };
-				} else if (y < 1973) {
-					return { early: 16, middle: 12, late: 8 };
-				} else if (y < 1995) {
-					return { early: 12, middle: 8, late: 5 };
-				} else {
-					return { early: 9, middle: 6, late: 4 };
-				}
-			})()
+			// Era minimum reliever caps removed - use season-specific data instead
+			// The season data now contains accurate reliever BFP values from historical data
+			eraMinRelieverCaps: undefined
 		};
 
 		const pitchingDecision = shouldPullPitcher(

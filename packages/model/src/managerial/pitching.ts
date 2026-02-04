@@ -304,56 +304,36 @@ export function shouldPullPitcher(
 		// === RELIEVER LOGIC ===
 		const relieverAvg = avgBfp ?? 12;
 
-		// Determine era-specific MINIMUM caps (these are floors, not ceilings)
-		// Use season-specific values if available, otherwise fall back to year-based
-		let eraMinCap: number;
-		if (options?.eraMinRelieverCaps) {
-			// Use season-specific caps from export script
-			eraMinCap = inning <= 3
-				? options.eraMinRelieverCaps.early
-				: inning <= 6
-					? options.eraMinRelieverCaps.middle
-					: options.eraMinRelieverCaps.late;
-		} else {
-			// Fall back to year-based era determination
-			if (year < 1940) {
-				// Deadball/Integration: Long relievers routinely pitched 3+ innings
-				eraMinCap = inning <= 3 ? 18 : inning <= 6 ? 14 : 10;
-			} else if (year < 1973) {
-				eraMinCap = inning <= 3 ? 16 : inning <= 6 ? 12 : 8;
-			} else if (year < 1995) {
-				eraMinCap = inning <= 3 ? 12 : inning <= 6 ? 8 : 5;
-			} else {
-				// Modern era - strict caps
-				eraMinCap = inning <= 3 ? 9 : inning <= 6 ? 6 : 4;
-			}
-		}
-
-		// Use the overall season average for capping, which better represents typical reliever usage
-		// The inning-specific values are too low as they include short specialists
-		let seasonCap: number;
-		if (options?.seasonRelieverBFPOverall) {
-			// Use the overall average as the cap, which includes all reliever types
-			// This allows both short and long relievers to perform according to their actual ability
-			seasonCap = Math.max(eraMinCap, options.seasonRelieverBFPOverall);
-		} else if (options?.seasonRelieverBFP) {
-			// Fall back to inning-specific values if overall not available
-			const normBFP = inning <= 3
+		// Use inning-specific reliever BFP from season data
+		// These values represent the 75th percentile of actual historical relief appearances
+		let typicalBfp: number;
+		if (options?.seasonRelieverBFP) {
+			// Use season-specific values from export script (already percentile-based)
+			typicalBfp = inning <= 3
 				? options.seasonRelieverBFP.early
 				: inning <= 6
 					? options.seasonRelieverBFP.middle
 					: options.seasonRelieverBFP.late;
-			// Use 2.5x to account for overall being higher than inning-specific
-			seasonCap = Math.max(eraMinCap, normBFP * 2.5);
 		} else {
-			seasonCap = eraMinCap * 2.5;
+			// Fall back to defaults if no season data
+			if (year < 1940) {
+				typicalBfp = inning <= 3 ? 36 : inning <= 6 ? 20 : 10;
+			} else if (year < 1973) {
+				typicalBfp = inning <= 3 ? 28 : inning <= 6 ? 14 : 8;
+			} else if (year < 1995) {
+				typicalBfp = inning <= 3 ? 24 : inning <= 6 ? 10 : 6;
+			} else {
+				// Modern era - short specialists
+				typicalBfp = inning <= 3 ? 18 : inning <= 6 ? 8 : 5;
+			}
 		}
 
-		// Cap at the season cap to handle swingmen with inflated reliever averages
-		// But ensure we don't cap below the era minimum
-		typicalBfp = Math.max(Math.min(relieverAvg, seasonCap), eraMinCap);
-		// Lower variance for early eras (relievers pitched longer), higher for modern (specialists)
-		variance = seasonCap > 10 ? 0.15 : 0.30;
+		// Clamp to individual reliever's average to avoid exceeding their typical performance
+		// But allow some variance for game situations
+		typicalBfp = Math.min(typicalBfp, relieverAvg * 1.5);
+
+		// Variance based on BFP - higher variance for shorter outings (modern specialists)
+		const variance = typicalBfp > 15 ? 0.20 : 0.35;
 	}
 
 	const lowerThreshold = typicalBfp * (1 - variance);
