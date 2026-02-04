@@ -557,7 +557,13 @@ export class GameEngine {
 		const allTeamPitchers = [...teamPitchers, starterStats].map(toModelPitcher);
 		const classification = classifyPitchers(allTeamPitchers, leagueNorms);
 
-		// Override the starter to be the designated one
+		// Find the designated starter in the classification to get their isWorkhorse flag
+		// The classifier may have selected a different pitcher as "the" starter
+		const classifiedPitchers = [classification.starter, ...classification.relievers];
+		const designatedStarterClassification = classifiedPitchers.find(p => p.pitcherId === starterId);
+		const isWorkhorse = designatedStarterClassification?.isWorkhorse ?? false;
+
+		// Override the starter to be the designated one, preserving isWorkhorse flag
 		const starter: PitcherRole = {
 			pitcherId: starterId,
 			role: 'starter',
@@ -568,7 +574,8 @@ export class GameEngine {
 			avgBfpAsReliever: starterStats.avgBfpAsReliever ?? null,
 			hitsAllowed: 0,
 			walksAllowed: 0,
-			runsAllowed: 0
+			runsAllowed: 0,
+			isWorkhorse
 		};
 		this.pitcherStamina.set(starterId, starter);
 
