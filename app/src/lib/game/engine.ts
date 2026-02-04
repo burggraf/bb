@@ -2381,9 +2381,9 @@ export class GameEngine {
 			return true;
 		}
 
-		// Standard 9-inning game: away team wins when home team fails to tie/win in bottom of 9th
-		// (Tied games go to extra innings)
-		if (this.state.inning === 9 && !this.state.isTopInning && awayScore > homeScore) {
+		// Standard 9-inning game: away team wins when home team has completed their at-bat
+		// in bottom of 9th and still trails (tied games go to extra innings)
+		if (this.state.inning === 9 && !this.state.isTopInning && awayScore > homeScore && this.state.homeTeamHasBattedInInning) {
 			return true;
 		}
 

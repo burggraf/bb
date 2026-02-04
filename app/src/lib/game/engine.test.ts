@@ -91,12 +91,14 @@ function createSeasonPackage(): SeasonPackage {
 		});
 	}
 
-	// Pitchers
+	// Pitchers - ensure all required fields are present
 	const startingPitcher: PitcherStats = {
 		id: 'pitcher-1',
 		name: 'Lester, Jon',
 		throws: 'L',
 		teamId: 'team-1',
+		games: 30,
+		gamesStarted: 30,
 		avgBfpAsStarter: 27,
 		avgBfpAsReliever: null,
 		rates: {
@@ -110,8 +112,42 @@ function createSeasonPackage(): SeasonPackage {
 		name: 'Edwards, Carl',
 		throws: 'R',
 		teamId: 'team-1',
+		games: 60,
+		gamesStarted: 0,
 		avgBfpAsStarter: null,
 		avgBfpAsReliever: 4,
+		rates: {
+			vsLHB: createMinimalRates(),
+			vsRHB: createMinimalRates()
+		}
+	};
+
+	// Add more relievers for bullpen depth
+	const reliever2: PitcherStats = {
+		id: 'reliever-2',
+		name: 'Reliever, Two',
+		throws: 'R',
+		teamId: 'team-1',
+		games: 50,
+		gamesStarted: 0,
+		avgBfpAsStarter: null,
+		avgBfpAsReliever: 4,
+		rates: {
+			vsLHB: createMinimalRates(),
+			vsRHB: createMinimalRates()
+		}
+	};
+
+	const closer: PitcherStats = {
+		id: 'closer-1',
+		name: 'Closer, Joe',
+		throws: 'R',
+		teamId: 'team-1',
+		games: 60,
+		gamesStarted: 0,
+		saves: 30,
+		avgBfpAsStarter: null,
+		avgBfpAsReliever: 3,
 		rates: {
 			vsLHB: createMinimalRates(),
 			vsRHB: createMinimalRates()
@@ -141,8 +177,56 @@ function createSeasonPackage(): SeasonPackage {
 		name: 'Opp1, Player1',
 		throws: 'R',
 		teamId: 'team-2',
+		games: 30,
+		gamesStarted: 30,
 		avgBfpAsStarter: 27,
 		avgBfpAsReliever: null,
+		rates: {
+			vsLHB: createMinimalRates(),
+			vsRHB: createMinimalRates()
+		}
+	};
+
+	const opposingReliever1: PitcherStats = {
+		id: 'opposing-reliever-1',
+		name: 'OppReliever, One',
+		throws: 'R',
+		teamId: 'team-2',
+		games: 50,
+		gamesStarted: 0,
+		avgBfpAsStarter: null,
+		avgBfpAsReliever: 4,
+		rates: {
+			vsLHB: createMinimalRates(),
+			vsRHB: createMinimalRates()
+		}
+	};
+
+	const opposingReliever2: PitcherStats = {
+		id: 'opposing-reliever-2',
+		name: 'OppReliever, Two',
+		throws: 'L',
+		teamId: 'team-2',
+		games: 50,
+		gamesStarted: 0,
+		avgBfpAsStarter: null,
+		avgBfpAsReliever: 4,
+		rates: {
+			vsLHB: createMinimalRates(),
+			vsRHB: createMinimalRates()
+		}
+	};
+
+	const opposingCloser: PitcherStats = {
+		id: 'opposing-closer-1',
+		name: 'OppCloser, Joe',
+		throws: 'R',
+		teamId: 'team-2',
+		games: 60,
+		gamesStarted: 0,
+		saves: 30,
+		avgBfpAsStarter: null,
+		avgBfpAsReliever: 3,
 		rates: {
 			vsLHB: createMinimalRates(),
 			vsRHB: createMinimalRates()
@@ -166,7 +250,12 @@ function createSeasonPackage(): SeasonPackage {
 	const pitchers: Record<string, PitcherStats> = {
 		'pitcher-1': startingPitcher,
 		'reliever-1': relieverPitcher,
-		'opposing-player-1': opposingPitcher
+		'reliever-2': reliever2,
+		'closer-1': closer,
+		'opposing-player-1': opposingPitcher,
+		'opposing-reliever-1': opposingReliever1,
+		'opposing-reliever-2': opposingReliever2,
+		'opposing-closer-1': opposingCloser
 	};
 
 	return {
@@ -397,5 +486,87 @@ describe('Pitcher Re-Entry Bug', () => {
 		const reEntries = removedPitchers.filter(p => allNewPitchers.has(p));
 
 		expect(reEntries).toHaveLength(0);
+	});
+});
+
+describe('Home Team Batting 9th Inning Bug', () => {
+	let season: SeasonPackage;
+	let engine: GameEngine;
+
+	beforeEach(() => {
+		season = createSeasonPackage();
+		engine = new GameEngine(season, 'team-1', 'team-2', { enabled: false });
+	});
+
+	// Bug: When the away team is leading after the top of the 9th inning,
+	// the game ends immediately without giving the home team a chance to bat.
+	// Root cause: isComplete() checks `!this.state.isTopInning` which becomes true
+	// immediately after the top of the 9th ends, before the home team bats.
+	it('allows home team to bat in bottom of 9th when trailing', () => {
+		// Simulate the entire game
+		while (!engine.isComplete()) {
+			engine.simulatePlateAppearance();
+		}
+
+		const finalState = engine.getState();
+
+		// Calculate final scores
+		let awayScore = 0;
+		let homeScore = 0;
+		for (const play of finalState.plays) {
+			if (play.isTopInning) {
+				awayScore += play.runsScored;
+			} else {
+				homeScore += play.runsScored;
+			}
+		}
+
+		// Count plays in bottom of 9th
+		const playsInBottomOf9th = finalState.plays.filter(
+			p => p.inning === 9 && !p.isTopInning && p.outcome !== 'summary'
+		).length;
+
+		// If away team won in 9 innings, home team MUST have batted in bottom of 9th
+		// The flag should be set to true, and there should be at least 3 plays (3 outs)
+		if (awayScore > homeScore && finalState.inning === 9) {
+			// Home team had their chance - they completed their at-bat
+			expect(finalState.homeTeamHasBattedInInning).toBe(true);
+			// Should have at least 3 plate appearances (3 outs)
+			expect(playsInBottomOf9th).toBeGreaterThanOrEqual(3);
+		}
+	});
+
+	it('allows home team to bat in bottom of extra innings when trailing', () => {
+		// Simulate the entire game
+		while (!engine.isComplete()) {
+			engine.simulatePlateAppearance();
+		}
+
+		const finalState = engine.getState();
+
+		// Calculate final scores
+		let awayScore = 0;
+		let homeScore = 0;
+		for (const play of finalState.plays) {
+			if (play.isTopInning) {
+				awayScore += play.runsScored;
+			} else {
+				homeScore += play.runsScored;
+			}
+		}
+
+		// If away team won in extra innings, home team must have batted in final inning
+		if (finalState.inning > 9 && awayScore > homeScore) {
+			// Home team had their chance in the bottom of the final inning
+			expect(finalState.homeTeamHasBattedInInning).toBe(true);
+
+			// Count plays in bottom of final inning
+			const playsInBottomOfFinal = finalState.plays.filter(
+				p => p.inning === finalState.inning && !p.isTopInning && p.outcome !== 'summary'
+			).length;
+
+			// Should have at least 3 plate appearances (3 outs)
+			expect(playsInBottomOfFinal).toBeGreaterThanOrEqual(3);
+		}
 	});
 });
