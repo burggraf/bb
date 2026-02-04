@@ -90,25 +90,25 @@ export function classifyPitchers(
 			relievers.splice(closerIdx, 1);
 		}
 
-		// Classify remaining relievers: setup men (shorter outings) vs long relief (longer outings)
-		// Modern era: < 1.5 IP/G = setup, >= 1.5 IP/G = long relief
+		// Next 1-2 are setup men (by quality score, after closer removed)
+		const setupCount = Math.min(2, relievers.length);
+		for (let i = 0; i < setupCount; i++) {
+			setup.push(createPitcherRole(relievers[i]!.pitcher, 'reliever'));
+		}
+		relievers.splice(0, setupCount);
+
+		// Long relievers have higher innings per game (remaining after setup removed)
 		for (const r of relievers) {
-			if (r.quality.inningsPerGame > 1.5) {
+			if (r.quality.inningsPerGame > 1.3) {
 				longRelief.push(createPitcherRole(r.pitcher, 'reliever'));
 			} else {
-				// Shorter outings = setup man
-				setup.push(createPitcherRole(r.pitcher, 'reliever'));
+				remaining.push(createPitcherRole(r.pitcher, 'reliever'));
 			}
-		}
-
-		// Keep only top 2 setup men
-		if (setup.length > 2) {
-			remaining.push(...setup.splice(2));
 		}
 	} else {
 		// No closers - all relievers go to longRelief or remaining
 		for (const r of relievers) {
-			if (r.quality.inningsPerGame > 1.5) {
+			if (r.quality.inningsPerGame > 1.3) {
 				longRelief.push(createPitcherRole(r.pitcher, 'reliever'));
 			} else {
 				remaining.push(createPitcherRole(r.pitcher, 'reliever'));
