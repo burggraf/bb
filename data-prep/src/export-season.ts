@@ -535,7 +535,9 @@ WITH raw_batter_stats AS (
   JOIN dim.players b ON e.batter_id = b.player_id
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN game.games g ON e.game_id = g.game_id
-  LEFT JOIN validation.lahman_batting_season_agg lbs ON e.batter_id = lbs.player_id AND lbs.season = ${year}
+  -- Join through lahman_people because lahman tables use different player_id format
+  LEFT JOIN validation.lahman_people lppl ON e.batter_id = lppl.retro_id
+  LEFT JOIN validation.lahman_batting_season_agg lbs ON lppl.player_id = lbs.player_id AND lbs.season = ${year}
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
     AND e.plate_appearance_result != 'IntentionalWalk'
@@ -670,7 +672,9 @@ WITH raw_pitcher_batter_stats AS (
   JOIN dim.players b ON e.batter_id = b.player_id
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN game.games g ON e.game_id = g.game_id
-  LEFT JOIN validation.lahman_batting_season_agg lbs ON e.batter_id = lbs.player_id AND lbs.season = ${year}
+  -- Join through lahman_people because lahman tables use different player_id format
+  LEFT JOIN validation.lahman_people lppl ON e.batter_id = lppl.retro_id
+  LEFT JOIN validation.lahman_batting_season_agg lbs ON lppl.player_id = lbs.player_id AND lbs.season = ${year}
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
     AND e.plate_appearance_result != 'IntentionalWalk'
@@ -776,6 +780,7 @@ WITH raw_pitcher_stats AS (
     e.fielding_team_id,
     COUNT(*) as pa,
     -- Traditional stats from validation.lahman_pitching and lahman_pitching_season_agg
+    -- Need to join through lahman_people because player_id formats differ
     COALESCE(lp.games, 0) as games,
     COALESCE(lp.games_started, 0) as games_started,
     COALESCE(lp.complete_games, 0) as complete_games,
@@ -810,8 +815,11 @@ WITH raw_pitcher_stats AS (
   JOIN dim.players p ON e.pitcher_id = p.player_id
   JOIN dim.players b ON e.batter_id = b.player_id
   JOIN game.games g ON e.game_id = g.game_id
-  LEFT JOIN validation.lahman_pitching lp ON e.pitcher_id = lp.player_id AND lp.season = ${year}
-  LEFT JOIN validation.lahman_pitching_season_agg lps ON e.pitcher_id = lps.player_id AND lps.season = ${year}
+  -- Join through lahman_people because lahman tables use different player_id format
+  -- lahman_people.retro_id matches dim.players.player_id
+  LEFT JOIN validation.lahman_people lppl ON e.pitcher_id = lppl.retro_id
+  LEFT JOIN validation.lahman_pitching lp ON lppl.player_id = lp.player_id AND lp.season = ${year}
+  LEFT JOIN validation.lahman_pitching_season_agg lps ON lppl.player_id = lps.player_id AND lps.season = ${year}
   WHERE EXTRACT(YEAR FROM g.date) = ${year}
     AND e.plate_appearance_result IS NOT NULL
     AND e.plate_appearance_result != 'IntentionalWalk'
