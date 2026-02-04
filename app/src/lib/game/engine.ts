@@ -2381,15 +2381,16 @@ export class GameEngine {
 			return true;
 		}
 
-		// Standard 9-inning game: away team wins when home team has completed their at-bat
-		// in bottom of 9th and still trails (tied games go to extra innings)
-		if (this.state.inning === 9 && !this.state.isTopInning && awayScore > homeScore && this.state.homeTeamHasBattedInInning) {
+		// Standard 9-inning game: away team wins after home team has batted in bottom of 9th
+		// and still trails (tied games go to extra innings)
+		// This triggers when: inning is 10 (after bottom of 9th ended), top half, away leads, home batted in previous inning
+		if (this.state.inning === 10 && this.state.isTopInning && awayScore > homeScore && this.state.homeTeamHasBattedInInning) {
 			return true;
 		}
 
-		// Extra innings: if away team leads after top of an inning AND home team has already batted, game ends
+		// Extra innings (11th+): if away team leads after top of an inning AND home team has already batted, game ends
 		// (Home team had their chance and couldn't tie/win)
-		if (this.state.inning > 9 && this.state.isTopInning && awayScore > homeScore && this.state.homeTeamHasBattedInInning) {
+		if (this.state.inning > 10 && this.state.isTopInning && awayScore > homeScore && this.state.homeTeamHasBattedInInning) {
 			return true;
 		}
 
