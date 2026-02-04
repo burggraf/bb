@@ -10,8 +10,9 @@
     "export-range": "tsx src/export-all-seasons.ts"
   },
   "dependencies": {
-    "duckdb": "^1.1.3",
-    "@bb/model": "workspace:*"
+    "@bb/model": "workspace:*",
+    "better-sqlite3": "^12.6.2",
+    "duckdb": "^1.1.3"
   },
   "devDependencies": {
     "tsx": "^4.7.0",
