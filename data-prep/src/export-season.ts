@@ -1584,11 +1584,26 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
   const pitcherBfpRaw = parseCSV(pitcherBfpResult);
   const pitcherBfpMap = new Map<string, { avgBfpAsStarter: number | null; avgBfpAsReliever: number | null }>();
 
+  // Note: getPitcherBfpSQL has a bug where it counts all team PAs for starters
+  // We'll use lahman innings_pitched as a fallback to estimate BFP
+  // Roughly 3 batters per inning
+  const ESTIMATED_BFP_PER_IP = 3;
+
   for (const row of pitcherBfpRaw) {
-    pitcherBfpMap.set(row.pitcher_id, {
-      avgBfpAsStarter: row.avg_bfp_as_starter && row.avg_bfp_as_starter !== 'NULL' ? parseFloat(row.avg_bfp_as_starter) : null,
-      avgBfpAsReliever: row.avg_bfp_as_reliever && row.avg_bfp_as_reliever !== 'NULL' ? parseFloat(row.avg_bfp_as_reliever) : null,
-    });
+    const avgBfpAsStarter = row.avg_bfp_as_starter && row.avg_bfp_as_starter !== 'NULL' ? parseFloat(row.avg_bfp_as_starter) : null;
+    // If avgBfpAsStarter is suspiciously high (>100), the query overcounted
+    // Use lahman innings_pitched / games_started as a fallback
+    if (avgBfpAsStarter && avgBfpAsStarter > 100) {
+      pitcherBfpMap.set(row.pitcher_id, {
+        avgBfpAsStarter: null,  // Will be calculated from innings_pitched below
+        avgBfpAsReliever: row.avg_bfp_as_reliever && row.avg_bfp_as_reliever !== 'NULL' ? parseFloat(row.avg_bfp_as_reliever) : null,
+      });
+    } else {
+      pitcherBfpMap.set(row.pitcher_id, {
+        avgBfpAsStarter: avgBfpAsStarter,
+        avgBfpAsReliever: row.avg_bfp_as_reliever && row.avg_bfp_as_reliever !== 'NULL' ? parseFloat(row.avg_bfp_as_reliever) : null,
+      });
+    }
   }
   console.log(`    ✓ ${pitcherBfpMap.size} pitchers with BFP data`);
 
@@ -1603,7 +1618,18 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     const paR = parseNumber(row.pa_vs_r);
 
     // Get BFP data
-    const bfpData = pitcherBfpMap.get(row.pitcher_id) || { avgBfpAsStarter: null, avgBfpAsReliever: null };
+    let bfpData = pitcherBfpMap.get(row.pitcher_id) || { avgBfpAsStarter: null, avgBfpAsReliever: null };
+
+    // Calculate avgBfpAsStarter from innings_pitched if BFP query returned null or wrong value
+    const gamesStarted = parseNumber(row.games_started);
+    const inningsPitched = parseNumber(row.innings_pitched);
+    if (bfpData.avgBfpAsStarter === null && gamesStarted > 0) {
+      // Estimate BFP from innings pitched (roughly 3 batters per inning)
+      bfpData = {
+        ...bfpData,
+        avgBfpAsStarter: Math.round((inningsPitched / gamesStarted) * ESTIMATED_BFP_PER_IP)
+      };
+    }
 
     pitchers[row.pitcher_id] = {
       id: row.pitcher_id,
@@ -1614,10 +1640,10 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       avgBfpAsReliever: bfpData.avgBfpAsReliever,
       // Traditional stats from lahman tables
       games: parseNumber(row.games),
-      gamesStarted: parseNumber(row.games_started),
+      gamesStarted: gamesStarted,
       completeGames: parseNumber(row.complete_games),
       saves: parseNumber(row.saves),
-      inningsPitched: parseNumber(row.innings_pitched),
+      inningsPitched: inningsPitched,
       whip: parseNumber(row.whip),
       era: parseNumber(row.era),
       rates: {
