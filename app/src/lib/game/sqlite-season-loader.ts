@@ -104,19 +104,25 @@ async function setCache(year: number, data: Uint8Array): Promise<void> {
 	});
 }
 
+import pako from 'pako';
+
 /**
- * Download SQLite file from server
+ * Download and decompress SQLite file from server
  */
 async function downloadDatabase(year: number): Promise<Uint8Array> {
 	console.log(`[SQLite] Downloading season ${year}...`);
-	const response = await fetch(`/seasons/${year}.sqlite`);
+	const response = await fetch(`/seasons/${year}.sqlite.gz`);
 	if (!response.ok) {
-		throw new Error(`Failed to download ${year}.sqlite: ${response.statusText}`);
+		throw new Error(`Failed to download ${year}.sqlite.gz: ${response.statusText}`);
 	}
 	const buffer = await response.arrayBuffer();
-	const data = new Uint8Array(buffer);
-	console.log(`[SQLite] Downloaded ${year}.sqlite: ${data.length} bytes`);
-	return data;
+	const compressed = new Uint8Array(buffer);
+	console.log(`[SQLite] Downloaded ${year}.sqlite.gz: ${compressed.length} bytes (compressed)`);
+
+	// Decompress using pako
+	const decompressed = pako.ungzip(compressed);
+	console.log(`[SQLite] Decompressed to ${decompressed.length} bytes`);
+	return decompressed;
 }
 
 /**
