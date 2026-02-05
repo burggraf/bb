@@ -200,9 +200,11 @@ export const GAME_RESULTS_SCHEMA = `
   GROUP BY g.series_id, e.pitcher_id;
 `;
 
+import type { Database } from 'sql.js';
+
 /**
  * Create all tables, indexes, and views in an existing database
  */
-export function createGameResultsSchema(db: any): void {
+export function createGameResultsSchema(db: Database): void {
   db.exec(GAME_RESULTS_SCHEMA);
 }
