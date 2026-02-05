@@ -20,7 +20,7 @@ describe('TestSeasonDB', () => {
   });
 
   it('should get a batter by ID', () => {
-    const batter = db.getBatter('carew001'); // Rod Carew
+    const batter = db.getBatter('carer001'); // Rod Carew
 
     expect(batter).not.toBeNull();
     expect(batter!.name).toBeTruthy();
@@ -42,7 +42,7 @@ describe('TestSeasonDB', () => {
   });
 
   it('should get a pitcher by ID', () => {
-    const pitcher = db.getPitcher('palme001'); // Jim Palmer
+    const pitcher = db.getPitcher('palmj001'); // Jim Palmer
 
     expect(pitcher).not.toBeNull();
     expect(pitcher!.name).toBeTruthy();

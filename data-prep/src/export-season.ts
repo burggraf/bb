@@ -1998,7 +1998,8 @@ async function main() {
   // Output in requested format
   if (format === 'sqlite') {
     // Export to SQLite (delete temp file AFTER successful export)
-    await exportSeasonAsSqlite(season, outputPath, true);
+    const sqlitePath = `${outputPath}.sqlite`;
+    await exportSeasonAsSqlite(season, sqlitePath, true);
     // Remove temporary JSON file
     fs.unlinkSync(tmpPath);
   } else {
