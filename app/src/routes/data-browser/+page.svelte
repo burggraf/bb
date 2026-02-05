@@ -77,7 +77,7 @@
 		selectedTable = tableName;
 
 		try {
-			const result = db.exec(`PRAGMA table_info(${tableName})`);
+			const result = db.exec(`PRAGMA table_info("${tableName}")`);
 
 			if (result.length > 0) {
 				tableSchema = result[0].values.map((row) => ({
