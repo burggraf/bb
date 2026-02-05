@@ -26,8 +26,8 @@
 
 	<!-- Season Selector -->
 	<div class="mb-4">
-		<label class="block mb-1">Season:</label>
-		<select class="border rounded p-2">
+		<label for="season-select" class="block mb-1">Season:</label>
+		<select id="season-select" class="border rounded p-2">
 			<option>Select a year...</option>
 			<!-- Options will be populated -->
 		</select>
@@ -56,6 +56,7 @@
 			class="w-full border rounded p-2 font-mono"
 			rows="3"
 			placeholder="SELECT * FROM batters LIMIT 10"
+			aria-label="SQL query editor"
 		></textarea>
 		<button class="mt-2 bg-blue-500 text-white px-4 py-2 rounded"> Run Query </button>
 	</div>
