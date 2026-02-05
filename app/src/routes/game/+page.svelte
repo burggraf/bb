@@ -601,17 +601,9 @@
 </svelte:head>
 
 <div class="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden">
-	<!-- Header -->
+	<!-- Game Info Header -->
 	<header class="flex-shrink-0 bg-slate-950/50 border-b border-slate-700/50">
-		<div class="flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3 gap-2">
-			<!-- Back Link -->
-			<a href="/" class="text-slate-400 hover:text-white transition-colors flex items-center gap-1 sm:gap-2">
-				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-				</svg>
-				<span class="text-xs sm:text-sm font-medium hidden sm:inline">Home</span>
-			</a>
-
+		<div class="flex items-center justify-center px-3 sm:px-6 py-2 sm:py-3 gap-2">
 			<!-- Game Info -->
 			<div class="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-slate-400">
 				<span>{gameYear} Season</span>

@@ -216,7 +216,7 @@
 
 <div class="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-6xl">
 	<header class="mb-4 sm:mb-8 text-center">
-		<h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold mb-1 sm:mb-2">⚾ Baseball Sim</h1>
+		<h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold mb-1 sm:mb-2">Welcome</h1>
 		<p class="text-xs sm:text-sm lg:text-base text-zinc-400">Statistical baseball simulation powered by 115+ years of MLB data</p>
 	</header>
 

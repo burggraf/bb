@@ -134,8 +134,6 @@
 </svelte:head>
 
 <div class="container mx-auto p-4">
-	<h1 class="text-2xl font-bold mb-4">Database Viewer</h1>
-
 	<!-- Season Selector -->
 	<div class="mb-4">
 		<label for="season-select" class="block mb-1">Season:</label>
