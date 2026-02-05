@@ -223,28 +223,31 @@
 		<h2 class="font-bold mb-2">Results</h2>
 		{#if error}
 			<p class="text-red-500">{error}</p>
-		{:else if results.length === 0}
+		{:else if columns.length === 0}
 			<p class="text-gray-500">Run a query to see results</p>
+		{:else if results.length === 0}
+			<p class="text-gray-500">No results</p>
 		{:else}
 			<div class="overflow-x-auto">
-				<table class="border-collapse border">
+				<table class="border-collapse border border-gray-300 text-sm">
 					<thead>
 						<tr class="bg-gray-100">
 							{#each columns as col}
-								<th class="border px-2 py-1 text-left">{col}</th>
+								<th class="border border-gray-300 px-2 py-1 text-left">{col}</th>
 							{/each}
 						</tr>
 					</thead>
 					<tbody>
-						{#each results as row}
-							<tr>
+						{#each results as row, rowIndex}
+							<tr class="{rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
 								{#each row as cell}
-									<td class="border px-2 py-1">{cell}</td>
+									<td class="border border-gray-300 px-2 py-1">{cell}</td>
 								{/each}
 							</tr>
 						{/each}
 					</tbody>
 				</table>
+				<p class="text-gray-500 mt-2 text-sm">{results.length} rows</p>
 			</div>
 		{/if}
 	</div>
