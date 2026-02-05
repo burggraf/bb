@@ -1033,13 +1033,18 @@ ORDER BY pitcher_throws;
 
 function getTeamsSQL(year: number): string {
   return `
-SELECT
-  team_id,
-  league,
-  city,
-  nickname
-FROM dim.teams
-ORDER BY league, city;
+SELECT DISTINCT
+  t.team_id,
+  t.league,
+  t.city,
+  t.nickname
+FROM dim.teams t
+WHERE t.team_id IN (
+  SELECT away_team_id FROM game.games WHERE EXTRACT(YEAR FROM date) = ${year}
+  UNION
+  SELECT home_team_id FROM game.games WHERE EXTRACT(YEAR FROM date) = ${year}
+)
+ORDER BY t.league, t.city;
 `;
 }
 
