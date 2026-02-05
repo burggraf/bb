@@ -4,14 +4,16 @@
  */
 
 import * as SQLite from 'wa-sqlite';
-import type { SQLiteCompatibleType, SQLiteAPI } from 'wa-sqlite';
 import SQLiteESMFactory from 'wa-sqlite/dist/wa-sqlite.mjs';
 import { OriginPrivateFileSystemVFS } from 'wa-sqlite/src/examples/OriginPrivateFileSystemVFS.js';
 import { inflate } from 'pako';
 import type { SeasonPackage, BatterStats, PitcherStats, EventRates } from './types.js';
 
+// Type for SQLite compatible values (from wa-sqlite types)
+type SQLiteCompatibleType = number | string | Uint8Array | number[] | bigint | null;
+
 // Global SQLite API instance (initialized once)
-let sqlite3: SQLiteAPI | null = null;
+let sqlite3: ReturnType<typeof SQLite.Factory> | null = null;
 let module: any = null;
 
 const SEASON_CACHE = new Map<number, { db: number; season: SeasonPackage }>();
@@ -72,7 +74,9 @@ async function writeToOPFS(year: number, data: Uint8Array): Promise<void> {
   const opfsRoot = await navigator.storage.getDirectory();
   const fileHandle = await opfsRoot.getFileHandle(`${year}.sqlite`, { create: true });
   const writable = await fileHandle.createWritable();
-  await writable.write(data.buffer);
+  // Create a proper ArrayBuffer from the Uint8Array
+  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  await writable.write(buffer);
   await writable.close();
 }
 
@@ -108,8 +112,8 @@ async function openSeasonDatabase(year: number): Promise<number> {
 /**
  * Execute a query and return all rows as objects
  */
-async function queryAll(db: number, sql: string, params: SQLiteCompatibleType[] = []): Promise<Record<string, any>[]> {
-  const result = await sqlite3!.execWithParams(db, sql, params);
+async function queryAll(db: number, sql: string, params?: SQLiteCompatibleType[]): Promise<Record<string, any>[]> {
+  const result = await sqlite3!.execWithParams(db, sql, params || []);
   const columns = result.columns;
   return result.rows.map(row => {
     const obj: Record<string, any> = {};
