@@ -35,6 +35,7 @@ export async function exportSeasonAsSqlite(
     insertLeagueAverages(db, season.league);
     insertTeams(db, season.teams);
     insertGames(db, season.games);
+    insertParks(db, season.parks);
 
     console.log(`\n✅ Season exported to ${outputPath}`);
   } catch (error) {
@@ -239,12 +240,47 @@ function insertTeams(db: Database.Database, teams: SeasonPackage['teams']): void
 }
 
 function insertGames(db: Database.Database, games: SeasonPackage['games']): void {
-  const stmt = db.prepare('INSERT OR REPLACE INTO games (id, date, away_team, home_team, use_dh) VALUES (?, ?, ?, ?, ?)');
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO games (
+      id, date, away_team, home_team, use_dh, start_time, doubleheader_status,
+      time_of_day, game_type, sky, field_condition, precipitation, wind_direction,
+      park_id, temperature_fahrenheit, attendance, wind_speed_mph
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
   const insertMany = db.transaction((gameList: SeasonPackage['games']) => {
     for (const game of gameList) {
-      stmt.run(game.id, game.date, game.awayTeam, game.homeTeam, game.useDH ? 1 : 0);
+      stmt.run(
+        game.id,
+        game.date,
+        game.awayTeam,
+        game.homeTeam,
+        game.useDH ? 1 : 0,
+        game.startTime ?? null,
+        game.doubleheaderStatus ?? null,
+        game.timeOfDay ?? null,
+        game.gameType ?? null,
+        game.sky ?? null,
+        game.fieldCondition ?? null,
+        game.precipitation ?? null,
+        game.windDirection ?? null,
+        game.parkId ?? null,
+        game.temperatureFahrenheit ?? null,
+        game.attendance ?? null,
+        game.windSpeedMph ?? null
+      );
     }
   });
   insertMany(games);
   console.log(`  ✓ ${games.length} games`);
+}
+
+function insertParks(db: Database.Database, parks: SeasonPackage['parks']): void {
+  const stmt = db.prepare('INSERT OR REPLACE INTO parks (id, name, city, state, country) VALUES (?, ?, ?, ?, ?)');
+  const insertMany = db.transaction((parkList: SeasonPackage['parks'][string][]) => {
+    for (const park of Object.values(parkList)) {
+      stmt.run(park.id, park.name ?? null, park.city ?? null, park.state ?? null, park.country ?? null);
+    }
+  });
+  insertMany(Object.values(parks));
+  console.log(`  ✓ ${Object.keys(parks).length} parks`);
 }

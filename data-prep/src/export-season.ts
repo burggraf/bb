@@ -1055,10 +1055,38 @@ SELECT
   date::VARCHAR as date,
   away_team_id,
   home_team_id,
-  COALESCE(use_dh, false) as use_dh
+  COALESCE(use_dh, false) as use_dh,
+  start_time::VARCHAR as start_time,
+  doubleheader_status,
+  time_of_day,
+  game_type,
+  sky,
+  field_condition,
+  precipitation,
+  wind_direction,
+  park_id,
+  temperature_fahrenheit,
+  attendance,
+  wind_speed_mph
 FROM game.games
 WHERE EXTRACT(YEAR FROM date) = ${year}
 ORDER BY date;
+`;
+}
+
+function getParksSQL(year: number): string {
+  return `
+SELECT DISTINCT
+  g.park_id,
+  p.name,
+  p.city,
+  p.state,
+  p.country
+FROM game.games g
+LEFT JOIN dim.parks p ON g.park_id = p.park_id
+WHERE EXTRACT(YEAR FROM g.date) = ${year}
+  AND g.park_id IS NOT NULL
+ORDER BY g.park_id;
 `;
 }
 
@@ -1309,7 +1337,32 @@ export interface SeasonPackage {
     };
   };
   teams: Record<string, { id: string; league: string; city: string; nickname: string }>;
-  games: Array<{ id: string; date: string; awayTeam: string; homeTeam: string; useDH: boolean }>;
+  games: Array<{
+    id: string;
+    date: string;
+    awayTeam: string;
+    homeTeam: string;
+    useDH: boolean;
+    startTime?: string | null;
+    doubleheaderStatus?: string | null;
+    timeOfDay?: string | null;
+    gameType?: string | null;
+    sky?: string | null;
+    fieldCondition?: string | null;
+    precipitation?: string | null;
+    windDirection?: string | null;
+    parkId?: string | null;
+    temperatureFahrenheit?: number | null;
+    attendance?: number | null;
+    windSpeedMph?: number | null;
+  }>;
+  parks: Record<string, {
+    id: string;
+    name: string | null;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+  }>;
 }
 
 function calcEventRates(row: {
@@ -1892,9 +1945,38 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
       awayTeam: row.away_team_id,
       homeTeam: row.home_team_id,
       useDH: row.use_dh === 'true' || row.use_dh === 't',
+      startTime: row.start_time && row.start_time !== 'NULL' ? row.start_time : null,
+      doubleheaderStatus: row.doubleheader_status && row.doubleheader_status !== 'NULL' ? row.doubleheader_status : null,
+      timeOfDay: row.time_of_day && row.time_of_day !== 'NULL' ? row.time_of_day : null,
+      gameType: row.game_type && row.game_type !== 'NULL' ? row.game_type : null,
+      sky: row.sky && row.sky !== 'NULL' ? row.sky : null,
+      fieldCondition: row.field_condition && row.field_condition !== 'NULL' ? row.field_condition : null,
+      precipitation: row.precipitation && row.precipitation !== 'NULL' ? row.precipitation : null,
+      windDirection: row.wind_direction && row.wind_direction !== 'NULL' ? row.wind_direction : null,
+      parkId: row.park_id && row.park_id !== 'NULL' ? row.park_id : null,
+      temperatureFahrenheit: row.temperature_fahrenheit && row.temperature_fahrenheit !== 'NULL' ? parseNumber(row.temperature_fahrenheit) : null,
+      attendance: row.attendance && row.attendance !== 'NULL' ? parseNumber(row.attendance) : null,
+      windSpeedMph: row.wind_speed_mph && row.wind_speed_mph !== 'NULL' ? parseNumber(row.wind_speed_mph) : null,
     });
   }
   console.log(`    ✓ ${games.length} games`);
+
+  // Extract parks (unique park_ids from games)
+  console.log(`  🏟️  Parks...`);
+  const parksResult = runDuckDB(getParksSQL(year), dbPath);
+  const parksRaw = parseCSV(parksResult);
+  const parks: SeasonPackage['parks'] = {};
+
+  for (const row of parksRaw) {
+    parks[row.park_id] = {
+      id: row.park_id,
+      name: row.name && row.name !== 'NULL' ? row.name : null,
+      city: row.city && row.city !== 'NULL' ? row.city : null,
+      state: row.state && row.state !== 'NULL' ? row.state : null,
+      country: row.country && row.country !== 'NULL' ? row.country : null,
+    };
+  }
+  console.log(`    ✓ ${Object.keys(parks).length} parks`);
 
   // Get season-specific stamina data (percentiles for starter pull thresholds)
   console.log('  📊 Season stamina data...');
@@ -1970,6 +2052,7 @@ export async function exportSeason(year: number, dbPath: string, outputPath: str
     },
     teams,
     games,
+    parks,
   };
 
   // Write to file (JSON format)

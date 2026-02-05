@@ -38,35 +38,35 @@ function formatBytes(bytes: number): string {
 
 function generateManifest(seasonsDir: string): Manifest {
 	const files = fs.readdirSync(seasonsDir);
-	const sqliteFiles = files.filter((f) => f.endsWith('.sqlite'));
+	// Look for .sqlite.gz files (we only keep the compressed versions)
+	const gzFiles = files.filter((f) => f.endsWith('.sqlite.gz'));
 
 	const seasons: SeasonEntry[] = [];
 	let totalSize = 0;
 	let totalCompressedSize = 0;
 
-	for (const file of sqliteFiles) {
-		const yearMatch = file.match(/(\d{4})\.sqlite/);
+	for (const gzFile of gzFiles) {
+		const yearMatch = gzFile.match(/(\d{4})\.sqlite\.gz/);
 		if (!yearMatch) continue;
 
 		const year = parseInt(yearMatch[1], 10);
-		const sqlitePath = path.join(seasonsDir, file);
-		const gzPath = path.join(seasonsDir, `${file}.gz`);
+		const gzPath = path.join(seasonsDir, gzFile);
+		const sqlitePath = gzPath.replace('.gz', '');
 
-		const size = fs.statSync(sqlitePath).size;
+		// Estimate uncompressed size (typically ~2.5-3x compression ratio for SQLite)
+		// We'll use the compressed size as a proxy since we don't keep uncompressed files
+		const compressedSize = fs.statSync(gzPath).size;
+		const estimatedSize = Math.round(compressedSize * 2.8);
 
-		let compressedSize = 0;
-		if (fs.existsSync(gzPath)) {
-			compressedSize = fs.statSync(gzPath).size;
-		}
-
+		// Store the .gz filename since that's what we actually have
 		seasons.push({
 			year,
-			file,
-			size,
+			file: gzFile,
+			size: estimatedSize,
 			compressedSize,
 		});
 
-		totalSize += size;
+		totalSize += estimatedSize;
 		totalCompressedSize += compressedSize;
 	}
 

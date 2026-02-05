@@ -142,8 +142,29 @@ export function createSeasonSchema(db: Database.Database): void {
       away_team TEXT NOT NULL,
       home_team TEXT NOT NULL,
       use_dh INTEGER NOT NULL CHECK(use_dh IN (0, 1)),
+      start_time TEXT,
+      doubleheader_status TEXT,
+      time_of_day TEXT,
+      game_type TEXT,
+      sky TEXT,
+      field_condition TEXT,
+      precipitation TEXT,
+      wind_direction TEXT,
+      park_id TEXT,
+      temperature_fahrenheit INTEGER,
+      attendance INTEGER,
+      wind_speed_mph INTEGER,
       FOREIGN KEY (away_team) REFERENCES teams(id),
       FOREIGN KEY (home_team) REFERENCES teams(id)
+    );
+
+    -- Parks table
+    CREATE TABLE IF NOT EXISTS parks (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      city TEXT,
+      state TEXT,
+      country TEXT
     );
 
     -- Indexes for common queries
