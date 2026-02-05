@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { loadSeason } from '$lib/game/season-loader.js';
 	import {
-		downloadSeason,
-		isSeasonDownloaded,
-		type SeasonDownloadState
-	} from '$lib/game/season-download.js';
+		loadSeason,
+		isSeasonCached,
+		downloadSeason as downloadSeasonSqlite
+	} from '$lib/game/sqlite-season-loader.js';
 	import {
 		downloadTeamsData,
 		isTeamsDataDownloaded,
@@ -16,6 +15,12 @@
 		type TeamInfo
 	} from '$lib/game/teams-data.js';
 	import type { Team, SeasonPackage } from '$lib/game/types.js';
+
+	type SeasonDownloadState = {
+		status: 'idle' | 'downloading' | 'complete' | 'error';
+		progress: number;
+		error: string | null;
+	};
 
 	// Teams data download state
 	let teamsDataDownloadState = $state<{
@@ -121,9 +126,9 @@
 			}
 		})();
 
-		// Check if season is downloaded
+		// Check if season is downloaded (SQLite)
 		(async () => {
-			const downloaded = await isSeasonDownloaded(year);
+			const downloaded = await isSeasonCached(year);
 			if (downloaded) {
 				try {
 					seasonData = await loadSeason(year);
@@ -135,19 +140,21 @@
 		})();
 	});
 
-	// Download the selected season
+	// Download the selected season (SQLite)
 	async function downloadSelectedSeason() {
 		if (!selectedYear) return;
 
 		downloadState = { status: 'downloading', progress: 0, error: null };
 
 		try {
-			seasonData = await downloadSeason(selectedYear, (progress) => {
+			await downloadSeasonSqlite(selectedYear, (progress) => {
 				if (downloadState) {
 					downloadState.progress = progress;
 				}
 			});
 
+			// Load the season after download
+			seasonData = await loadSeason(selectedYear);
 			isSeasonReady = true;
 			downloadState = { status: 'complete', progress: 1, error: null };
 		} catch (error) {

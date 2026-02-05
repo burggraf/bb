@@ -15,7 +15,7 @@
 	"dependencies": {
 		"@bb/model": "workspace:*",
 		"pako": "^2.1.0",
-		"wa-sqlite": "^1.0.0"
+		"sql.js": "^1.13.0"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",

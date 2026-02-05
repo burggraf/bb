@@ -225,7 +225,8 @@
 				};
 			}
 		} catch (error) {
-			currentBatter = 'Error: ' + (error as Error).message;
+			console.error('Game loading error:', error);
+			currentBatter = 'Error: ' + (error instanceof Error ? error.message : String(error));
 			currentPitcher = 'See console for details';
 		}
 		})();
