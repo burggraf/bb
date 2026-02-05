@@ -75,7 +75,7 @@ async function writeToOPFS(year: number, data: Uint8Array): Promise<void> {
   const fileHandle = await opfsRoot.getFileHandle(`${year}.sqlite`, { create: true });
   const writable = await fileHandle.createWritable();
   // Create a proper ArrayBuffer from the Uint8Array
-  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  const buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
   await writable.write(buffer);
   await writable.close();
 }
