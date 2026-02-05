@@ -1,7 +1,11 @@
 <script lang="ts">
 	import type { Database } from 'sql.js';
 	import { getAvailableYears } from '$lib/game/season-loader';
+	import { getDatabaseBytes } from '$lib/game/sqlite-season-loader';
+	import initSqlJs from 'sql.js';
 	import { onMount } from 'svelte';
+
+	let SqlJs: Awaited<ReturnType<typeof initSqlJs>> | null = null;
 
 	let selectedYear = $state<number | null>(null);
 	let db = $state<Database | null>(null);
@@ -18,17 +22,53 @@
 	let availableYears = $state<number[]>([]);
 
 	onMount(async () => {
+		// Initialize sql.js
+		SqlJs = await initSqlJs({
+			locateFile: (file: string) => `https://sql.js.org/dist/${file}`
+		});
+
 		availableYears = await getAvailableYears();
 		if (availableYears.length > 0) {
 			selectedYear = availableYears[0];
-			loadDatabase(availableYears[0]);
+			await loadDatabase(availableYears[0]);
 		}
 	});
 
 	// TODO: Load season database and populate tables
-	function loadDatabase(year: number) {
-		// Will be implemented in Task 3
-		console.log('Loading database for year:', year);
+	async function loadDatabase(year: number) {
+		loading = true;
+		error = null;
+
+		try {
+			// Load from IndexedDB cache or download
+			const dbBytes = await getDatabaseBytes(year);
+
+			if (!SqlJs) {
+				throw new Error('sql.js not initialized');
+			}
+
+			// Create in-memory database
+			db = new SqlJs.Database(dbBytes);
+
+			// Get list of tables
+			const tableResult = db.exec(
+				"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+			);
+
+			if (tableResult.length > 0) {
+				tables = tableResult[0].values.map((row: unknown[]) => row[0] as string);
+			}
+
+			// Clear previous state
+			selectedTable = null;
+			tableSchema = [];
+			results = [];
+			columns = [];
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load database';
+		} finally {
+			loading = false;
+		}
 	}
 </script>
 
@@ -58,6 +98,10 @@
 			{/each}
 		</select>
 	</div>
+
+	{#if loading}
+		<p class="text-gray-500">Loading {selectedYear}...</p>
+	{/if}
 
 	<!-- Schema Browser -->
 	<div class="mb-4 grid grid-cols-2 gap-4">

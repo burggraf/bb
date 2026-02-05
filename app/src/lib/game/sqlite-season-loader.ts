@@ -31,7 +31,7 @@ interface SeasonManifest {
 /**
  * Initialize SQL.js
  */
-async function initializeSQLJS(): Promise<void> {
+export async function initializeSQLJS(): Promise<void> {
 	if (SQL) return;
 
 	console.log('[SQLite] Initializing sql.js...');
@@ -131,7 +131,7 @@ async function downloadDatabase(year: number): Promise<Uint8Array> {
 /**
  * Get database bytes (from cache or download)
  */
-async function getDatabaseBytes(year: number): Promise<Uint8Array> {
+export async function getDatabaseBytes(year: number): Promise<Uint8Array> {
 	// Check cache first
 	const cached = await getCached(year);
 	if (cached) {
@@ -149,7 +149,7 @@ async function getDatabaseBytes(year: number): Promise<Uint8Array> {
 /**
  * Open database from bytes using sql.js
  */
-async function openDatabaseFromBytes(year: number, data: Uint8Array): Promise<Database> {
+export async function openDatabaseFromBytes(year: number, data: Uint8Array): Promise<Database> {
 	await initializeSQLJS();
 
 	console.log(`[SQLite] Opening database from ${data.length} bytes...`);
