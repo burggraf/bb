@@ -133,13 +133,15 @@
 	<title>Database Viewer - Baseball Sim</title>
 </svelte:head>
 
-<div class="container mx-auto p-4">
+<div class="container mx-auto p-4 bg-gray-50 min-h-screen">
+	<h1 class="text-2xl font-bold mb-4 text-gray-900">Database Viewer</h1>
+
 	<!-- Season Selector -->
 	<div class="mb-4">
-		<label for="season-select" class="block mb-1">Season:</label>
+		<label for="season-select" class="block mb-1 text-gray-800 dark:text-gray-200">Season:</label>
 		<select
 			id="season-select"
-			class="border rounded p-2"
+			class="border border-gray-300 rounded p-2 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500"
 			onchange={(e) => {
 				const year = parseInt((e.target as HTMLSelectElement).value);
 				selectedYear = year;
@@ -155,17 +157,17 @@
 	</div>
 
 	{#if loading}
-		<p class="text-gray-500">Loading {selectedYear}...</p>
+		<p class="text-gray-700">Loading {selectedYear}...</p>
 	{/if}
 
 	<!-- Schema Browser -->
 	<div class="mb-4 grid grid-cols-2 gap-4">
 		<div>
-			<h2 class="font-bold mb-2">Tables</h2>
-			<ul class="border rounded p-2">
+			<h2 class="font-bold mb-2 text-gray-900">Tables</h2>
+			<ul class="border border-gray-300 rounded p-2 bg-white">
 				{#each tables as table}
 					<li
-						class="cursor-pointer hover:bg-gray-100 p-1 {selectedTable === table ? 'bg-blue-100' : ''}"
+						class="cursor-pointer hover:bg-blue-50 p-1 text-gray-900 {selectedTable === table ? 'bg-blue-100' : ''}"
 						onclick={() => loadTableSchema(table)}
 					>
 						{table}
@@ -174,31 +176,31 @@
 			</ul>
 		</div>
 		<div>
-			<h2 class="font-bold mb-2">Schema</h2>
-			<div class="border rounded p-2">
+			<h2 class="font-bold mb-2 text-gray-900">Schema</h2>
+			<div class="border border-gray-300 rounded p-2 bg-white">
 				{#if tableSchema.length > 0}
 					<table class="w-full text-sm">
 						<thead>
-							<tr class="border-b">
-								<th class="text-left">Column</th>
-								<th class="text-left">Type</th>
-								<th class="text-left">Nullable</th>
-								<th class="text-left">PK</th>
+							<tr class="border-b border-gray-300">
+								<th class="text-left text-gray-900">Column</th>
+								<th class="text-left text-gray-900">Type</th>
+								<th class="text-left text-gray-900">Nullable</th>
+								<th class="text-left text-gray-900">PK</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each tableSchema as col}
-								<tr class="border-b">
-									<td class="py-1">{col.name}</td>
-									<td>{col.type}</td>
-									<td>{col.notnull ? 'NO' : 'YES'}</td>
-									<td>{col.pk ? '✓' : ''}</td>
+								<tr class="border-b border-gray-200">
+									<td class="py-1 text-gray-900">{col.name}</td>
+									<td class="text-gray-700">{col.type}</td>
+									<td class="text-gray-700">{col.notnull ? 'NO' : 'YES'}</td>
+									<td class="text-gray-700">{col.pk ? '✓' : ''}</td>
 								</tr>
 							{/each}
 						</tbody>
 					</table>
 				{:else}
-					<p class="text-gray-500">Select a table to view schema</p>
+					<p class="text-gray-600">Select a table to view schema</p>
 				{/if}
 			</div>
 		</div>
@@ -206,9 +208,9 @@
 
 	<!-- Query Editor -->
 	<div class="mb-4">
-		<h2 class="font-bold mb-2">Query</h2>
+		<h2 class="font-bold mb-2 text-gray-900">Query</h2>
 		<textarea
-			class="w-full border rounded p-2 font-mono"
+			class="w-full border border-gray-300 rounded p-2 font-mono bg-white text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 			rows="3"
 			placeholder="SELECT * FROM batters LIMIT 10"
 			aria-label="SQL query editor"
@@ -230,20 +232,20 @@
 
 	<!-- Results -->
 	<div>
-		<h2 class="font-bold mb-2">Results</h2>
+		<h2 class="font-bold mb-2 text-gray-900">Results</h2>
 		{#if error}
-			<p class="text-red-500">{error}</p>
+			<p class="text-red-600 bg-red-50 border border-red-200 rounded p-2">{error}</p>
 		{:else if columns.length === 0}
-			<p class="text-gray-500">Run a query to see results</p>
+			<p class="text-gray-600">Run a query to see results</p>
 		{:else if results.length === 0}
-			<p class="text-gray-500">No results</p>
+			<p class="text-gray-600">No results</p>
 		{:else}
 			<div class="overflow-x-auto">
 				<table class="border-collapse border border-gray-300 text-sm">
 					<thead>
 						<tr class="bg-gray-100">
 							{#each columns as col}
-								<th class="border border-gray-300 px-2 py-1 text-left">{col}</th>
+								<th class="border border-gray-300 px-2 py-1 text-left text-gray-900">{col}</th>
 							{/each}
 						</tr>
 					</thead>
@@ -251,13 +253,13 @@
 						{#each results as row, rowIndex}
 							<tr class="{rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
 								{#each row as cell}
-									<td class="border border-gray-300 px-2 py-1">{cell}</td>
+									<td class="border border-gray-300 px-2 py-1 text-gray-900">{cell}</td>
 								{/each}
 							</tr>
 						{/each}
 					</tbody>
 				</table>
-				<p class="text-gray-500 mt-2 text-sm">{results.length} rows</p>
+				<p class="text-gray-700 mt-2 text-sm">{results.length} rows</p>
 			</div>
 		{/if}
 	</div>
