@@ -422,6 +422,36 @@ export async function loadSeason(year: number): Promise<SeasonPackage> {
 }
 
 /**
+ * Load a season with players for specific teams (for GameEngine)
+ * This pre-loads batters and pitchers for the two teams that will play
+ */
+export async function loadSeasonForGame(
+  year: number,
+  awayTeam: string,
+  homeTeam: string
+): Promise<SeasonPackage> {
+  // Load base season (metadata)
+  const season = await loadSeason(year);
+
+  // Load batters and pitchers for both teams
+  const [awayBatters, homeBatters] = await Promise.all([
+    getBattersForTeam(year, awayTeam),
+    getBattersForTeam(year, homeTeam),
+  ]);
+
+  const [awayPitchers, homePitchers] = await Promise.all([
+    getPitchersForTeam(year, awayTeam),
+    getPitchersForTeam(year, homeTeam),
+  ]);
+
+  // Merge into season package
+  season.batters = { ...awayBatters, ...homeBatters };
+  season.pitchers = { ...awayPitchers, ...homePitchers };
+
+  return season;
+}
+
+/**
  * Get batters for a specific team (lazy load)
  */
 export async function getBattersForTeam(year: number, teamId: string): Promise<Record<string, BatterStats>> {
