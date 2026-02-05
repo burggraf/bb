@@ -104,25 +104,28 @@ async function setCache(year: number, data: Uint8Array): Promise<void> {
 	});
 }
 
-import pako from 'pako';
-
 /**
- * Download and decompress SQLite file from server
+ * Download SQLite file from server
+ * The browser automatically decompresses .gz files served with Content-Encoding: gzip
  */
 async function downloadDatabase(year: number): Promise<Uint8Array> {
 	console.log(`[SQLite] Downloading season ${year}...`);
-	const response = await fetch(`/seasons/${year}.sqlite.gz`);
-	if (!response.ok) {
-		throw new Error(`Failed to download ${year}.sqlite.gz: ${response.statusText}`);
-	}
-	const buffer = await response.arrayBuffer();
-	const compressed = new Uint8Array(buffer);
-	console.log(`[SQLite] Downloaded ${year}.sqlite.gz: ${compressed.length} bytes (compressed)`);
+	try {
+		const response = await fetch(`/seasons/${year}.sqlite.gz`);
+		if (!response.ok) {
+			throw new Error(`Failed to download ${year}.sqlite.gz: ${response.statusText}`);
+		}
 
-	// Decompress using pako
-	const decompressed = pako.ungzip(compressed);
-	console.log(`[SQLite] Decompressed to ${decompressed.length} bytes`);
-	return decompressed;
+		// Browser automatically decompresses when Content-Encoding: gzip is set
+		const buffer = await response.arrayBuffer();
+		const data = new Uint8Array(buffer);
+
+		console.log(`[SQLite] Downloaded ${year}.sqlite.gz: ${data.length} bytes (decompressed)`);
+		return data;
+	} catch (error: any) {
+		console.error(`[SQLite] Error downloading ${year}:`, error.message, error);
+		throw error;
+	}
 }
 
 /**
