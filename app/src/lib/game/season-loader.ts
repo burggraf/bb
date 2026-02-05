@@ -211,3 +211,39 @@ export function clearSeasonCache(): void {
 		}
 	}
 }
+
+/**
+ * Load season with players filtered to specific teams (for GameEngine)
+ * This pre-loads batters and pitchers for the two teams that will play
+ */
+export async function loadSeasonForGame(
+	year: number,
+	awayTeam: string,
+	homeTeam: string
+): Promise<SeasonPackage> {
+	// Load base season (includes all players)
+	const season = await loadSeason(year);
+
+	// Filter batters to only include players from the two teams
+	const filteredBatters: Record<string, SeasonPackage['batters'][string]> = {};
+	for (const [id, batter] of Object.entries(season.batters)) {
+		if (batter.teamId === awayTeam || batter.teamId === homeTeam) {
+			filteredBatters[id] = batter;
+		}
+	}
+
+	// Filter pitchers to only include players from the two teams
+	const filteredPitchers: Record<string, SeasonPackage['pitchers'][string]> = {};
+	for (const [id, pitcher] of Object.entries(season.pitchers)) {
+		if (pitcher.teamId === awayTeam || pitcher.teamId === homeTeam) {
+			filteredPitchers[id] = pitcher;
+		}
+	}
+
+	// Return filtered season package
+	return {
+		...season,
+		batters: filteredBatters,
+		pitchers: filteredPitchers,
+	};
+}

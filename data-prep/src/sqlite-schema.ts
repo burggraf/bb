@@ -24,7 +24,7 @@ export function createSeasonSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS batters (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      bats TEXT NOT NULL CHECK(bats IN ('L', 'R', 'S')),
+      bats TEXT NOT NULL CHECK(bats IN ('L', 'R', 'S', '?')),
       team_id TEXT NOT NULL,
       primary_position INTEGER NOT NULL,
       position_eligibility TEXT NOT NULL,
