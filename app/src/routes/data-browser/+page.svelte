@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Database } from 'sql.js';
+	import { getAvailableYears } from '$lib/game/season-loader';
+	import { onMount } from 'svelte';
 
 	let selectedYear = $state<number | null>(null);
 	let db = $state<Database | null>(null);
@@ -13,8 +15,21 @@
 	let columns = $state<string[]>([]);
 	let error = $state<string | null>(null);
 	let loading = $state<boolean>(false);
+	let availableYears = $state<number[]>([]);
+
+	onMount(async () => {
+		availableYears = await getAvailableYears();
+		if (availableYears.length > 0) {
+			selectedYear = availableYears[0];
+			loadDatabase(availableYears[0]);
+		}
+	});
 
 	// TODO: Load season database and populate tables
+	function loadDatabase(year: number) {
+		// Will be implemented in Task 3
+		console.log('Loading database for year:', year);
+	}
 </script>
 
 <svelte:head>
@@ -27,9 +42,20 @@
 	<!-- Season Selector -->
 	<div class="mb-4">
 		<label for="season-select" class="block mb-1">Season:</label>
-		<select id="season-select" class="border rounded p-2">
-			<option>Select a year...</option>
-			<!-- Options will be populated -->
+		<select
+			id="season-select"
+			class="border rounded p-2"
+			onchange={(e) => {
+				const year = parseInt((e.target as HTMLSelectElement).value);
+				selectedYear = year;
+				loadDatabase(year);
+			}}
+		>
+			{#each availableYears as year}
+				<option value={year} selected={year === selectedYear}>
+					{year}
+				</option>
+			{/each}
 		</select>
 	</div>
 
