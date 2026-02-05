@@ -92,6 +92,29 @@
 			error = e instanceof Error ? e.message : 'Failed to load schema';
 		}
 	}
+
+	function executeQuery() {
+		if (!db || !query.trim()) return;
+
+		error = null;
+		results = [];
+		columns = [];
+
+		try {
+			const queryResult = db.exec(query);
+
+			if (queryResult.length === 0) {
+				// No results (e.g., INSERT without RETURNING)
+				return;
+			}
+
+			const result = queryResult[0];
+			columns = result.columns;
+			results = result.values.map((row) => row.map(String));
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Query failed';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -179,8 +202,20 @@
 			rows="3"
 			placeholder="SELECT * FROM batters LIMIT 10"
 			aria-label="SQL query editor"
+			bind:value={query}
+			onkeydown={(e) => {
+				if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+					e.preventDefault();
+					executeQuery();
+				}
+			}}
 		></textarea>
-		<button class="mt-2 bg-blue-500 text-white px-4 py-2 rounded"> Run Query </button>
+		<button
+			class="mt-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+			onclick={executeQuery}
+		>
+			Run Query
+		</button>
 	</div>
 
 	<!-- Results -->
@@ -191,9 +226,26 @@
 		{:else if results.length === 0}
 			<p class="text-gray-500">Run a query to see results</p>
 		{:else}
-			<table class="border-collapse border">
-				<!-- Results table -->
-			</table>
+			<div class="overflow-x-auto">
+				<table class="border-collapse border">
+					<thead>
+						<tr class="bg-gray-100">
+							{#each columns as col}
+								<th class="border px-2 py-1 text-left">{col}</th>
+							{/each}
+						</tr>
+					</thead>
+					<tbody>
+						{#each results as row}
+							<tr>
+								{#each row as cell}
+									<td class="border px-2 py-1">{cell}</td>
+								{/each}
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
 		{/if}
 	</div>
 </div>
