@@ -3,7 +3,7 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { MatchupModel } from '@bb/model';
-	import { loadSeason } from '$lib/game/season-loader.js';
+	import { loadSeasonForGame } from '$lib/game/sqlite-season-loader.js';
 	import { GameEngine } from '$lib/game/engine.js';
 	import type { GameState, PlayEvent } from '$lib/game/types.js';
 	import GameScoreboard from '$lib/components/GameScoreboard.svelte';
@@ -165,7 +165,7 @@
 			}
 
 			try {
-				season = await loadSeason(gameYear);
+				season = await loadSeasonForGame(gameYear, awayTeamId, homeTeamId);
 
 				// Validate that teams exist in the season
 				if (!season.teams[awayTeamId]) {
