@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { MatchupModel } from './MatchupModel.js';
 import type { Matchup, EventRates } from './types.js';
+import { TestSeasonDB, type BatterStats, type PitcherStats } from '../test/helpers/season-db.js';
 
 /**
  * Helper function to create valid 17-outcome EventRates
@@ -237,5 +238,63 @@ describe('MatchupModel', () => {
       expect(config.coefficients.pitcher).toBe(0.9);
       expect(config.coefficients.league).toBe(-1.1);
     });
+  });
+});
+
+describe('MatchupModel - with real season data', () => {
+  let db: TestSeasonDB;
+
+  beforeAll(() => {
+    db = new TestSeasonDB('../../app/static/seasons/1976.sqlite');
+  });
+
+  afterAll(() => {
+    db.close();
+  });
+
+  it('should predict outcomes for actual players', () => {
+    const batter = db.getBatter('carer001'); // Rod Carew
+    const pitcher = db.getPitcher('palmj001'); // Jim Palmer
+    const league = db.getLeagueAverages();
+
+    if (!batter || !pitcher) {
+      throw new Error('Test data not found - ensure SQLite file exists');
+    }
+
+    const model = new MatchupModel();
+    const distribution = model.predict({
+      batter: {
+        id: batter.id,
+        name: batter.name,
+        handedness: batter.bats,
+        rates: {
+          vsLeft: batter.rates.vsLHP,
+          vsRight: batter.rates.vsRHP,
+        },
+      },
+      pitcher: {
+        id: pitcher.id,
+        name: pitcher.name,
+        handedness: pitcher.throws,
+        rates: {
+          vsLeft: pitcher.rates.vsLHB,
+          vsRight: pitcher.rates.vsRHB,
+        },
+      },
+      league: {
+        year: 1976,
+        rates: {
+          vsLeft: league.vsLHP,
+          vsRight: league.vsRHP,
+        },
+      },
+    });
+
+    // Validate distribution
+    const sum = Object.values(distribution).reduce((s, v) => s + v, 0);
+    expect(sum).toBeCloseTo(1, 4);
+    expect(distribution.homeRun).toBeGreaterThan(0);
+    expect(distribution.strikeout).toBeGreaterThan(0);
+    expect(distribution.walk).toBeGreaterThan(0);
   });
 });
