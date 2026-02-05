@@ -3,8 +3,6 @@
  * Downloaded and cached permanently
  */
 
-import { clearSeasonCache } from './season-loader.js';
-
 const TEAMS_DATA_VERSION = '1.0';
 const CACHE_KEY = 'bb_teams_data';
 
