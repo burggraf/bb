@@ -11,36 +11,183 @@
  */
 
 import { GameEngine } from './src/lib/game/engine.js';
-import type { SeasonPackage, PlayEvent } from './src/lib/game/types.js';
+import type { SeasonPackage, PlayEvent, BatterStats, PitcherStats, EventRates } from './src/lib/game/types.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import pako from 'pako';
+import Database from 'better-sqlite3';
 
-// Load season data directly from file system (Node.js compatible)
-// Handles both .json.gz and .json files
+/**
+ * Load season data from SQLite files (Node.js compatible)
+ * Reads .sqlite.gz files, decompresses with pako, and queries with better-sqlite3
+ */
 async function loadSeason(year: number): Promise<SeasonPackage> {
-	const { createReadStream } = await import('fs');
-	const { createGunzip } = await import('zlib');
-	const { pipeline } = await import('stream/promises');
+	const seasonPathGz = join(process.cwd(), 'static', 'seasons', `${year}.sqlite.gz`);
 
-	const seasonPathGz = join(process.cwd(), 'static', 'seasons', `${year}.json.gz`);
-	const seasonPathJson = join(process.cwd(), 'static', 'seasons', `${year}.json`);
+	// Read and decompress the gzipped SQLite file
+	const compressedData = readFileSync(seasonPathGz);
+	const sqliteData = pako.ungzip(compressedData);
 
-	// Try .json.gz first, then fall back to .json
-	let data: string;
-	try {
-		const gzip = createGunzip();
-		const source = createReadStream(seasonPathGz);
-		const dest: any[] = [];
-		// Use pipeline with array to collect data
-		await new Promise((resolve, reject) => {
-			source.on('error', reject).pipe(gzip).on('data', (chunk: any) => dest.push(chunk)).on('end', () => resolve(Buffer.concat(dest).toString())).on('error', reject);
-		});
-		data = dest.length > 0 ? Buffer.concat(dest).toString() : '';
-	} catch {
-		// Fall back to uncompressed JSON
-		data = readFileSync(seasonPathJson, 'utf-8');
+	// Write to temp file for better-sqlite3
+	const tmpDir = import.meta.env?.TEMP ?? '/tmp';
+	const tmpPath = join(tmpDir, `season-${year}-${Date.now()}.sqlite`);
+	const { writeFileSync, unlinkSync } = await import('fs');
+	writeFileSync(tmpPath, sqliteData);
+
+	// Open SQLite database
+	const db = new Database(tmpPath, { readonly: true });
+
+	// Helper function to query all rows
+	const queryAll = (sql: string, params: any[] = []): any[] => {
+		const stmt = db.prepare(sql);
+		return stmt.raw().all(...params);
+	};
+
+	// Load metadata
+	const metaRow = queryAll('SELECT year, generated_at, version FROM meta LIMIT 1')[0];
+	const meta = {
+		year: metaRow[0],
+		generatedAt: metaRow[1],
+		version: metaRow[2],
+	};
+
+	// Load norms
+	const normsRow = queryAll('SELECT norms_json FROM norms LIMIT 1')[0];
+	const norms = JSON.parse(normsRow[0]);
+
+	// Load teams
+	const teamRows = queryAll('SELECT * FROM teams');
+	const teams: Record<string, any> = {};
+	for (const row of teamRows) {
+		teams[row[0]] = { id: row[0], league: row[1], city: row[2], nickname: row[3] };
 	}
-	return JSON.parse(data) as SeasonPackage;
+
+	// Load games
+	const gameRows = queryAll('SELECT * FROM games');
+	const games = gameRows.map(row => ({
+		id: row[0],
+		date: row[1],
+		awayTeam: row[2],
+		homeTeam: row[3],
+		useDH: row[4] === 1,
+	}));
+
+	// Load league averages
+	const leagueRows = queryAll(`SELECT split, single, double, triple, home_run, walk, hit_by_pitch, strikeout,
+		ground_out, fly_out, line_out, pop_out, sacrifice_fly, sacrifice_bunt,
+		fielders_choice, reached_on_error, catcher_interference FROM league_averages`);
+	const league: any = { vsLHP: {} as EventRates, vsRHP: {} as EventRates };
+	for (const row of leagueRows) {
+		const key = row[0] === 'vsLHP' ? 'vsLHP' : 'vsRHP';
+		league[key] = {
+			single: row[1], double: row[2], triple: row[3], homeRun: row[4],
+			walk: row[5], hitByPitch: row[6], strikeout: row[7],
+			groundOut: row[8], flyOut: row[9], lineOut: row[10], popOut: row[11],
+			sacrificeFly: row[12], sacrificeBunt: row[13],
+			fieldersChoice: row[14], reachedOnError: row[15], catcherInterference: row[16],
+		};
+	}
+
+	// Load pitcher-batter league
+	const pbRows = queryAll('SELECT split, rates_json FROM pitcher_batter_league');
+	const pitcherBatter: any = { vsLHP: {} as EventRates, vsRHP: {} as EventRates };
+	for (const row of pbRows) {
+		const key = row[0] === 'vsLHP' ? 'vsLHP' : 'vsRHP';
+		pitcherBatter[key] = JSON.parse(row[1]);
+	}
+
+	// Load batters for all teams
+	const batterRows = queryAll(`SELECT b.id, b.name, b.bats, b.team_id, b.primary_position, b.position_eligibility,
+		b.pa, b.avg, b.obp, b.slg, b.ops, r.split, r.single, r.double, r.triple, r.home_run,
+		r.walk, r.hit_by_pitch, r.strikeout, r.ground_out, r.fly_out, r.line_out, r.pop_out,
+		r.sacrifice_fly, r.sacrifice_bunt, r.fielders_choice, r.reached_on_error, r.catcher_interference
+		FROM batters b JOIN batter_rates r ON b.id = r.batter_id`);
+
+	const batters: Record<string, BatterStats> = {};
+	for (const row of batterRows) {
+		const [, name, bats, teamId, primaryPos, posElig, pa, avg, obp, slg, ops, split, ...rates] = row;
+
+		if (!batters[row[0]]) {
+			batters[row[0]] = {
+				id: row[0],
+				name,
+				bats,
+				teamId,
+				primaryPosition: primaryPos,
+				positionEligibility: JSON.parse(posElig as string),
+				pa,
+				avg,
+				obp,
+				slg,
+				ops,
+				rates: { vsLHP: {} as EventRates, vsRHP: {} as EventRates },
+			};
+		}
+
+		const targetSplit = split === 'vsLHP' ? 'vsLHP' : 'vsRHP';
+		batters[row[0]].rates[targetSplit] = {
+			single: rates[0], double: rates[1], triple: rates[2], homeRun: rates[3],
+			walk: rates[4], hitByPitch: rates[5], strikeout: rates[6],
+			groundOut: rates[7], flyOut: rates[8], lineOut: rates[9], popOut: rates[10],
+			sacrificeFly: rates[11], sacrificeBunt: rates[12],
+			fieldersChoice: rates[13], reachedOnError: rates[14], catcherInterference: rates[15],
+		};
+	}
+
+	// Load pitchers for all teams
+	const pitcherRows = queryAll(`SELECT p.id, p.name, p.throws, p.team_id, p.avg_bfp_as_starter, p.avg_bfp_as_reliever,
+		p.games, p.games_started, p.complete_games, p.saves, p.innings_pitched, p.whip, p.era,
+		r.split, r.single, r.double, r.triple, r.home_run, r.walk, r.hit_by_pitch, r.strikeout,
+		r.ground_out, r.fly_out, r.line_out, r.pop_out, r.sacrifice_fly, r.sacrifice_bunt,
+		r.fielders_choice, r.reached_on_error, r.catcher_interference
+		FROM pitchers p JOIN pitcher_rates r ON p.id = r.pitcher_id`);
+
+	const pitchers: Record<string, PitcherStats> = {};
+	for (const row of pitcherRows) {
+		const [, name, throws, teamId, avgBfpStarter, avgBfpReliever,
+			games, gamesStarted, completeGames, saves, inningsPitched, whip, era, split, ...rates] = row;
+
+		if (!pitchers[row[0]]) {
+			pitchers[row[0]] = {
+				id: row[0],
+				name,
+				throws,
+				teamId,
+				avgBfpAsStarter: avgBfpStarter,
+				avgBfpAsReliever: avgBfpReliever,
+				games,
+				gamesStarted,
+				completeGames,
+				saves,
+				inningsPitched,
+				whip,
+				era,
+				rates: { vsLHB: {} as EventRates, vsRHB: {} as EventRates },
+			};
+		}
+
+		const targetSplit = split === 'vsLHB' ? 'vsLHB' : 'vsRHB';
+		pitchers[row[0]].rates[targetSplit] = {
+			single: rates[0], double: rates[1], triple: rates[2], homeRun: rates[3],
+			walk: rates[4], hitByPitch: rates[5], strikeout: rates[6],
+			groundOut: rates[7], flyOut: rates[8], lineOut: rates[9], popOut: rates[10],
+			sacrificeFly: rates[11], sacrificeBunt: rates[12],
+			fieldersChoice: rates[13], reachedOnError: rates[14], catcherInterference: rates[15],
+		};
+	}
+
+	db.close();
+	unlinkSync(tmpPath);
+
+	return {
+		meta,
+		norms,
+		batters,
+		pitchers,
+		league: { vsLHP: league.vsLHP, vsRHP: league.vsRHP, pitcherBatter },
+		teams,
+		games,
+	};
 }
 
 // All 16 possible outcomes (unknownOut is not a real outcome - it's distributed
