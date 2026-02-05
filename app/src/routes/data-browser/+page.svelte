@@ -70,6 +70,28 @@
 			loading = false;
 		}
 	}
+
+	function loadTableSchema(tableName: string) {
+		if (!db) return;
+
+		selectedTable = tableName;
+
+		try {
+			const result = db.exec(`PRAGMA table_info(${tableName})`);
+
+			if (result.length > 0) {
+				tableSchema = result[0].values.map((row) => ({
+					name: row[1] as string,
+					type: row[2] as string,
+					notnull: row[3] as number,
+					dflt_value: row[4] as string | null,
+					pk: row[5] as number
+				}));
+			}
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load schema';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -108,13 +130,43 @@
 		<div>
 			<h2 class="font-bold mb-2">Tables</h2>
 			<ul class="border rounded p-2">
-				<!-- Table list -->
+				{#each tables as table}
+					<li
+						class="cursor-pointer hover:bg-gray-100 p-1 {selectedTable === table ? 'bg-blue-100' : ''}"
+						onclick={() => loadTableSchema(table)}
+					>
+						{table}
+					</li>
+				{/each}
 			</ul>
 		</div>
 		<div>
 			<h2 class="font-bold mb-2">Schema</h2>
 			<div class="border rounded p-2">
-				<!-- Schema display -->
+				{#if tableSchema.length > 0}
+					<table class="w-full text-sm">
+						<thead>
+							<tr class="border-b">
+								<th class="text-left">Column</th>
+								<th class="text-left">Type</th>
+								<th class="text-left">Nullable</th>
+								<th class="text-left">PK</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each tableSchema as col}
+								<tr class="border-b">
+									<td class="py-1">{col.name}</td>
+									<td>{col.type}</td>
+									<td>{col.notnull ? 'NO' : 'YES'}</td>
+									<td>{col.pk ? '✓' : ''}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{:else}
+					<p class="text-gray-500">Select a table to view schema</p>
+				{/if}
 			</div>
 		</div>
 	</div>
