@@ -4,6 +4,13 @@
 	import { getDatabaseBytes } from '$lib/game/sqlite-season-loader';
 	import initSqlJs from 'sql.js';
 	import { onMount } from 'svelte';
+	import type { PageData } from './$types';
+
+	interface Props {
+		data: PageData;
+	}
+
+	let { data }: Props = $props();
 
 	let SqlJs: Awaited<ReturnType<typeof initSqlJs>> | null = null;
 
@@ -28,10 +35,15 @@
 		});
 
 		availableYears = await getAvailableYears();
-		if (availableYears.length > 0) {
-			selectedYear = availableYears[0];
-			await loadDatabase(availableYears[0]);
-		}
+
+		// Use URL param or default to first year
+		const initialYear =
+			data.initialYear && availableYears.includes(data.initialYear)
+				? data.initialYear
+				: availableYears[0];
+
+		selectedYear = initialYear;
+		await loadDatabase(initialYear);
 	});
 
 	// TODO: Load season database and populate tables
