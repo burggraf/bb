@@ -43,6 +43,7 @@ async function initializeSQLite(): Promise<void> {
   // Register OPFS VFS
   const opfsVfs = new OriginPrivateFileSystemVFS();
   await opfsVfs.mkdir('');
+  // @ts-expect-error - OPFS VFS uses async methods which are compatible with async SQLite build
   sqlite3.vfs_register(opfsVfs, true); // Make default
 }
 
