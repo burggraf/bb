@@ -38,8 +38,8 @@ let failCount = 0;
 const failedYears: number[] = [];
 
 for (let year = START_YEAR; year <= END_YEAR; year++) {
-	const outputPath = path.join(SEASONS_DIR, `${year}.json.sqlite`);
-	const gzippedPath = path.join(SEASONS_DIR, `${year}.json.sqlite.gz`);
+	const outputPath = path.join(SEASONS_DIR, `${year}.sqlite`);
+	const gzippedPath = path.join(SEASONS_DIR, `${year}.sqlite.gz`);
 
 	console.log(`\n📅 Year ${year}...`);
 
@@ -52,7 +52,7 @@ for (let year = START_YEAR; year <= END_YEAR; year++) {
 		// From main repo: ../baseball.duckdb
 		// From worktree: ../../../baseball.duckdb
 		const relativeDbPath = path.join('..', 'baseball.duckdb');
-		const relativeOutputPath = path.join('..', 'app', 'static', 'seasons', `${year}.json`);
+		const relativeOutputPath = path.join('..', 'app', 'static', 'seasons', `${year}`);
 
 		// Pass 'sqlite' as the 5th argument to get SQLite format output
 		execSync(
@@ -100,7 +100,7 @@ for (let year = START_YEAR; year <= END_YEAR; year++) {
 		const reduction = ((1 - gzippedSize / originalSize) * 100).toFixed(1);
 
 		console.log(
-			`  ✓ ${year}.json.sqlite: ${(originalSize / 1024).toFixed(1)} KB → ${(gzippedSize / 1024).toFixed(1)} KB (${reduction}% reduction)`
+			`  ✓ ${year}.sqlite: ${(originalSize / 1024).toFixed(1)} KB → ${(gzippedSize / 1024).toFixed(1)} KB (${reduction}% reduction)`
 		);
 
 		// Remove the uncompressed file
@@ -131,7 +131,7 @@ const manifest = {
 };
 
 for (let year = START_YEAR; year <= END_YEAR; year++) {
-	const gzippedPath = path.join(SEASONS_DIR, `${year}.json.sqlite.gz`);
+	const gzippedPath = path.join(SEASONS_DIR, `${year}.sqlite.gz`);
 	if (fs.existsSync(gzippedPath)) {
 		const stats = fs.statSync(gzippedPath);
 		manifest.years.push({
