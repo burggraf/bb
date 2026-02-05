@@ -1,700 +1,580 @@
 {
-  "meta": {
-    "generatedAt": "2026-02-05T16:24:39.630Z",
-    "totalYears": 115,
-    "totalSize": 73448241,
-    "totalCompressedSize": 26231515
-  },
-  "seasons": [
+  "years": [
     {
       "year": 1910,
-      "file": "1910.sqlite.gz",
-      "size": 427776,
-      "compressedSize": 152777
+      "size": 151906,
+      "modified": "2026-02-05T19:38:32.636Z"
     },
     {
       "year": 1911,
-      "file": "1911.sqlite.gz",
-      "size": 437321,
-      "compressedSize": 156186
+      "size": 155082,
+      "modified": "2026-02-05T19:38:35.391Z"
     },
     {
       "year": 1912,
-      "file": "1912.sqlite.gz",
-      "size": 451626,
-      "compressedSize": 161295
+      "size": 159546,
+      "modified": "2026-02-05T19:38:38.216Z"
     },
     {
       "year": 1913,
-      "file": "1913.sqlite.gz",
-      "size": 432054,
-      "compressedSize": 154305
+      "size": 153356,
+      "modified": "2026-02-05T19:38:40.889Z"
     },
     {
       "year": 1914,
-      "file": "1914.sqlite.gz",
-      "size": 582333,
-      "compressedSize": 207976
+      "size": 206228,
+      "modified": "2026-02-05T19:38:44.036Z"
     },
     {
       "year": 1915,
-      "file": "1915.sqlite.gz",
-      "size": 588216,
-      "compressedSize": 210077
+      "size": 208283,
+      "modified": "2026-02-05T19:38:46.993Z"
     },
     {
       "year": 1916,
-      "file": "1916.sqlite.gz",
-      "size": 419009,
-      "compressedSize": 149646
+      "size": 148558,
+      "modified": "2026-02-05T19:38:49.907Z"
     },
     {
       "year": 1917,
-      "file": "1917.sqlite.gz",
-      "size": 416763,
-      "compressedSize": 148844
+      "size": 147985,
+      "modified": "2026-02-05T19:38:52.761Z"
     },
     {
       "year": 1918,
-      "file": "1918.sqlite.gz",
-      "size": 377174,
-      "compressedSize": 134705
+      "size": 133288,
+      "modified": "2026-02-05T19:38:55.460Z"
     },
     {
       "year": 1919,
-      "file": "1919.sqlite.gz",
-      "size": 405622,
-      "compressedSize": 144865
+      "size": 143623,
+      "modified": "2026-02-05T19:38:58.141Z"
     },
     {
       "year": 1920,
-      "file": "1920.sqlite.gz",
-      "size": 401876,
-      "compressedSize": 143527
+      "size": 142107,
+      "modified": "2026-02-05T19:39:00.824Z"
     },
     {
       "year": 1921,
-      "file": "1921.sqlite.gz",
-      "size": 413750,
-      "compressedSize": 147768
+      "size": 146472,
+      "modified": "2026-02-05T19:39:03.531Z"
     },
     {
       "year": 1922,
-      "file": "1922.sqlite.gz",
-      "size": 421705,
-      "compressedSize": 150609
+      "size": 149359,
+      "modified": "2026-02-05T19:39:06.219Z"
     },
     {
       "year": 1923,
-      "file": "1923.sqlite.gz",
-      "size": 412846,
-      "compressedSize": 147445
+      "size": 146109,
+      "modified": "2026-02-05T19:39:08.867Z"
     },
     {
       "year": 1924,
-      "file": "1924.sqlite.gz",
-      "size": 424959,
-      "compressedSize": 151771
+      "size": 150872,
+      "modified": "2026-02-05T19:39:11.574Z"
     },
     {
       "year": 1925,
-      "file": "1925.sqlite.gz",
-      "size": 429590,
-      "compressedSize": 153425
+      "size": 151992,
+      "modified": "2026-02-05T19:39:14.343Z"
     },
     {
       "year": 1926,
-      "file": "1926.sqlite.gz",
-      "size": 421386,
-      "compressedSize": 150495
+      "size": 149541,
+      "modified": "2026-02-05T19:39:17.066Z"
     },
     {
       "year": 1927,
-      "file": "1927.sqlite.gz",
-      "size": 424595,
-      "compressedSize": 151641
+      "size": 150061,
+      "modified": "2026-02-05T19:39:20.318Z"
     },
     {
       "year": 1928,
-      "file": "1928.sqlite.gz",
-      "size": 417813,
-      "compressedSize": 149219
+      "size": 148111,
+      "modified": "2026-02-05T19:39:23.227Z"
     },
     {
       "year": 1929,
-      "file": "1929.sqlite.gz",
-      "size": 427557,
-      "compressedSize": 152699
+      "size": 151571,
+      "modified": "2026-02-05T19:39:26.123Z"
     },
     {
       "year": 1930,
-      "file": "1930.sqlite.gz",
-      "size": 423357,
-      "compressedSize": 151199
+      "size": 150338,
+      "modified": "2026-02-05T19:39:28.885Z"
     },
     {
       "year": 1931,
-      "file": "1931.sqlite.gz",
-      "size": 420361,
-      "compressedSize": 150129
+      "size": 149602,
+      "modified": "2026-02-05T19:39:31.613Z"
     },
     {
       "year": 1932,
-      "file": "1932.sqlite.gz",
-      "size": 412745,
-      "compressedSize": 147409
+      "size": 146197,
+      "modified": "2026-02-05T19:39:34.372Z"
     },
     {
       "year": 1933,
-      "file": "1933.sqlite.gz",
-      "size": 410600,
-      "compressedSize": 146643
+      "size": 145402,
+      "modified": "2026-02-05T19:39:37.088Z"
     },
     {
       "year": 1934,
-      "file": "1934.sqlite.gz",
-      "size": 416287,
-      "compressedSize": 148674
+      "size": 147507,
+      "modified": "2026-02-05T19:39:39.808Z"
     },
     {
       "year": 1935,
-      "file": "1935.sqlite.gz",
-      "size": 424242,
-      "compressedSize": 151515
+      "size": 150863,
+      "modified": "2026-02-05T19:39:42.506Z"
     },
     {
       "year": 1936,
-      "file": "1936.sqlite.gz",
-      "size": 443926,
-      "compressedSize": 158545
+      "size": 158071,
+      "modified": "2026-02-05T19:39:45.264Z"
     },
     {
       "year": 1937,
-      "file": "1937.sqlite.gz",
-      "size": 457002,
-      "compressedSize": 163215
+      "size": 163145,
+      "modified": "2026-02-05T19:39:47.985Z"
     },
     {
       "year": 1938,
-      "file": "1938.sqlite.gz",
-      "size": 441644,
-      "compressedSize": 157730
+      "size": 158038,
+      "modified": "2026-02-05T19:39:50.715Z"
     },
     {
       "year": 1939,
-      "file": "1939.sqlite.gz",
-      "size": 455081,
-      "compressedSize": 162529
+      "size": 161842,
+      "modified": "2026-02-05T19:39:53.487Z"
     },
     {
       "year": 1940,
-      "file": "1940.sqlite.gz",
-      "size": 430310,
-      "compressedSize": 153682
+      "size": 152689,
+      "modified": "2026-02-05T19:39:56.200Z"
     },
     {
       "year": 1941,
-      "file": "1941.sqlite.gz",
-      "size": 427364,
-      "compressedSize": 152630
+      "size": 151918,
+      "modified": "2026-02-05T19:39:58.942Z"
     },
     {
       "year": 1942,
-      "file": "1942.sqlite.gz",
-      "size": 425471,
-      "compressedSize": 151954
+      "size": 150798,
+      "modified": "2026-02-05T19:40:01.683Z"
     },
     {
       "year": 1943,
-      "file": "1943.sqlite.gz",
-      "size": 436988,
-      "compressedSize": 156067
+      "size": 155530,
+      "modified": "2026-02-05T19:40:04.416Z"
     },
     {
       "year": 1944,
-      "file": "1944.sqlite.gz",
-      "size": 424080,
-      "compressedSize": 151457
+      "size": 150774,
+      "modified": "2026-02-05T19:40:07.178Z"
     },
     {
       "year": 1945,
-      "file": "1945.sqlite.gz",
-      "size": 442744,
-      "compressedSize": 158123
+      "size": 157008,
+      "modified": "2026-02-05T19:40:09.900Z"
     },
     {
       "year": 1946,
-      "file": "1946.sqlite.gz",
-      "size": 474337,
-      "compressedSize": 169406
+      "size": 168148,
+      "modified": "2026-02-05T19:40:12.728Z"
     },
     {
       "year": 1947,
-      "file": "1947.sqlite.gz",
-      "size": 443624,
-      "compressedSize": 158437
+      "size": 157567,
+      "modified": "2026-02-05T19:40:15.516Z"
     },
     {
       "year": 1948,
-      "file": "1948.sqlite.gz",
-      "size": 451763,
-      "compressedSize": 161344
+      "size": 160965,
+      "modified": "2026-02-05T19:40:18.334Z"
     },
     {
       "year": 1949,
-      "file": "1949.sqlite.gz",
-      "size": 447488,
-      "compressedSize": 159817
+      "size": 159947,
+      "modified": "2026-02-05T19:40:21.136Z"
     },
     {
       "year": 1950,
-      "file": "1950.sqlite.gz",
-      "size": 432995,
-      "compressedSize": 154641
+      "size": 152956,
+      "modified": "2026-02-05T19:40:23.899Z"
     },
     {
       "year": 1951,
-      "file": "1951.sqlite.gz",
-      "size": 441546,
-      "compressedSize": 157695
+      "size": 156294,
+      "modified": "2026-02-05T19:40:26.675Z"
     },
     {
       "year": 1952,
-      "file": "1952.sqlite.gz",
-      "size": 453519,
-      "compressedSize": 161971
+      "size": 160204,
+      "modified": "2026-02-05T19:40:29.548Z"
     },
     {
       "year": 1953,
-      "file": "1953.sqlite.gz",
-      "size": 445763,
-      "compressedSize": 159201
+      "size": 157845,
+      "modified": "2026-02-05T19:40:32.400Z"
     },
     {
       "year": 1954,
-      "file": "1954.sqlite.gz",
-      "size": 458612,
-      "compressedSize": 163790
+      "size": 162222,
+      "modified": "2026-02-05T19:40:35.169Z"
     },
     {
       "year": 1955,
-      "file": "1955.sqlite.gz",
-      "size": 478136,
-      "compressedSize": 170763
+      "size": 168946,
+      "modified": "2026-02-05T19:40:37.959Z"
     },
     {
       "year": 1956,
-      "file": "1956.sqlite.gz",
-      "size": 470809,
-      "compressedSize": 168146
+      "size": 166248,
+      "modified": "2026-02-05T19:40:40.750Z"
     },
     {
       "year": 1957,
-      "file": "1957.sqlite.gz",
-      "size": 482034,
-      "compressedSize": 172155
+      "size": 170365,
+      "modified": "2026-02-05T19:40:43.552Z"
     },
     {
       "year": 1958,
-      "file": "1958.sqlite.gz",
-      "size": 481309,
-      "compressedSize": 171896
+      "size": 170647,
+      "modified": "2026-02-05T19:40:46.399Z"
     },
     {
       "year": 1959,
-      "file": "1959.sqlite.gz",
-      "size": 479055,
-      "compressedSize": 171091
+      "size": 169205,
+      "modified": "2026-02-05T19:40:49.191Z"
     },
     {
       "year": 1960,
-      "file": "1960.sqlite.gz",
-      "size": 481258,
-      "compressedSize": 171878
+      "size": 170040,
+      "modified": "2026-02-05T19:40:52.158Z"
     },
     {
       "year": 1961,
-      "file": "1961.sqlite.gz",
-      "size": 528766,
-      "compressedSize": 188845
+      "size": 187709,
+      "modified": "2026-02-05T19:40:55.118Z"
     },
     {
       "year": 1962,
-      "file": "1962.sqlite.gz",
-      "size": 596666,
-      "compressedSize": 213095
+      "size": 210999,
+      "modified": "2026-02-05T19:40:57.952Z"
     },
     {
       "year": 1963,
-      "file": "1963.sqlite.gz",
-      "size": 600292,
-      "compressedSize": 214390
+      "size": 212374,
+      "modified": "2026-02-05T19:41:00.776Z"
     },
     {
       "year": 1964,
-      "file": "1964.sqlite.gz",
-      "size": 598822,
-      "compressedSize": 213865
+      "size": 211940,
+      "modified": "2026-02-05T19:41:03.611Z"
     },
     {
       "year": 1965,
-      "file": "1965.sqlite.gz",
-      "size": 589982,
-      "compressedSize": 210708
+      "size": 208889,
+      "modified": "2026-02-05T19:41:06.456Z"
     },
     {
       "year": 1966,
-      "file": "1966.sqlite.gz",
-      "size": 600242,
-      "compressedSize": 214372
+      "size": 213102,
+      "modified": "2026-02-05T19:41:09.278Z"
     },
     {
       "year": 1967,
-      "file": "1967.sqlite.gz",
-      "size": 599250,
-      "compressedSize": 214018
+      "size": 212611,
+      "modified": "2026-02-05T19:41:12.159Z"
     },
     {
       "year": 1968,
-      "file": "1968.sqlite.gz",
-      "size": 589386,
-      "compressedSize": 210495
+      "size": 208332,
+      "modified": "2026-02-05T19:41:15.071Z"
     },
     {
       "year": 1969,
-      "file": "1969.sqlite.gz",
-      "size": 707848,
-      "compressedSize": 252803
+      "size": 251535,
+      "modified": "2026-02-05T19:41:17.968Z"
     },
     {
       "year": 1970,
-      "file": "1970.sqlite.gz",
-      "size": 721832,
-      "compressedSize": 257797
+      "size": 255461,
+      "modified": "2026-02-05T19:41:20.962Z"
     },
     {
       "year": 1971,
-      "file": "1971.sqlite.gz",
-      "size": 712765,
-      "compressedSize": 254559
+      "size": 252950,
+      "modified": "2026-02-05T19:41:23.881Z"
     },
     {
       "year": 1972,
-      "file": "1972.sqlite.gz",
-      "size": 695968,
-      "compressedSize": 248560
+      "size": 245365,
+      "modified": "2026-02-05T19:41:26.762Z"
     },
     {
       "year": 1973,
-      "file": "1973.sqlite.gz",
-      "size": 665952,
-      "compressedSize": 237840
+      "size": 236264,
+      "modified": "2026-02-05T19:41:29.673Z"
     },
     {
       "year": 1974,
-      "file": "1974.sqlite.gz",
-      "size": 671633,
-      "compressedSize": 239869
+      "size": 237849,
+      "modified": "2026-02-05T19:41:32.532Z"
     },
     {
       "year": 1975,
-      "file": "1975.sqlite.gz",
-      "size": 674517,
-      "compressedSize": 240899
+      "size": 238597,
+      "modified": "2026-02-05T19:41:35.490Z"
     },
     {
       "year": 1976,
-      "file": "1976.sqlite.gz",
-      "size": 675097,
-      "compressedSize": 241106
+      "size": 239286,
+      "modified": "2026-02-05T19:41:38.313Z"
     },
     {
       "year": 1977,
-      "file": "1977.sqlite.gz",
-      "size": 718631,
-      "compressedSize": 256654
+      "size": 254273,
+      "modified": "2026-02-05T19:41:41.209Z"
     },
     {
       "year": 1978,
-      "file": "1978.sqlite.gz",
-      "size": 718668,
-      "compressedSize": 256667
+      "size": 253181,
+      "modified": "2026-02-05T19:41:44.133Z"
     },
     {
       "year": 1979,
-      "file": "1979.sqlite.gz",
-      "size": 725830,
-      "compressedSize": 259225
+      "size": 256722,
+      "modified": "2026-02-05T19:41:47.080Z"
     },
     {
       "year": 1980,
-      "file": "1980.sqlite.gz",
-      "size": 732561,
-      "compressedSize": 261629
+      "size": 259573,
+      "modified": "2026-02-05T19:41:49.999Z"
     },
     {
       "year": 1981,
-      "file": "1981.sqlite.gz",
-      "size": 628443,
-      "compressedSize": 224444
+      "size": 222252,
+      "modified": "2026-02-05T19:41:52.841Z"
     },
     {
       "year": 1982,
-      "file": "1982.sqlite.gz",
-      "size": 721711,
-      "compressedSize": 257754
+      "size": 255485,
+      "modified": "2026-02-05T19:41:55.765Z"
     },
     {
       "year": 1983,
-      "file": "1983.sqlite.gz",
-      "size": 720731,
-      "compressedSize": 257404
+      "size": 254472,
+      "modified": "2026-02-05T19:41:58.677Z"
     },
     {
       "year": 1984,
-      "file": "1984.sqlite.gz",
-      "size": 699286,
-      "compressedSize": 249745
+      "size": 247415,
+      "modified": "2026-02-05T19:42:01.738Z"
     },
     {
       "year": 1985,
-      "file": "1985.sqlite.gz",
-      "size": 706877,
-      "compressedSize": 252456
+      "size": 250773,
+      "modified": "2026-02-05T19:42:04.629Z"
     },
     {
       "year": 1986,
-      "file": "1986.sqlite.gz",
-      "size": 702299,
-      "compressedSize": 250821
+      "size": 249443,
+      "modified": "2026-02-05T19:42:07.598Z"
     },
     {
       "year": 1987,
-      "file": "1987.sqlite.gz",
-      "size": 712888,
-      "compressedSize": 254603
+      "size": 252973,
+      "modified": "2026-02-05T19:42:10.575Z"
     },
     {
       "year": 1988,
-      "file": "1988.sqlite.gz",
-      "size": 731226,
-      "compressedSize": 261152
+      "size": 259388,
+      "modified": "2026-02-05T19:42:13.520Z"
     },
     {
       "year": 1989,
-      "file": "1989.sqlite.gz",
-      "size": 734054,
-      "compressedSize": 262162
+      "size": 260320,
+      "modified": "2026-02-05T19:42:16.439Z"
     },
     {
       "year": 1990,
-      "file": "1990.sqlite.gz",
-      "size": 751086,
-      "compressedSize": 268245
+      "size": 266234,
+      "modified": "2026-02-05T19:42:19.352Z"
     },
     {
       "year": 1991,
-      "file": "1991.sqlite.gz",
-      "size": 737688,
-      "compressedSize": 263460
+      "size": 262531,
+      "modified": "2026-02-05T19:42:22.268Z"
     },
     {
       "year": 1992,
-      "file": "1992.sqlite.gz",
-      "size": 741658,
-      "compressedSize": 264878
+      "size": 263092,
+      "modified": "2026-02-05T19:42:25.194Z"
     },
     {
       "year": 1993,
-      "file": "1993.sqlite.gz",
-      "size": 805291,
-      "compressedSize": 287604
+      "size": 285210,
+      "modified": "2026-02-05T19:42:28.101Z"
     },
     {
       "year": 1994,
-      "file": "1994.sqlite.gz",
-      "size": 687263,
-      "compressedSize": 245451
+      "size": 243112,
+      "modified": "2026-02-05T19:42:30.978Z"
     },
     {
       "year": 1995,
-      "file": "1995.sqlite.gz",
-      "size": 789880,
-      "compressedSize": 282100
+      "size": 279604,
+      "modified": "2026-02-05T19:42:33.930Z"
     },
     {
       "year": 1996,
-      "file": "1996.sqlite.gz",
-      "size": 816077,
-      "compressedSize": 291456
+      "size": 288621,
+      "modified": "2026-02-05T19:42:36.863Z"
     },
     {
       "year": 1997,
-      "file": "1997.sqlite.gz",
-      "size": 842570,
-      "compressedSize": 300918
+      "size": 298274,
+      "modified": "2026-02-05T19:42:39.987Z"
     },
     {
       "year": 1998,
-      "file": "1998.sqlite.gz",
-      "size": 864262,
-      "compressedSize": 308665
+      "size": 306089,
+      "modified": "2026-02-05T19:42:43.004Z"
     },
     {
       "year": 1999,
-      "file": "1999.sqlite.gz",
-      "size": 910633,
-      "compressedSize": 325226
+      "size": 322651,
+      "modified": "2026-02-05T19:42:45.967Z"
     },
     {
       "year": 2000,
-      "file": "2000.sqlite.gz",
-      "size": 923073,
-      "compressedSize": 329669
+      "size": 327638,
+      "modified": "2026-02-05T19:42:49.010Z"
     },
     {
       "year": 2001,
-      "file": "2001.sqlite.gz",
-      "size": 933682,
-      "compressedSize": 333458
+      "size": 330708,
+      "modified": "2026-02-05T19:42:52.091Z"
     },
     {
       "year": 2002,
-      "file": "2002.sqlite.gz",
-      "size": 901482,
-      "compressedSize": 321958
+      "size": 318346,
+      "modified": "2026-02-05T19:42:55.225Z"
     },
     {
       "year": 2003,
-      "file": "2003.sqlite.gz",
-      "size": 921620,
-      "compressedSize": 329150
+      "size": 326122,
+      "modified": "2026-02-05T19:42:58.218Z"
     },
     {
       "year": 2004,
-      "file": "2004.sqlite.gz",
-      "size": 945232,
-      "compressedSize": 337583
+      "size": 335171,
+      "modified": "2026-02-05T19:43:01.204Z"
     },
     {
       "year": 2005,
-      "file": "2005.sqlite.gz",
-      "size": 916684,
-      "compressedSize": 327387
+      "size": 324138,
+      "modified": "2026-02-05T19:43:04.207Z"
     },
     {
       "year": 2006,
-      "file": "2006.sqlite.gz",
-      "size": 936429,
-      "compressedSize": 334439
+      "size": 332027,
+      "modified": "2026-02-05T19:43:07.228Z"
     },
     {
       "year": 2007,
-      "file": "2007.sqlite.gz",
-      "size": 945860,
-      "compressedSize": 337807
+      "size": 335336,
+      "modified": "2026-02-05T19:43:10.445Z"
     },
     {
       "year": 2008,
-      "file": "2008.sqlite.gz",
-      "size": 953008,
-      "compressedSize": 340360
+      "size": 337244,
+      "modified": "2026-02-05T19:43:13.470Z"
     },
     {
       "year": 2009,
-      "file": "2009.sqlite.gz",
-      "size": 938490,
-      "compressedSize": 335175
+      "size": 333418,
+      "modified": "2026-02-05T19:43:16.502Z"
     },
     {
       "year": 2010,
-      "file": "2010.sqlite.gz",
-      "size": 936018,
-      "compressedSize": 334292
+      "size": 331688,
+      "modified": "2026-02-05T19:43:19.612Z"
     },
     {
       "year": 2011,
-      "file": "2011.sqlite.gz",
-      "size": 942603,
-      "compressedSize": 336644
+      "size": 334272,
+      "modified": "2026-02-05T19:43:22.667Z"
     },
     {
       "year": 2012,
-      "file": "2012.sqlite.gz",
-      "size": 951378,
-      "compressedSize": 339778
+      "size": 337690,
+      "modified": "2026-02-05T19:43:25.845Z"
     },
     {
       "year": 2013,
-      "file": "2013.sqlite.gz",
-      "size": 950639,
-      "compressedSize": 339514
+      "size": 337400,
+      "modified": "2026-02-05T19:43:28.969Z"
     },
     {
       "year": 2014,
-      "file": "2014.sqlite.gz",
-      "size": 937003,
-      "compressedSize": 334644
+      "size": 332511,
+      "modified": "2026-02-05T19:43:32.642Z"
     },
     {
       "year": 2015,
-      "file": "2015.sqlite.gz",
-      "size": 953193,
-      "compressedSize": 340426
+      "size": 338166,
+      "modified": "2026-02-05T19:43:35.792Z"
     },
     {
       "year": 2016,
-      "file": "2016.sqlite.gz",
-      "size": 961260,
-      "compressedSize": 343307
+      "size": 340392,
+      "modified": "2026-02-05T19:43:38.802Z"
     },
     {
       "year": 2017,
-      "file": "2017.sqlite.gz",
-      "size": 961736,
-      "compressedSize": 343477
+      "size": 341081,
+      "modified": "2026-02-05T19:43:41.920Z"
     },
     {
       "year": 2018,
-      "file": "2018.sqlite.gz",
-      "size": 970035,
-      "compressedSize": 346441
+      "size": 343790,
+      "modified": "2026-02-05T19:43:45.028Z"
     },
     {
       "year": 2019,
-      "file": "2019.sqlite.gz",
-      "size": 995918,
-      "compressedSize": 355685
+      "size": 353531,
+      "modified": "2026-02-05T19:43:48.029Z"
     },
     {
       "year": 2020,
-      "file": "2020.sqlite.gz",
-      "size": 570142,
-      "compressedSize": 203622
+      "size": 201805,
+      "modified": "2026-02-05T19:43:50.954Z"
     },
     {
       "year": 2021,
-      "file": "2021.sqlite.gz",
-      "size": 999034,
-      "compressedSize": 356798
+      "size": 354286,
+      "modified": "2026-02-05T19:43:54.094Z"
     },
     {
       "year": 2022,
-      "file": "2022.sqlite.gz",
-      "size": 1019684,
-      "compressedSize": 364173
+      "size": 361434,
+      "modified": "2026-02-05T19:43:58.503Z"
     },
     {
       "year": 2023,
-      "file": "2023.sqlite.gz",
-      "size": 1007868,
-      "compressedSize": 359953
+      "size": 356377,
+      "modified": "2026-02-05T19:44:02.887Z"
     },
     {
       "year": 2024,
-      "file": "2024.sqlite.gz",
-      "size": 999118,
-      "compressedSize": 356828
+      "size": 353030,
+      "modified": "2026-02-05T19:44:07.167Z"
     }
-  ]
+  ],
+  "lastUpdated": "2026-02-05T19:44:07.168Z"
 }
