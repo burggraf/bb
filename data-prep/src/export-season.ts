@@ -55,8 +55,10 @@ function parseNumber(value: string): number {
 
 import { execSync } from 'child_process';
 import * as fs from 'fs';
+import * as path from 'path';
 import type { EventRates } from '@bb/model';
 import { exportSeasonAsSqlite } from './export-sqlite.js';
+import { writeManifest } from './update-manifest.js';
 
 /**
  * Modern trajectory distribution for imputing unknown outs.
@@ -2002,6 +2004,9 @@ async function main() {
     await exportSeasonAsSqlite(season, sqlitePath, true);
     // Remove temporary JSON file
     fs.unlinkSync(tmpPath);
+    // Regenerate manifest
+    const seasonsDir = path.dirname(sqlitePath);
+    writeManifest(seasonsDir);
   } else {
     // Rename temp file to final output
     fs.renameSync(tmpPath, outputPath);

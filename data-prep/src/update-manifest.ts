@@ -84,7 +84,7 @@ function generateManifest(seasonsDir: string): Manifest {
 	};
 }
 
-function writeManifest(seasonsDir: string): void {
+export function writeManifest(seasonsDir: string): void {
 	const manifest = generateManifest(seasonsDir);
 	const manifestPath = path.join(seasonsDir, 'season-manifest.json');
 
