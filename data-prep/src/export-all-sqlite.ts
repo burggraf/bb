@@ -41,9 +41,10 @@ async function exportAllSqlite(
   for (let year = startYear; year <= endYear; year++) {
     const sqlitePath = path.join(outputDir, `${year}.sqlite`);
 
-    // Check if already exists
-    if (fs.existsSync(sqlitePath)) {
-      const stats = fs.statSync(sqlitePath);
+    // Check if already exists (we only keep .gz files)
+    const gzPath = `${sqlitePath}.gz`;
+    if (fs.existsSync(gzPath)) {
+      const stats = fs.statSync(gzPath);
       console.log(`⏭️  ${year}: Already exists (${formatBytes(stats.size)}), skipping`);
       totalSize += stats.size;
       skipCount++;
@@ -57,7 +58,7 @@ async function exportAllSqlite(
       const tmpPath = path.join(outputDir, `${year}.tmp.json`);
       const season = await exportSeasonData(year, dbPath, tmpPath);
 
-      // Convert to SQLite
+      // Convert to SQLite (creates both .sqlite and .sqlite.gz)
       process.stdout.write(`Converting to SQLite... `);
       await exportSeasonAsSqlite(season, sqlitePath, true);
 
@@ -66,7 +67,14 @@ async function exportAllSqlite(
         fs.unlinkSync(tmpPath);
       }
 
-      const stats = fs.statSync(sqlitePath);
+      // Remove raw .sqlite file (we only need the .gz version)
+      if (fs.existsSync(sqlitePath)) {
+        fs.unlinkSync(sqlitePath);
+      }
+
+      // Use compressed file size for stats
+      const gzPath = `${sqlitePath}.gz`;
+      const stats = fs.statSync(gzPath);
       totalSize += stats.size;
       successCount++;
 
