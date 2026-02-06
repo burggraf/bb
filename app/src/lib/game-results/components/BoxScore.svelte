@@ -26,8 +26,17 @@
 	const awayErrors = $derived(awayLines.reduce((sum, l) => sum + l.errors, 0));
 	const homeErrors = $derived(homeLines.reduce((sum, l) => sum + l.errors, 0));
 
+	// Calculate actual innings from data (find max inning that has plays)
+	const actualInnings = $derived(
+		Math.max(
+			...awayLines.map((l) => l.inning),
+			...homeLines.map((l) => l.inning),
+			9 // Always show at least 9 innings
+		)
+	);
+
 	// Create array for all innings
-	const allInnings = $derived(Array.from({ length: Math.max(innings, 9) }, (_, i) => i + 1));
+	const allInnings = $derived(Array.from({ length: actualInnings }, (_, i) => i + 1));
 </script>
 
 <div class="mb-6">
