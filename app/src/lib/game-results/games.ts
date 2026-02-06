@@ -382,3 +382,93 @@ export async function getGamesBySeries(seriesId: string): Promise<SavedGame[]> {
     stmt.free();
   }
 }
+
+/**
+ * Get all game events for a game (play-by-play)
+ *
+ * @param gameId - Game UUID
+ * @returns Promise<GameEvent[]> Array of game events ordered by sequence
+ */
+export async function getGameEvents(gameId: string): Promise<import('./types.js').GameEvent[]> {
+  const db = await getGameDatabase();
+  const stmt = db.prepare('SELECT * FROM game_events WHERE game_id = ? ORDER BY sequence');
+
+  try {
+    stmt.bind([gameId]);
+
+    const events: import('./types.js').GameEvent[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as any;
+      events.push({
+        id: row.id,
+        gameId: row.game_id,
+        sequence: row.sequence,
+        inning: row.inning,
+        isTopInning: row.is_top_inning === 1,
+        outs: row.outs,
+        eventType: row.event_type,
+        outcome: row.outcome,
+        batterId: row.batter_id,
+        batterName: row.batter_name,
+        pitcherId: row.pitcher_id,
+        pitcherName: row.pitcher_name,
+        runsScored: row.runs_scored,
+        earnedRuns: row.earned_runs,
+        unearnedRuns: row.unearned_runs,
+        runner1bBefore: row.runner_1b_before,
+        runner2bBefore: row.runner_2b_before,
+        runner3bBefore: row.runner_3b_before,
+        runner1bAfter: row.runner_1b_after,
+        runner2bAfter: row.runner_2b_after,
+        runner3bAfter: row.runner_3b_after,
+        description: row.description,
+        lineupJson: row.lineup_json,
+        substitutedPlayer: row.substituted_player,
+        position: row.position,
+        isSummary: row.is_summary === 1
+      });
+    }
+
+    return events;
+  } catch (error) {
+    console.error('[Games] Failed to get game events:', error);
+    throw new Error(`Failed to get game events: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    stmt.free();
+  }
+}
+
+/**
+ * Get all inning lines for a game (box score data)
+ *
+ * @param gameId - Game UUID
+ * @returns Promise<InningLine[]> Array of inning lines
+ */
+export async function getInningLines(gameId: string): Promise<import('./types.js').InningLine[]> {
+  const db = await getGameDatabase();
+  const stmt = db.prepare('SELECT * FROM inning_lines WHERE game_id = ? ORDER BY team_id, inning');
+
+  try {
+    stmt.bind([gameId]);
+
+    const lines: import('./types.js').InningLine[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as any;
+      lines.push({
+        gameId: row.game_id,
+        teamId: row.team_id,
+        inning: row.inning,
+        runs: row.runs,
+        hits: row.hits,
+        errors: row.errors
+      });
+    }
+
+    return lines;
+  } catch (error) {
+    console.error('[Games] Failed to get inning lines:', error);
+    throw new Error(`Failed to get inning lines: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    stmt.free();
+  }
+}

@@ -69,9 +69,8 @@ export {
   listSeries,
   updateSeries,
   deleteSeries,
-  addSeriesTeam,
-  getSeriesTeams,
-  getSeriesByType
+  addTeamToSeries,
+  getSeriesTeams
 } from './series.js';
 
 // ====================================================================
@@ -81,6 +80,8 @@ export {
   saveGame,
   getGame,
   getGamesBySeries,
+  getGameEvents,
+  getInningLines,
   calculateEarnedRuns,
   determinePitchingDecisions
 } from './games.js';
@@ -89,10 +90,9 @@ export {
 // Statistics & Standings
 // ====================================================================
 export {
-  getSeriesStandings,
+  getStandings as getSeriesStandings,
   getBattingStats,
   getPitchingStats,
-  getLeagueLeaders,
   type BattingSortBy,
   type PitchingSortBy,
   type BattingStatsOptions,
@@ -126,7 +126,7 @@ export {
 import { createSeries as createSeriesRaw } from './series.js';
 import { saveGame } from './games.js';
 import { gameStateToGameSaveInput } from './barrels.js';
-import { getSeriesStandings } from './stats.js';
+import { getStandings } from './stats.js';
 import { downloadGameDatabase, importGameDatabase as importDb } from './export.js';
 import type { GameState } from '../game/types.js';
 
@@ -229,7 +229,7 @@ export async function getSeriesStandingsEnhanced(seriesId: string): Promise<
     streak: string;
   }>
 > {
-  const standings = await getSeriesStandings(seriesId);
+  const standings = await getStandings(seriesId);
 
   return standings.map((s, i) => {
     const winPercentage = s.gamesPlayed > 0 ? s.wins / s.gamesPlayed : 0;
