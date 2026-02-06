@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import StandingsTable from '$lib/game-results/components/StandingsTable.svelte';
+	import GamesList from '$lib/game-results/components/GamesList.svelte';
 
 	interface Props {
 		data: PageData;
@@ -87,8 +88,7 @@
 		{#if activeTab === 'standings'}
 			<StandingsTable standings={standings} />
 		{:else if activeTab === 'games'}
-			<!-- TODO: Games list -->
-			<div class="text-zinc-400">Games coming soon...</div>
+			<GamesList {games} />
 		{:else}
 			<!-- TODO: Leaders -->
 			<div class="text-zinc-400">Leaders coming soon...</div>
