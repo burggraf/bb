@@ -51,7 +51,7 @@ vi.mock('./games.js', () => ({
 }));
 
 vi.mock('./stats.js', () => ({
-  getSeriesStandings: vi.fn(),
+  getStandings: vi.fn(),
   getBattingStats: vi.fn(),
   getPitchingStats: vi.fn(),
   getLeagueLeaders: vi.fn()
@@ -262,9 +262,9 @@ describe('index.ts - Public API', () => {
 
   describe('Convenience: getSeriesStandingsEnhanced', () => {
     it('should add calculated fields to standings', async () => {
-      const { getSeriesStandings } = await import('./stats.js');
+      const { getStandings } = await import('./stats.js');
 
-      vi.mocked(getSeriesStandings).mockResolvedValue([
+      vi.mocked(getStandings).mockResolvedValue([
         {
           seriesId: 'series-123',
           teamId: 'BOS',
@@ -301,9 +301,9 @@ describe('index.ts - Public API', () => {
     });
 
     it('should handle zero games played', async () => {
-      const { getSeriesStandings } = await import('./stats.js');
+      const { getStandings } = await import('./stats.js');
 
-      vi.mocked(getSeriesStandings).mockResolvedValue([
+      vi.mocked(getStandings).mockResolvedValue([
         {
           seriesId: 'series-123',
           teamId: 'BOS',
