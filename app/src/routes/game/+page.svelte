@@ -8,6 +8,13 @@
 	import type { GameState, PlayEvent } from '$lib/game/types.js';
 	import GameScoreboard from '$lib/components/GameScoreboard.svelte';
 	import { tick } from 'svelte';
+	import type { Series } from '$lib/game-results/index.js';
+
+	// Dynamic imports for browser-only game-results database
+	let createSeries: typeof import('$lib/game-results/index.js').createSeries;
+	let listSeries: typeof import('$lib/game-results/index.js').listSeries;
+	let addTeamToSeries: typeof import('$lib/game-results/index.js').addTeamToSeries;
+	let saveGameFromState: typeof import('$lib/game-results/index.js').saveGameFromState;
 
 	// Constants for localStorage
 	const STORAGE_KEY = 'baseball-game-state';
@@ -66,6 +73,12 @@
 
 	// Play-by-play modal state
 	let showPlayByPlay = $state(false);
+
+	// Save to database state
+	let showSeriesModal = $state(false);
+	let availableSeries = $state<Series[]>([]);
+	let selectedSeries = $state<Series | null>(null);
+	let isSavingGame = $state(false);
 
 	// Show toast message
 	function showToast(message: string) {
@@ -142,6 +155,13 @@
 
 	onMount(() => {
 		(async () => {
+			// Load game-results database functions (browser-only)
+			const gameResults = await import('$lib/game-results/index.js');
+			createSeries = gameResults.createSeries;
+			listSeries = gameResults.listSeries;
+			addTeamToSeries = gameResults.addTeamToSeries;
+			saveGameFromState = gameResults.saveGameFromState;
+
 			// Load preferences first
 			const prefs = loadPrefs();
 			simSpeed = prefs.simSpeed;
@@ -447,6 +467,114 @@
 		if (season && awayTeamId && homeTeamId) {
 			engine = new GameEngine(season, awayTeamId, homeTeamId);
 			updateFromEngine();
+		}
+	}
+
+	// Load available series for saving
+	async function loadSeriesForSave() {
+		try {
+			const series = await listSeries();
+			availableSeries = series;
+			showSeriesModal = true;
+		} catch (error) {
+			console.error('Failed to load series:', error);
+			showToast('Failed to load series. See console for details.');
+		}
+	}
+
+	// Save game to selected series
+	async function saveToSeries(series: Series) {
+		if (!engine || !awayTeamId || !homeTeamId) return;
+
+		isSavingGame = true;
+
+		try {
+			// Add teams to series if not already present
+			await addTeamToSeries(series.id, {
+				teamId: awayTeamId,
+				seasonYear: gameYear,
+				league: season?.teams[awayTeamId]?.league || null,
+				division: season?.teams[awayTeamId]?.division || null
+			});
+			await addTeamToSeries(series.id, {
+				teamId: homeTeamId,
+				seasonYear: gameYear,
+				league: season?.teams[homeTeamId]?.league || null,
+				division: season?.teams[homeTeamId]?.division || null
+			});
+
+			// Get the game count in this series to determine game number
+			const games = await (await import('$lib/game-results/index.js')).getGamesBySeries(series.id);
+			const gameNumber = games.length + 1;
+
+			// Save the game
+			const gameId = await saveGameFromState(
+				engine.getState(),
+				series.id,
+				gameNumber,
+				null // no scheduled date for ad-hoc games
+			);
+
+			showSeriesModal = false;
+			showToast(`Game saved to "${series.name}"!`);
+		} catch (error) {
+			console.error('Failed to save game:', error);
+			showToast('Failed to save game. See console for details.');
+		} finally {
+			isSavingGame = false;
+		}
+	}
+
+	// Create a new series and save to it
+	async function createAndSaveSeries() {
+		if (!engine) return;
+
+		const seriesName = prompt('Enter series name (e.g., "1976 Season Replay", "Quick Games"):');
+		if (!seriesName || seriesName.trim() === '') return;
+
+		isSavingGame = true;
+
+		try {
+			// Create the series
+			const series = await createSeries({
+				name: seriesName.trim(),
+				description: `Games played on ${new Date().toLocaleDateString()}`,
+				seriesType: 'exhibition'
+			});
+
+			// Add teams to series
+			if (awayTeamId) {
+				await addTeamToSeries(series.id, {
+					teamId: awayTeamId,
+					seasonYear: gameYear,
+					league: season?.teams[awayTeamId]?.league || null,
+					division: season?.teams[awayTeamId]?.division || null
+				});
+			}
+			if (homeTeamId) {
+				await addTeamToSeries(series.id, {
+					teamId: homeTeamId,
+					seasonYear: gameYear,
+					league: season?.teams[homeTeamId]?.league || null,
+					division: season?.teams[homeTeamId]?.division || null
+				});
+			}
+
+			// Save the game
+			const gameId = await saveGameFromState(
+				engine.getState(),
+				series.id,
+				1, // first game in new series
+				null
+			);
+
+			showSeriesModal = false;
+			showToast(`Created "${series.name}" and saved game!`);
+		} catch (error) {
+			console.error('Failed to create series:', error);
+			showToast('Failed to create series. See console for details.');
+		} finally {
+			isSavingGame = false;
 		}
 	}
 
@@ -885,6 +1013,17 @@
 						View Play-by-Play
 					</button>
 
+					<!-- Save to Database Button -->
+					<button
+						onclick={loadSeriesForSave}
+						class="w-full px-4 py-3 sm:px-6 sm:py-4 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm sm:text-base mb-2 sm:mb-3"
+					>
+						<svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4" />
+						</svg>
+						Save to Database
+					</button>
+
 					<!-- Play Again Button -->
 					<button
 						onclick={playAgain}
@@ -962,6 +1101,70 @@
 						class="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors text-sm sm:text-base"
 					>
 						Close
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Series Selection Modal -->
+	{#if showSeriesModal}
+		<div class="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+			<div class="bg-slate-900 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 max-w-lg w-full mx-0 sm:mx-4 border border-slate-700 shadow-2xl">
+				<div class="text-center">
+					<h2 class="text-xl sm:text-2xl font-bold mb-2">Save Game to Database</h2>
+					<p class="text-sm text-slate-400 mb-4 sm:mb-6">Choose a series to save this game to, or create a new one.</p>
+
+					{#if availableSeries.length === 0}
+						<div class="text-center py-6">
+							<p class="text-slate-400 mb-4">No series found. Create one to save your games!</p>
+							<button
+								onclick={createAndSaveSeries}
+								class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg transition-colors text-sm"
+								disabled={isSavingGame}
+							>
+								{isSavingGame ? 'Creating...' : 'Create New Series'}
+							</button>
+						</div>
+					{:else}
+						<div class="space-y-2 mb-4 max-h-60 overflow-y-auto">
+							{#each availableSeries as series}
+								<button
+									onclick={() => saveToSeries(series)}
+									class="w-full text-left px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors border border-slate-700 disabled:opacity-50"
+									disabled={isSavingGame}
+								>
+									<div class="flex items-center justify-between">
+										<div>
+											<div class="font-semibold text-white">{series.name}</div>
+											<div class="text-xs text-slate-400">
+												{series.seriesType} • {series.status}
+											</div>
+										</div>
+										<svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+										</svg>
+									</div>
+								</button>
+							{/each}
+						</div>
+
+						<div class="border-t border-slate-700 pt-4">
+							<button
+								onclick={createAndSaveSeries}
+								class="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg transition-colors text-sm"
+								disabled={isSavingGame}
+							>
+								{isSavingGame ? 'Creating...' : '+ Create New Series'}
+							</button>
+						</div>
+					{/if}
+
+					<button
+						onclick={() => showSeriesModal = false}
+						class="w-full px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors text-sm mt-2"
+					>
+						Cancel
 					</button>
 				</div>
 			</div>
