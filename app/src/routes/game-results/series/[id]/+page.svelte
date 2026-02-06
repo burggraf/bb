@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
+	import StandingsTable from '$lib/game-results/components/StandingsTable.svelte';
 
 	interface Props {
 		data: PageData;
@@ -84,8 +85,7 @@
 
 		<!-- Tab Content -->
 		{#if activeTab === 'standings'}
-			<!-- TODO: Standings table -->
-			<div class="text-zinc-400">Standings coming soon...</div>
+			<StandingsTable standings={standings} />
 		{:else if activeTab === 'games'}
 			<!-- TODO: Games list -->
 			<div class="text-zinc-400">Games coming soon...</div>
