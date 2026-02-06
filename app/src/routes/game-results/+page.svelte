@@ -42,7 +42,15 @@
 	</div>
 
 	{#if loading}
-		<p class="text-zinc-400">Loading...</p>
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+			{#each Array(3) as _}
+				<div class="bg-zinc-900 border border-zinc-800 rounded-lg p-5 animate-pulse">
+					<div class="h-5 bg-zinc-800 rounded mb-3 w-3/4"></div>
+					<div class="h-4 bg-zinc-800 rounded mb-2 w-full"></div>
+					<div class="h-4 bg-zinc-800 rounded w-1/2"></div>
+				</div>
+			{/each}
+		</div>
 	{:else if error}
 		<p class="text-red-400">Error: {error}</p>
 	{:else if series.length === 0}

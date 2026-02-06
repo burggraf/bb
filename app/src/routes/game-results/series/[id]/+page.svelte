@@ -58,7 +58,11 @@
 
 <div class="container mx-auto px-4 py-8 max-w-7xl">
 	{#if loading}
-		<div class="text-zinc-400">Loading...</div>
+		<div class="animate-pulse">
+			<div class="h-8 bg-zinc-800 rounded w-1/3 mb-4"></div>
+			<div class="h-10 bg-zinc-800 rounded w-2/3 mb-6"></div>
+			<div class="h-64 bg-zinc-800 rounded"></div>
+		</div>
 	{:else if error}
 		<div class="text-red-400">{error}</div>
 	{:else if series}
