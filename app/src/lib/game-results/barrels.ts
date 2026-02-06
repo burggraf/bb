@@ -219,6 +219,11 @@ function calculateInnings(state: GameState): number {
   // If bottom of inning hasn't started yet (still top or just finished top),
   // don't count the current inning
   if (state.isTopInning) {
+    // If home team has batted, we just finished the bottom of previous inning
+    // (the engine increments inning after bottom completes)
+    if (state.homeTeamHasBattedInInning) {
+      return state.inning - 1;
+    }
     // We're in the top of an inning, so previous inning is complete
     // But if it's the 1st inning, return 1 (game started)
     return state.inning;
@@ -282,8 +287,8 @@ function convertPlayEvent(
     runner3bAfter: play.runnersAfter?.[2] || null,
     description: play.description,
     lineupJson: play.lineup ? JSON.stringify(play.lineup) : null,
-    substitutedPlayer: play.substitutedPlayer,
-    position: play.position,
+    substitutedPlayer: play.substitutedPlayer || null,
+    position: play.position || null,
     isSummary: play.isSummary || false,
     scorerIds: play.scorerIds || []
   };
