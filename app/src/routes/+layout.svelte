@@ -29,6 +29,12 @@
 						Home
 					</a>
 					<a
+						href="/game-results"
+						class="text-zinc-400 hover:text-white text-sm transition-colors"
+					>
+						Game Results
+					</a>
+					<a
 						href="/data-browser"
 						class="text-zinc-400 hover:text-white text-sm transition-colors"
 					>
