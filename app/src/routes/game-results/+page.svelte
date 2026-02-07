@@ -5,23 +5,31 @@
 	// Dynamic imports for SSR compatibility
 	let listSeries: typeof import('$lib/game-results/index.js').listSeries;
 	let getGamesBySeries: typeof import('$lib/game-results/index.js').getGamesBySeries;
+	let getSeriesMetadata: typeof import('$lib/game-results/index.js').getSeriesMetadata;
 
 	let loading = $state<boolean>(true);
 	let error = $state<string | null>(null);
 	let series = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').listSeries>>>([]);
 	let gameCounts = $state<Record<string, number>>({});
+	let replayMetadata = $state<Record<string, Awaited<ReturnType<typeof import('$lib/game-results/index.js').getSeriesMetadata>>>>({});
 
 	onMount(async () => {
 		try {
 			const gameResults = await import('$lib/game-results/index.js');
 			listSeries = gameResults.listSeries;
 			getGamesBySeries = gameResults.getGamesBySeries;
+			getSeriesMetadata = gameResults.getSeriesMetadata;
 			series = await listSeries();
 
-			// Load game counts for each series
+			// Load game counts and replay metadata for each series
 			for (const s of series) {
 				const games = await getGamesBySeries(s.id);
 				gameCounts[s.id] = games.length;
+
+				// Load replay metadata for season_replay series
+				if (s.seriesType === 'season_replay') {
+					replayMetadata[s.id] = await getSeriesMetadata(s.id);
+				}
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load series';
@@ -29,6 +37,18 @@
 			loading = false;
 		}
 	});
+
+	function getReplayStatus(seriesId: string): 'idle' | 'playing' | 'paused' | 'completed' | undefined {
+		const metadata = replayMetadata[seriesId];
+		return metadata?.seasonReplay?.status;
+	}
+
+	function getReplayProgress(seriesId: string): number | undefined {
+		const metadata = replayMetadata[seriesId];
+		const replay = metadata?.seasonReplay;
+		if (!replay) return undefined;
+		return (replay.currentGameIndex / replay.totalGames) * 100;
+	}
 </script>
 
 <svelte:head>
@@ -61,7 +81,12 @@
 	{:else}
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 			{#each series as s}
-				<SeriesCard series={s} gameCount={gameCounts[s.id] ?? 0} />
+				<SeriesCard
+					series={s}
+					gameCount={gameCounts[s.id] ?? 0}
+					replayStatus={getReplayStatus(s.id)}
+					replayProgress={getReplayProgress(s.id)}
+				/>
 			{/each}
 		</div>
 	{/if}
