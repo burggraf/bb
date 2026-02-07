@@ -141,40 +141,47 @@ export class SeasonReplayEngine {
   }
 
   private async simulateGame(game: ScheduledGame): Promise<GameResult | null> {
-    // Get series metadata
-    const metadata = await getSeriesMetadata(this.seriesId);
+    try {
+      // Get series metadata
+      const metadata = await getSeriesMetadata(this.seriesId);
 
-    // Load season data with players for both teams (loadSeasonForGame loads batters/pitchers)
-    const season = await loadSeasonForGame(this.seasonYear, game.awayTeam, game.homeTeam);
+      // Load season data with players for both teams (loadSeasonForGame loads batters/pitchers)
+      const season = await loadSeasonForGame(this.seasonYear, game.awayTeam, game.homeTeam);
 
-    // Create and run game engine
-    this.gameEngine = new GameEngine(season, game.awayTeam, game.homeTeam);
+      // Create and run game engine
+      this.gameEngine = new GameEngine(season, game.awayTeam, game.homeTeam);
 
-    // Simulate the full game
-    while (!this.gameEngine.isComplete()) {
-      this.gameEngine.simulatePlateAppearance();
+      // Simulate the full game
+      while (!this.gameEngine.isComplete()) {
+        this.gameEngine.simulatePlateAppearance();
+      }
+
+      const finalState = this.gameEngine.getState();
+
+      // Calculate scores from plays (top inning = away team, bottom inning = home team)
+      const awayScore = finalState.plays.filter(p => p.isTopInning).reduce((sum, p) => sum + p.runsScored, 0);
+      const homeScore = finalState.plays.filter(p => !p.isTopInning).reduce((sum, p) => sum + p.runsScored, 0);
+
+      // Save game to database
+      console.log('[SeasonReplay] Saving game to database...', { awayTeam: game.awayTeam, homeTeam: game.homeTeam, awayScore, homeScore });
+      const gameId = await saveGameFromState(finalState, this.seriesId, this.currentGameIndex + 1, game.date);
+      console.log('[SeasonReplay] Game saved successfully:', gameId);
+
+      // Update series metadata
+      await this.updateMetadataStatus(this.seriesId, finalState, metadata);
+
+      return {
+        gameId,
+        awayTeam: game.awayTeam,
+        homeTeam: game.homeTeam,
+        awayScore,
+        homeScore,
+        date: game.date
+      };
+    } catch (error) {
+      console.error('[SeasonReplay] Error simulating game:', error);
+      throw error;
     }
-
-    const finalState = this.gameEngine.getState();
-
-    // Calculate scores from plays (top inning = away team, bottom inning = home team)
-    const awayScore = finalState.plays.filter(p => p.isTopInning).reduce((sum, p) => sum + p.runsScored, 0);
-    const homeScore = finalState.plays.filter(p => !p.isTopInning).reduce((sum, p) => sum + p.runsScored, 0);
-
-    // Save game to database
-    const gameId = await saveGameFromState(finalState, this.seriesId, undefined, game.date);
-
-    // Update series metadata
-    await this.updateMetadataStatus(this.seriesId, finalState, metadata);
-
-    return {
-      gameId,
-      awayTeam: game.awayTeam,
-      homeTeam: game.homeTeam,
-      awayScore,
-      homeScore,
-      date: game.date
-    };
   }
 
   getProgress(): ReplayProgress {

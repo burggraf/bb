@@ -23,16 +23,20 @@
 	}
 
 	let props = $props<Props>();
-	let { seriesId, seasonYear, onStandingsUpdate } = props;
-
-	// Use $derived to create reactive state that tracks prop changes
-	let standings = $derived(() => props.standings);
+	let { seriesId, seasonYear, onStandingsUpdate, standings } = props;
 </script>
 
 <div class="flex gap-6">
 	<!-- Standings Table (flexible width) -->
 	<div class="flex-1">
-		<StandingsTable {standings} />
+		{#if standings.length === 0}
+			<div class="bg-zinc-900 rounded-lg p-8 text-center">
+				<p class="text-zinc-400 text-lg">No games played yet</p>
+				<p class="text-zinc-500 text-sm mt-2">Use the controls on the right to start the season replay</p>
+			</div>
+		{:else}
+			<StandingsTable {standings} />
+		{/if}
 	</div>
 
 	<!-- Replay Controls (fixed width) -->
