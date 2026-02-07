@@ -9,6 +9,21 @@ export type SeriesType = 'season_replay' | 'tournament' | 'exhibition' | 'custom
 export type SeriesStatus = 'active' | 'completed' | 'archived';
 
 /**
+ * Series metadata - additional data for tracking series state
+ */
+export interface SeriesMetadata {
+  seasonReplay?: {
+    seasonYear: number;
+    currentGameIndex: number;
+    totalGames: number;
+    playbackSpeed: 'instant' | 'animated';
+    gamesPerBatch: number;
+    status: 'idle' | 'playing' | 'paused' | 'completed';
+    lastPlayedDate?: string;
+  };
+}
+
+/**
  * Event types in game_events table
  */
 export type GameEventType =
