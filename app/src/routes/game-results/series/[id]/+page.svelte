@@ -18,6 +18,7 @@
 	let getGamesBySeries: typeof import('$lib/game-results/index.js').getGamesBySeries;
 	let getBattingStats: typeof import('$lib/game-results/index.js').getBattingStats;
 	let getPitchingStats: typeof import('$lib/game-results/index.js').getPitchingStats;
+	let getSeriesMetadata: typeof import('$lib/game-results/index.js').getSeriesMetadata;
 
 	// State
 	let loading = $state<boolean>(true);
@@ -29,6 +30,8 @@
 	let pitchingStats = $state<PitchingStat[]>([]);
 	let activeTab = $state<'standings' | 'games' | 'leaders'>('games');
 	let leadersSubTab = $state<'batting' | 'pitching'>('batting');
+	let isSeasonReplay = $state(false);
+	let replayMetadata = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').getSeriesMetadata>> | null>(null);
 
 	onMount(async () => {
 		try {
@@ -38,12 +41,19 @@
 			getGamesBySeries = gameResults.getGamesBySeries;
 			getBattingStats = gameResults.getBattingStats;
 			getPitchingStats = gameResults.getPitchingStats;
+			getSeriesMetadata = gameResults.getSeriesMetadata;
 
 			series = await getSeries(data.seriesId);
 			standings = await getSeriesStandingsEnhanced(data.seriesId);
 			games = await getGamesBySeries(data.seriesId);
 			battingStats = await getBattingStats(data.seriesId);
 			pitchingStats = await getPitchingStats(data.seriesId);
+
+			isSeasonReplay = series?.seriesType === 'season_replay';
+			if (isSeasonReplay) {
+				replayMetadata = await gameResults.getSeriesMetadata(data.seriesId);
+				activeTab = 'standings';
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load series';
 		} finally {
@@ -102,7 +112,7 @@
 
 		<!-- Tab Content -->
 		{#if activeTab === 'standings'}
-			<StandingsTable standings={standings} />
+			<StandingsTable {standings} {isSeasonReplay} {seriesId} />
 		{:else if activeTab === 'games'}
 			<GamesList {games} />
 		{:else}
