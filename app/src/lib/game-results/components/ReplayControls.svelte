@@ -69,7 +69,13 @@
 
 	async function resume() {
 		if (!engine || status === 'playing') return;
-		await engine.resume();
+
+		// Start or resume based on current status
+		if (status === 'idle') {
+			await engine.start();
+		} else {
+			await engine.resume();
+		}
 		status = engine.getStatus();
 
 		// Auto-play games
