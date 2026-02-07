@@ -5,6 +5,7 @@
 	import GamesList from '$lib/game-results/components/GamesList.svelte';
 	import BattingLeadersTable from '$lib/game-results/components/BattingLeadersTable.svelte';
 	import PitchingLeadersTable from '$lib/game-results/components/PitchingLeadersTable.svelte';
+	import ReplayStandingsView from '$lib/game-results/components/ReplayStandingsView.svelte';
 	import type { BattingStat, PitchingStat } from '$lib/game-results';
 
 	interface Props {
@@ -23,7 +24,7 @@
 	// State
 	let loading = $state<boolean>(true);
 	let error = $state<string | null>(null);
-	let series: Awaited<ReturnType<typeof import('$lib/game-results/index.js').getSeries>> | null = null;
+	let series = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').getSeries>> | null>(null);
 	let standings = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').getSeriesStandingsEnhanced>>>([]);
 	let games = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').getGamesBySeries>>>([]);
 	let battingStats = $state<BattingStat[]>([]);
@@ -32,6 +33,13 @@
 	let leadersSubTab = $state<'batting' | 'pitching'>('batting');
 	let isSeasonReplay = $state(false);
 	let replayMetadata = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').getSeriesMetadata>> | null>(null);
+	let seasonYear = $state<number | null>(null);
+
+	// Handle standings update from replay controls
+	async function handleStandingsUpdate() {
+		if (!getSeriesStandingsEnhanced) return;
+		standings = await getSeriesStandingsEnhanced(data.seriesId);
+	}
 
 	onMount(async () => {
 		try {
@@ -52,6 +60,7 @@
 			isSeasonReplay = series?.seriesType === 'season_replay';
 			if (isSeasonReplay) {
 				replayMetadata = await gameResults.getSeriesMetadata(data.seriesId);
+				seasonYear = replayMetadata?.seasonReplay?.seasonYear ?? null;
 				activeTab = 'standings';
 			}
 		} catch (e) {
@@ -112,7 +121,16 @@
 
 		<!-- Tab Content -->
 		{#if activeTab === 'standings'}
-			<StandingsTable {standings} {isSeasonReplay} {seriesId} />
+			{#if isSeasonReplay && seasonYear}
+				<ReplayStandingsView
+					{standings}
+					seriesId={data.seriesId}
+					{seasonYear}
+					onStandingsUpdate={handleStandingsUpdate}
+				/>
+			{:else}
+				<StandingsTable {standings} />
+			{/if}
 		{:else if activeTab === 'games'}
 			<GamesList {games} />
 		{:else}

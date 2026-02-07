@@ -7,6 +7,7 @@ import type { ReplayOptions, ReplayProgress, ReplayStatus, GameResult } from './
 type EventCallback = (data: any) => void;
 
 export class SeasonReplayEngine {
+  private seriesId: string;
   private seasonYear: number;
   private options: ReplayOptions;
   private schedule: ScheduledGame[] = [];
@@ -15,7 +16,8 @@ export class SeasonReplayEngine {
   private gameEngine: GameEngine | null = null;
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
 
-  constructor(seasonYear: number, options: ReplayOptions = { playbackSpeed: 'instant' }) {
+  constructor(seriesId: string, seasonYear: number, options: ReplayOptions = { playbackSpeed: 'instant' }) {
+    this.seriesId = seriesId;
     this.seasonYear = seasonYear;
     this.options = options;
   }
@@ -109,23 +111,23 @@ export class SeasonReplayEngine {
 
   private async simulateGame(game: ScheduledGame): Promise<GameResult | null> {
     // Get series metadata
-    const metadata = await getSeriesMetadata(game.seriesId);
+    const metadata = await getSeriesMetadata(this.seriesId);
 
     // Create and run game engine
-    this.gameEngine = new GameEngine(game.awayTeamId, game.homeTeamId, this.seasonYear);
+    this.gameEngine = new GameEngine(game.awayTeam, game.homeTeam, this.seasonYear);
     this.gameEngine.initializeLineups();
     const finalState = this.gameEngine.playFullGame();
 
     // Save game to database
-    await saveGameFromState(finalState);
+    await saveGameFromState(finalState, this.seriesId, undefined, game.date);
 
     // Update series metadata
-    await this.updateMetadataStatus(game.seriesId, finalState, metadata);
+    await this.updateMetadataStatus(this.seriesId, finalState, metadata);
 
     return {
       gameId: finalState.gameId,
-      awayTeam: game.awayTeamId,
-      homeTeam: game.homeTeamId,
+      awayTeam: game.awayTeam,
+      homeTeam: game.homeTeam,
       awayScore: finalState.awayScore,
       homeScore: finalState.homeScore,
       date: game.date
