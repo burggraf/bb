@@ -1,7 +1,6 @@
-import { getSeasonSchedule, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
+import { getSeasonSchedule, loadSeason, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
 import { getSeriesMetadata, updateSeriesMetadata, saveGameFromState } from '$lib/game-results/index.js';
 import { GameEngine } from '$lib/game/engine.js';
-import { loadSeason } from '$lib/game/sqlite-season-loader.js';
 import type { ReplayOptions, ReplayProgress, ReplayStatus, GameResult } from './types.js';
 
 type EventCallback = (data: any) => void;
@@ -145,23 +144,35 @@ export class SeasonReplayEngine {
     // Get series metadata
     const metadata = await getSeriesMetadata(this.seriesId);
 
+    // Load season data
+    const season = await loadSeason(this.seasonYear);
+
     // Create and run game engine
-    this.gameEngine = new GameEngine(game.awayTeam, game.homeTeam, this.seasonYear);
-    this.gameEngine.initializeLineups();
-    const finalState = this.gameEngine.playFullGame();
+    this.gameEngine = new GameEngine(season, game.awayTeam, game.homeTeam);
+
+    // Simulate the full game
+    while (!this.gameEngine.isComplete()) {
+      this.gameEngine.simulatePlateAppearance();
+    }
+
+    const finalState = this.gameEngine.getState();
+
+    // Calculate scores from plays (top inning = away team, bottom inning = home team)
+    const awayScore = finalState.plays.filter(p => p.isTopInning).reduce((sum, p) => sum + p.runsScored, 0);
+    const homeScore = finalState.plays.filter(p => !p.isTopInning).reduce((sum, p) => sum + p.runsScored, 0);
 
     // Save game to database
-    await saveGameFromState(finalState, this.seriesId, undefined, game.date);
+    const gameId = await saveGameFromState(finalState, this.seriesId, undefined, game.date);
 
     // Update series metadata
     await this.updateMetadataStatus(this.seriesId, finalState, metadata);
 
     return {
-      gameId: finalState.gameId,
+      gameId,
       awayTeam: game.awayTeam,
       homeTeam: game.homeTeam,
-      awayScore: finalState.awayScore,
-      homeScore: finalState.homeScore,
+      awayScore,
+      homeScore,
       date: game.date
     };
   }
