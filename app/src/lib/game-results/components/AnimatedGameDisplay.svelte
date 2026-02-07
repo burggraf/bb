@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { SeasonReplayEngine } from '$lib/season-replay/index.js';
-  import { loadSeason, type Season } from '$lib/game/sqlite-season-loader.js';
+  import { loadSeason } from '$lib/game/sqlite-season-loader.js';
+  import type { SeasonPackage } from '$lib/game/types.js';
   import GameScoreboard from '$lib/components/GameScoreboard.svelte';
   import type { GameState, PlayEvent } from '$lib/game/types.js';
 
@@ -15,7 +16,7 @@
 
   // Game state for display
   let gameState = $state<GameState | null>(null);
-  let season = $state<Season | null>(null);
+  let season = $state<SeasonPackage | null>(null);
   let awayTeamId = $state<string | null>(null);
   let homeTeamId = $state<string | null>(null);
   let error = $state<string | null>(null);
