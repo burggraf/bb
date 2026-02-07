@@ -42,15 +42,25 @@
 	}
 
 	// Calculate line score from plays
-	function computeLineScore(): { innings: InningScore[]; awayHits: number; homeHits: number; awayErrors: number; homeErrors: number } {
+	function computeLineScore(): { innings: InningScore[]; awayHits: number; homeHits: number; awayErrors: number; homeErrors: number; maxInning: number } {
 		const innings: InningScore[] = [];
 		let awayHits = 0;
 		let homeHits = 0;
 		let awayErrors = 0;
 		let homeErrors = 0;
 
-		// Group plays by inning
-		const maxInning = Math.max(inning, 9);
+		// Find the actual max inning that has plays (not just the current inning value)
+		// This prevents showing empty 10th inning when game ends at inning=10
+		let actualMaxInning = 1;
+		for (const play of plays) {
+			if (!play.isSummary) {
+				actualMaxInning = Math.max(actualMaxInning, play.inning);
+			}
+		}
+
+		// For 9-inning games, ensure at least 9 innings are shown (even if no data yet)
+		// But don't show more innings than actually played + current inning
+		const maxInning = Math.max(Math.min(inning, actualMaxInning), 9);
 		for (let i = 1; i <= maxInning; i++) {
 			innings.push({ away: null, home: null });
 		}
@@ -98,13 +108,13 @@
 			}
 		}
 
-		return { innings, awayHits, homeHits, awayErrors, homeErrors };
+		return { innings, awayHits, homeHits, awayErrors, homeErrors, maxInning };
 	}
 
 	// Determine which innings to show (sliding window for extras)
 	function getVisibleInnings(totalInnings: number, currentInning: number): { start: number; end: number } {
 		if (totalInnings <= 9) {
-			return { start: 1, end: 9 };
+			return { start: 1, end: totalInnings };
 		}
 		// For extra innings, show a 9-inning window
 		const end = Math.max(currentInning, 9);
