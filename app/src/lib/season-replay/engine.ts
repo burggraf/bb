@@ -103,6 +103,11 @@ export class SeasonReplayEngine {
     if (this.currentGameIndex >= this.schedule.length) {
       this.status = 'completed';
       this.emit('statusChange', { status: this.status });
+      // Update series status to 'completed' in database
+      const metadata = await getSeriesMetadata(this.seriesId);
+      if (metadata?.seasonReplay) {
+        await updateSeries(this.seriesId, { status: 'completed' });
+      }
     }
 
     return result;
@@ -135,6 +140,11 @@ export class SeasonReplayEngine {
     if (this.currentGameIndex >= this.schedule.length) {
       this.status = 'completed';
       this.emit('statusChange', { status: this.status });
+      // Update series status to 'completed' in database
+      const metadata = await getSeriesMetadata(this.seriesId);
+      if (metadata?.seasonReplay) {
+        await updateSeries(this.seriesId, { status: 'completed' });
+      }
     }
 
     return results;
@@ -235,10 +245,5 @@ export class SeasonReplayEngine {
         lastPlayedDate: this.schedule[this.currentGameIndex]?.date
       }
     });
-
-    // If replay is completed, also update the series status
-    if (this.status === 'completed') {
-      await updateSeries(seriesId, { status: 'completed' });
-    }
   }
 }
