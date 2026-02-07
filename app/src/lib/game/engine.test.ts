@@ -41,6 +41,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-1',
 		primaryPosition: 1,
 		positionEligibility: { 1: 100 },
+		pa: 50,
+		avg: 0.100,
+		obp: 0.150,
+		slg: 0.120,
+		ops: 0.270,
 		rates: {
 			vsLHP: createMinimalRates(),
 			vsRHP: createMinimalRates()
@@ -54,6 +59,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-1',
 		primaryPosition: 1,
 		positionEligibility: { 1: 100 },
+		pa: 20,
+		avg: 0.080,
+		obp: 0.120,
+		slg: 0.100,
+		ops: 0.220,
 		rates: {
 			vsLHP: createMinimalRates(),
 			vsRHP: createMinimalRates()
@@ -67,6 +77,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-1',
 		primaryPosition: 5, // 3B
 		positionEligibility: { 5: 50, 4: 30, 6: 20 }, // 3B, 2B, SS
+		pa: 200,
+		avg: 0.260,
+		obp: 0.340,
+		slg: 0.380,
+		ops: 0.720,
 		rates: {
 			vsLHP: createMinimalRates(),
 			vsRHP: createMinimalRates()
@@ -84,6 +99,11 @@ function createSeasonPackage(): SeasonPackage {
 			teamId: 'team-1',
 			primaryPosition: pos,
 			positionEligibility: { [pos]: 100 },
+			pa: 500,
+			avg: 0.270,
+			obp: 0.340,
+			slg: 0.430,
+			ops: 0.770,
 			rates: {
 				vsLHP: createMinimalRates(),
 				vsRHP: createMinimalRates()
@@ -99,6 +119,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-1',
 		games: 30,
 		gamesStarted: 30,
+		completeGames: 5,
+		saves: 0,
+		inningsPitched: 180,
+		whip: 1.2,
+		era: 3.5,
 		avgBfpAsStarter: 27,
 		avgBfpAsReliever: null,
 		rates: {
@@ -114,6 +139,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-1',
 		games: 60,
 		gamesStarted: 0,
+		completeGames: 0,
+		saves: 5,
+		inningsPitched: 60,
+		whip: 1.1,
+		era: 3.2,
 		avgBfpAsStarter: null,
 		avgBfpAsReliever: 4,
 		rates: {
@@ -130,6 +160,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-1',
 		games: 50,
 		gamesStarted: 0,
+		completeGames: 0,
+		saves: 3,
+		inningsPitched: 55,
+		whip: 1.3,
+		era: 3.8,
 		avgBfpAsStarter: null,
 		avgBfpAsReliever: 4,
 		rates: {
@@ -145,7 +180,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-1',
 		games: 60,
 		gamesStarted: 0,
+		completeGames: 0,
 		saves: 30,
+		inningsPitched: 60,
+		whip: 1.0,
+		era: 2.5,
 		avgBfpAsStarter: null,
 		avgBfpAsReliever: 3,
 		rates: {
@@ -165,6 +204,11 @@ function createSeasonPackage(): SeasonPackage {
 			teamId: 'team-2',
 			primaryPosition: pos,
 			positionEligibility: { [pos]: 100 },
+			pa: 500,
+			avg: 0.270,
+			obp: 0.340,
+			slg: 0.430,
+			ops: 0.770,
 			rates: {
 				vsLHP: createMinimalRates(),
 				vsRHP: createMinimalRates()
@@ -179,6 +223,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-2',
 		games: 30,
 		gamesStarted: 30,
+		completeGames: 5,
+		saves: 0,
+		inningsPitched: 180,
+		whip: 1.2,
+		era: 3.5,
 		avgBfpAsStarter: 27,
 		avgBfpAsReliever: null,
 		rates: {
@@ -194,6 +243,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-2',
 		games: 50,
 		gamesStarted: 0,
+		completeGames: 0,
+		saves: 5,
+		inningsPitched: 60,
+		whip: 1.1,
+		era: 3.2,
 		avgBfpAsStarter: null,
 		avgBfpAsReliever: 4,
 		rates: {
@@ -209,6 +263,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-2',
 		games: 50,
 		gamesStarted: 0,
+		completeGames: 0,
+		saves: 3,
+		inningsPitched: 55,
+		whip: 1.3,
+		era: 3.8,
 		avgBfpAsStarter: null,
 		avgBfpAsReliever: 4,
 		rates: {
@@ -224,7 +283,11 @@ function createSeasonPackage(): SeasonPackage {
 		teamId: 'team-2',
 		games: 60,
 		gamesStarted: 0,
+		completeGames: 0,
 		saves: 30,
+		inningsPitched: 60,
+		whip: 1.0,
+		era: 2.5,
 		avgBfpAsStarter: null,
 		avgBfpAsReliever: 3,
 		rates: {
@@ -523,7 +586,7 @@ describe('Home Team Batting 9th Inning Bug', () => {
 
 		// Count plays in bottom of 9th
 		const playsInBottomOf9th = finalState.plays.filter(
-			p => p.inning === 9 && !p.isTopInning && p.outcome !== 'summary'
+			p => p.inning === 9 && !p.isTopInning && !p.isSummary
 		).length;
 
 		// If away team won in 9 innings, home team MUST have batted in bottom of 9th
@@ -562,7 +625,7 @@ describe('Home Team Batting 9th Inning Bug', () => {
 
 			// Count plays in bottom of final inning
 			const playsInBottomOfFinal = finalState.plays.filter(
-				p => p.inning === finalState.inning && !p.isTopInning && p.outcome !== 'summary'
+				p => p.inning === finalState.inning && !p.isTopInning && !p.isSummary
 			).length;
 
 			// Should have at least 3 plate appearances (3 outs)

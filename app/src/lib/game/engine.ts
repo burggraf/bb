@@ -309,6 +309,12 @@ const POSITION_NAMES: Record<number, string> = {
 	12: 'PR'
 };
 
+// Helper function to safely get position name from a potentially null position
+function getPositionName(position: number | null): string {
+	if (position === null) return 'null';
+	return POSITION_NAMES[position] ?? String(position);
+}
+
 // Apply baserunning using state machine
 function applyBaserunning(
 	state: GameState,
@@ -692,7 +698,7 @@ export class GameEngine {
 			if (!playerToMove) continue;
 
 			// Check if this player can play the open position
-			if (this.canPlayPosition(playerToMove.playerId, openPosition)) {
+			if (playerToMove.playerId && this.canPlayPosition(playerToMove.playerId, openPosition)) {
 				// Found a valid shuffle!
 				// PH moves to phPos, player at phPos moves to openPosition
 				return {
@@ -732,15 +738,15 @@ export class GameEngine {
 		}
 
 		// Find duplicate positions (count > 1)
-		const duplicatePositions = Array.from(positionCounts.entries())
+		const duplicatePositions: number[] = Array.from(positionCounts.entries())
 			.filter(([_, count]) => count > 1)
-			.map(([pos, _]) => pos);
+			.map(([pos, _]) => pos as number);
 
 		if (duplicatePositions.length === 0) {
 			return; // No duplicates
 		}
 
-		console.warn(`Emergency mode: resolving duplicate positions ${duplicatePositions.map(p => POSITION_NAMES[p] ?? p).join(', ')}`);
+		console.warn(`Emergency mode: resolving duplicate positions ${duplicatePositions.map(p => POSITION_NAMES[p] ?? String(p)).join(', ')}`);
 
 		// Find which positions are missing (0 players)
 		const filledPositions = new Set(positionCounts.keys());
@@ -760,9 +766,8 @@ export class GameEngine {
 				const playerIndex = indices[i];
 				const player = lineup.players[playerIndex];
 				if (player) {
-					const oldPosName = POSITION_NAMES[dupPos] ?? dupPos;
-					const newPosName = POSITION_NAMES[newIndex] ?? newIndex;
-					console.warn(`  Moving ${this.season.batters[player.playerId]?.name || player.playerId} from ${oldPosName} to ${newPosName} (emergency duplicate resolution)`);
+					const oldPosName = getPositionName(dupPos);
+					const newPosName = getPositionName(newIndex);
 					lineup.players[playerIndex] = {
 						...player,
 						position: newIndex
@@ -771,7 +776,7 @@ export class GameEngine {
 						this.state.plays.unshift({
 							inning: this.state.inning,
 							isTopInning: this.state.isTopInning,
-							outcome: 'out' as Outcome,
+							outcome: 'groundOut' as Outcome,
 							batterId: '',
 							batterName: '',
 							pitcherId: '',
@@ -779,7 +784,7 @@ export class GameEngine {
 							description: `Lineup adjustment: ${this.formatName(this.season.batters[player.playerId]?.name || player.playerId)} moved to ${newPosName} (emergency duplicate resolution)`,
 							runsScored: 0,
 							eventType: 'lineupAdjustment',
-							substitutedPlayer: player.playerId,
+							substitutedPlayer: player.playerId ?? undefined,
 							isSummary: true
 						});
 					}
@@ -854,6 +859,7 @@ export class GameEngine {
 			const existing = augmentedBatters[id];
 			if (!existing) {
 				// Create a minimal BatterStats entry for this pitcher
+				// Use league pitcher-batter averages as fallback rates
 				augmentedBatters[id] = {
 					id: pitcher.id,
 					name: pitcher.name,
@@ -861,9 +867,14 @@ export class GameEngine {
 					teamId: pitcher.teamId,
 					primaryPosition: 1,
 					positionEligibility: { 1: 1 }, // Can only pitch
+					pa: 0,
+					avg: 0,
+					obp: 0,
+					slg: 0,
+					ops: 0,
 					rates: {
-						vsLHP: { out: 1, single: 0, double: 0, triple: 0, homeRun: 0, walk: 0, hitByPitch: 0 },
-						vsRHP: { out: 1, single: 0, double: 0, triple: 0, homeRun: 0, walk: 0, hitByPitch: 0 }
+						vsLHP: this.season.league.pitcherBatter.vsLHP,
+						vsRHP: this.season.league.pitcherBatter.vsRHP
 					}
 				};
 			} else if (existing.primaryPosition !== 1) {
@@ -957,7 +968,7 @@ export class GameEngine {
 	 */
 	private auditLineupAtHalfInningEnd(lineup: LineupState, teamId: string, suppressPlays = false): void {
 		// Helper to conditionally add lineup adjustment plays
-		const maybeAddPlay = (play: Play) => {
+		const maybeAddPlay = (play: PlayEvent) => {
 			if (!suppressPlays) {
 				this.state.plays.unshift(play);
 			}
@@ -1025,7 +1036,7 @@ export class GameEngine {
 			if (pitcherReplacedSlots.length > 0) {
 				console.log(`DEBUG: Lineup before pitcher placement: ${lineup.players.map(p => {
 					const player = this.season.batters[p.playerId] || this.season.pitchers[p.playerId];
-					return `${player?.name || p.playerId || 'null'} (${POSITION_NAMES[p.position] ?? p.position})`;
+					return `${player?.name || p.playerId || 'null'} (${getPositionName(p.position)})`;
 				}).join(', ')}`);
 				console.log(`DEBUG: Current pitcher from lineup.pitcher: ${lineup.pitcher}`);
 			}
@@ -1453,7 +1464,7 @@ export class GameEngine {
 				// Log the current state for debugging
 				console.error(`Lineup: ${lineup.players.map(p => {
 					const player = this.season.batters[p.playerId];
-					return `${player?.name || p.playerId} (${POSITION_NAMES[p.position] ?? p.position})`;
+					return `${player?.name || p.playerId} (${getPositionName(p.position)})`;
 				}).join(', ')}`);
 			}
 
@@ -2096,6 +2107,11 @@ export class GameEngine {
 				 bats: pitcherBatter.throws, // Pitchers bat same side they throw
 				 primaryPosition: 1,
 				 positionEligibility: { 1: 1 },
+				 pa: 0, // Pitchers typically have few PA
+				 avg: 0,
+				 obp: 0,
+				 slg: 0,
+				 ops: 0,
 				 rates: {
 					 vsLHP: season.league.pitcherBatter.vsLHP,
 					 vsRHP: season.league.pitcherBatter.vsRHP
@@ -2348,7 +2364,7 @@ export class GameEngine {
 					// Log the lineup for debugging
 					console.error(`Lineup: ${battingTeam.players.map(p => {
 						const player = augmentedBatters[p.playerId];
-						const posName = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'PH', 'PR'][p.position - 1] || `Pos${p.position}`;
+						const posName = p.position ? ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'PH', 'PR'][p.position - 1] || `Pos${p.position}` : 'null';
 						return `${player?.name || p.playerId} (${posName})`;
 					}).join(', ')}`);
 					throw new Error(`Invalid lineup after half-inning: ${validation.errors.join(', ')}`);

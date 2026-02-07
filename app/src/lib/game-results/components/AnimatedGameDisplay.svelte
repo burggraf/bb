@@ -114,8 +114,8 @@
     {error}
   </div>
 {:else if animated && gameState}
-  <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
-    <div class="flex justify-center mb-4">
+  <div class="bg-zinc-900 rounded-lg p-4 border border-zinc-800 space-y-4">
+    <div class="flex justify-center">
       <GameScoreboard
         {awayScore}
         {homeScore}
@@ -133,6 +133,18 @@
         plays={gameState.plays}
       />
     </div>
+
+    <!-- Recent Play-by-Play (last 3 plays) -->
+    {#if gameState.plays.length > 0}
+      <div class="border-t border-zinc-700 pt-3 mt-2">
+        {@const recentPlays = gameState.plays.slice(0, 3).reverse()}
+        {#each recentPlays as play, index (index)}
+          <div class="py-1 px-3 rounded {index === recentPlays.length - 1 ? 'bg-blue-900/20' : 'bg-zinc-800/50'}">
+            <p class="text-xs text-zinc-300">{play.description}</p>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 {:else if animated}
   <div class="bg-zinc-900 rounded-lg p-8 border border-zinc-800 text-center">

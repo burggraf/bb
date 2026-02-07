@@ -33,7 +33,8 @@
 
 	// Animated mode state
 	let animatedMode = $state(false);
-	let simSpeed = $state(500); // Default to medium speed
+	let simSpeed = $state(500); // Default to medium speed (milliseconds delay)
+	let speedSliderValue = $state(75); // Slider value (0-100, where 100 = fastest)
 
 	// Game completion state
 	let gameComplete = $state(false);
@@ -221,9 +222,12 @@
 		onAnimatedChange?.(animatedMode);
 	}
 
-	// Update simulation speed
-	function updateSpeed(newSpeed: number) {
-		simSpeed = newSpeed;
+	// Update simulation speed (slider value 0-100, convert to milliseconds delay)
+	// Slider 0 = slow (2000ms), Slider 100 = fast (50ms)
+	function updateSpeed(sliderVal: number) {
+		speedSliderValue = sliderVal;
+		const delayMs = Math.round(2050 - (sliderVal * 20));
+		simSpeed = delayMs;
 		if (engine && animatedMode) {
 			engine.setOptions({ animated: animatedMode, simSpeed });
 		}
@@ -365,17 +369,17 @@
 			</div>
 			<input
 				type="range"
-				min="50"
-				max="2000"
-				step="50"
-				bind:value={simSpeed}
-				oninput={() => updateSpeed(simSpeed)}
+				min="0"
+				max="100"
+				step="1"
+				bind:value={speedSliderValue}
+				oninput={() => updateSpeed(speedSliderValue)}
 				class="w-full accent-blue-500 h-2"
 				disabled={status === 'completed' || !engine}
 			/>
 			<div class="flex justify-between text-xs text-zinc-600 mt-1">
-				<span>Fast</span>
 				<span>Slow</span>
+				<span>Fast</span>
 			</div>
 		</div>
 	{/if}

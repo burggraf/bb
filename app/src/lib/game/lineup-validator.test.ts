@@ -20,6 +20,11 @@ function createMockBatter(
 		teamId: 'team1',
 		primaryPosition,
 		positionEligibility,
+		pa: 500,
+		avg: 0.270,
+		obp: 0.340,
+		slg: 0.430,
+		ops: 0.770,
 		rates: {
 			vsLHP: {
 				single: 0.1,
