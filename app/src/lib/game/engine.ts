@@ -757,21 +757,52 @@ export class GameEngine {
 			}
 		}
 
+		// Enable emergency mode for this team since we're doing emergency shuffling
+		const teamId = this.state.homeLineup === lineup ? this.state.homeLineup.teamId : this.state.awayLineup.teamId;
+		this.emergencyRosterMode.set(teamId, true);
+
 		// For each duplicate position, reassign the extra players to missing positions
+		// In emergency mode, we MUST assign ALL players to unique positions, even if they can't play them well
 		for (const dupPos of duplicatePositions) {
 			const indices = positionIndices.get(dupPos) || [];
 			// Keep the first player at this position, move the rest
 			for (let i = 1; i < indices.length && missingPositions.length > 0; i++) {
-				const newIndex = missingPositions.pop()!;
 				const playerIndex = indices[i];
 				const player = lineup.players[playerIndex];
-				if (player) {
+				if (!player || !player.playerId) continue;
+
+				// Try to find a missing position this player can actually play
+				let assignedPosition: number | null = null;
+				let assignmentIndex = -1;
+
+				for (let j = 0; j < missingPositions.length; j++) {
+					const targetPos = missingPositions[j];
+					if (this.canPlayPosition(player.playerId, targetPos)) {
+						assignedPosition = targetPos;
+						assignmentIndex = j;
+						break;
+					}
+				}
+
+				// If no eligible position found, use ANY missing position (emergency mode - better than having duplicates)
+				if (assignedPosition === null && missingPositions.length > 0) {
+					assignedPosition = missingPositions[0];
+					assignmentIndex = 0;
+					const playerName = this.season.batters[player.playerId]?.name || player.playerId;
+					console.warn(`Emergency: ${playerName} at ${getPositionName(dupPos)} cannot play ${getPositionName(assignedPosition)}, but assigning anyway to resolve duplicate`);
+				}
+
+				if (assignedPosition !== null) {
+					// Assign the player to the position (eligibly or in emergency mode)
 					const oldPosName = getPositionName(dupPos);
-					const newPosName = getPositionName(newIndex);
+					const newPosName = getPositionName(assignedPosition);
 					lineup.players[playerIndex] = {
 						...player,
-						position: newIndex
+						position: assignedPosition
 					};
+					// Remove the assigned position from missingPositions
+					missingPositions.splice(assignmentIndex, 1);
+
 					if (!suppressPlays) {
 						this.state.plays.unshift({
 							inning: this.state.inning,
@@ -1187,6 +1218,10 @@ export class GameEngine {
 
 			// If we vacated any pitcher slots, fill them directly with bench players
 			// (can't rely on bench assignment logic because it looks for positions, not slots)
+			// Collect bench player IDs that were already assigned in the earlier bench assignment loop
+			// to avoid duplicate assignments
+			const assignedBenchPlayerIds = new Set(benchAssignments.map(a => a.playerId));
+
 			for (const vacatedSlot of vacatedPitcherSlots) {
 				if (vacatedSlot.position === 1) {
 					// Need to find a bench player who can play pitcher (position 1)
@@ -1198,6 +1233,7 @@ export class GameEngine {
 						!currentLineupPlayerIds.includes(b.id) &&
 						!this.usedPinchHitters.has(b.id) &&
 						!this.removedPlayers.has(b.id) &&
+						!assignedBenchPlayerIds.has(b.id) &&  // Exclude already-assigned bench players
 						b.primaryPosition === 1  // Only pitchers can play position 1
 					);
 
@@ -1230,8 +1266,48 @@ export class GameEngine {
 						// Leave the slot empty - this will cause a validation error
 					}
 				} else {
-					// Vacated slot is for a field position - add to positionsToFill so bench assignment logic handles it
-					positionsToFill.add(vacatedSlot.position);
+					// Vacated slot is for a field position - find a bench player to fill it directly
+					// We can't add to positionsToFill here because the bench assignment loop already ran
+					const currentLineupPlayerIds = lineup.players.map(p => p.playerId).filter((id): id is string => id !== null);
+					const allTeamBatters = Object.values(this.season.batters)
+						.filter(b => b.teamId === teamId);
+					const availableBench = allTeamBatters.filter(b =>
+						!currentLineupPlayerIds.includes(b.id) &&
+						!this.usedPinchHitters.has(b.id) &&
+						!this.removedPlayers.has(b.id) &&
+						!assignedBenchPlayerIds.has(b.id) &&  // Exclude already-assigned bench players
+						this.canPlayPosition(b.id, vacatedSlot.position)
+					);
+
+					if (availableBench.length > 0) {
+						// Use the first available bench player who can play this position
+						const benchPlayer = availableBench[0];
+						lineup.players[vacatedSlot.index] = {
+							playerId: benchPlayer.id,
+							position: vacatedSlot.position
+						};
+
+						const battingOrder = vacatedSlot.index + 1;
+						const positionName = POSITION_NAMES[vacatedSlot.position] ?? `Pos${vacatedSlot.position}`;
+						maybeAddPlay({
+							inning: this.state.inning,
+							isTopInning: this.state.isTopInning,
+							outcome: 'out' as Outcome,
+							batterId: '',
+							batterName: '',
+							pitcherId: '',
+							pitcherName: '',
+							description: `Lineup adjustment: ${this.formatName(benchPlayer.name)} (${positionName}) replaces pitcher at field position, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+							runsScored: 0,
+							eventType: 'lineupAdjustment',
+							substitutedPlayer: benchPlayer.id,
+							isSummary: true
+						});
+					} else {
+						console.warn(`No bench player available to fill vacated field position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position} at batting order ${vacatedSlot.index + 1}`);
+						benchSearchFailed = true;
+						// Leave the slot empty - this will cause a validation error
+					}
 				}
 			}
 
