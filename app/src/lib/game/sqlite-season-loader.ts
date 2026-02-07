@@ -28,6 +28,15 @@ interface SeasonManifest {
 	}>;
 }
 
+export interface ScheduledGame {
+	id: string;
+	date: string;
+	awayTeam: string;
+	homeTeam: string;
+	useDh: boolean;
+	parkId?: string;
+}
+
 /**
  * Initialize SQL.js
  */
@@ -577,6 +586,38 @@ export async function downloadSeason(
 	// Cache
 	await setCache(year, data);
 	onProgress?.(1);
+}
+
+/**
+ * Get season schedule (games) from SQLite database
+ */
+export async function getSeasonSchedule(year: number): Promise<ScheduledGame[]> {
+	await initializeSQLJS();
+	const bytes = await getDatabaseBytes(year);
+	const db = new SQL.Database(bytes);
+	try {
+		const stmt = db.prepare(`
+      SELECT id, date, away_team, home_team, use_dh, park_id
+      FROM games
+      ORDER BY date, id
+    `);
+		const games: ScheduledGame[] = [];
+		while (stmt.step()) {
+			const row = stmt.getAsObject() as any;
+			games.push({
+				id: row.id,
+				date: row.date,
+				awayTeam: row.away_team,
+				homeTeam: row.home_team,
+				useDh: row.use_dh === 1,
+				parkId: row.park_id
+			});
+		}
+		stmt.free();
+		return games;
+	} finally {
+		db.close();
+	}
 }
 
 /**
