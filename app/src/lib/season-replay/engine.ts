@@ -28,8 +28,16 @@ export class SeasonReplayEngine {
 
     // Load schedule
     this.schedule = await getSeasonSchedule(this.seasonYear);
-    this.currentGameIndex = 0;
-    this.status = 'idle';
+
+    // Restore state from metadata
+    const metadata = await getSeriesMetadata(this.seriesId);
+    if (metadata?.seasonReplay) {
+      this.currentGameIndex = metadata.seasonReplay.currentGameIndex;
+      this.status = metadata.seasonReplay.status;
+    } else {
+      this.currentGameIndex = 0;
+      this.status = 'idle';
+    }
   }
 
   async start(): Promise<void> {
@@ -42,18 +50,42 @@ export class SeasonReplayEngine {
     this.emit('progress', this.getProgress());
   }
 
-  pause(): void {
+  async pause(): Promise<void> {
     if (this.status !== 'playing') return;
 
     this.status = 'paused';
     this.emit('statusChange', { status: this.status });
+
+    // Save status to metadata
+    const metadata = await getSeriesMetadata(this.seriesId);
+    if (metadata?.seasonReplay) {
+      await updateSeriesMetadata(this.seriesId, {
+        seasonReplay: {
+          ...metadata.seasonReplay,
+          currentGameIndex: this.currentGameIndex,
+          status: this.status
+        }
+      });
+    }
   }
 
-  resume(): void {
+  async resume(): Promise<void> {
     if (this.status !== 'paused') return;
 
     this.status = 'playing';
     this.emit('statusChange', { status: this.status });
+
+    // Save status to metadata
+    const metadata = await getSeriesMetadata(this.seriesId);
+    if (metadata?.seasonReplay) {
+      await updateSeriesMetadata(this.seriesId, {
+        seasonReplay: {
+          ...metadata.seasonReplay,
+          currentGameIndex: this.currentGameIndex,
+          status: this.status
+        }
+      });
+    }
   }
 
   async playNextGame(): Promise<GameResult | null> {
@@ -175,14 +207,14 @@ export class SeasonReplayEngine {
     finalState: any,
     metadata: any
   ): Promise<void> {
-    const homeWins = finalState.homeScore > finalState.awayScore;
-    const awayWins = finalState.awayScore > finalState.homeScore;
-
+    // Update season replay metadata with current game index and status
     await updateSeriesMetadata(seriesId, {
-      homeWins: metadata.homeWins + (homeWins ? 1 : 0),
-      awayWins: metadata.awayWins + (awayWins ? 1 : 0),
-      gamesPlayed: metadata.gamesPlayed + 1,
-      lastPlayedDate: finalState.date
+      seasonReplay: {
+        ...metadata.seasonReplay,
+        currentGameIndex: this.currentGameIndex,
+        status: this.status,
+        lastPlayedDate: this.schedule[this.currentGameIndex - 1]?.date
+      }
     });
   }
 }

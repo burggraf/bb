@@ -334,9 +334,8 @@ export function shouldPullPitcher(
 
 		// Variance based on BFP - higher variance for shorter outings (modern specialists)
 		const variance = typicalBfp > 15 ? 0.20 : 0.35;
-	}
 
-	const lowerThreshold = typicalBfp * (1 - variance);
+		const lowerThreshold = typicalBfp * (1 - variance);
 	const upperThreshold = typicalBfp * (1 + variance);
 
 	// Hard limit: exceeded upper threshold
@@ -376,22 +375,23 @@ export function shouldPullPitcher(
 		}
 	}
 
-	// Situation-based: high leverage, consider pull even earlier
-	const leverage = calculateLeverageIndex(gameState);
-	if (leverage > 2.0 && pitcher.battersFace >= lowerThreshold * 0.8) {
-		if (Math.random() < 0.7 + randomness) {
-			const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
-			if (newPitcher) {
-				return {
-					shouldChange: true,
-					newPitcher: newPitcher.pitcherId,
-					reason: 'High leverage situation'
-				};
+		// Situation-based: high leverage, consider pull even earlier
+		const leverage = calculateLeverageIndex(gameState);
+		if (leverage > 2.0 && pitcher.battersFace >= lowerThreshold * 0.8) {
+			if (Math.random() < 0.7 + randomness) {
+				const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
+				if (newPitcher) {
+					return {
+						shouldChange: true,
+						newPitcher: newPitcher.pitcherId,
+						reason: 'High leverage situation'
+					};
+				}
 			}
 		}
-	}
 
-	return { shouldChange: false };
+		return { shouldChange: false };
+	}
 }
 
 /**

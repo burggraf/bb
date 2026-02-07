@@ -61,7 +61,7 @@
 		if (!engine) return;
 
 		if (status === 'playing') {
-			pause();
+			await pause();
 		} else {
 			await resume();
 		}
@@ -69,7 +69,7 @@
 
 	async function resume() {
 		if (!engine || status === 'playing') return;
-		engine.resume();
+		await engine.resume();
 		status = engine.getStatus();
 
 		// Auto-play games
@@ -78,9 +78,9 @@
 		}
 	}
 
-	function pause() {
+	async function pause() {
 		if (!engine) return;
-		engine.pause();
+		await engine.pause();
 		status = engine.getStatus();
 	}
 
@@ -131,7 +131,7 @@
 
 		// Pause if playing
 		if (status === 'playing') {
-			engine.pause();
+			await engine.pause();
 		}
 
 		status = engine.getStatus();
