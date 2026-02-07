@@ -22,7 +22,14 @@
 		onStandingsUpdate: () => Promise<void>;
 	}
 
-	let { standings, seriesId, seasonYear, onStandingsUpdate }: Props = $props();
+	let { standings: standingsProp, seriesId, seasonYear, onStandingsUpdate }: Props = $props();
+
+	// Create local reactive state that syncs with prop changes
+	let standings = $state(standingsProp);
+
+	$effect(() => {
+		standings = standingsProp;
+	});
 </script>
 
 <div class="flex gap-6">
