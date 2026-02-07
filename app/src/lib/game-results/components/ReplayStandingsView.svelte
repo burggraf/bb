@@ -22,14 +22,11 @@
 		onStandingsUpdate: () => Promise<void>;
 	}
 
-	let { standings: standingsProp, seriesId, seasonYear, onStandingsUpdate }: Props = $props();
+	let props = $props<Props>();
+	let { seriesId, seasonYear, onStandingsUpdate } = props;
 
-	// Create local reactive state that syncs with prop changes
-	let standings = $state(standingsProp);
-
-	$effect(() => {
-		standings = standingsProp;
-	});
+	// Use $derived to create reactive state that tracks prop changes
+	let standings = $derived(() => props.standings);
 </script>
 
 <div class="flex gap-6">
