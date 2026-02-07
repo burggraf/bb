@@ -15,7 +15,7 @@ export class SeasonReplayEngine {
   private gameEngine: GameEngine | null = null;
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
 
-  constructor(seriesId: string, seasonYear: number, options: ReplayOptions = { playbackSpeed: 'instant' }) {
+  constructor(seriesId: string, seasonYear: number, options: ReplayOptions = { animated: false, simSpeed: 500 }) {
     this.seriesId = seriesId;
     this.seasonYear = seasonYear;
     this.options = options;
@@ -211,6 +211,14 @@ export class SeasonReplayEngine {
 
   getStatus(): ReplayStatus {
     return this.status;
+  }
+
+  setOptions(options: Partial<ReplayOptions>): void {
+    this.options = { ...this.options, ...options };
+  }
+
+  getOptions(): ReplayOptions {
+    return this.options;
   }
 
   on(event: string, callback: EventCallback): void {

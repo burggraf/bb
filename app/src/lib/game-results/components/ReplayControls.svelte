@@ -8,9 +8,10 @@
 		seasonYear: number;
 		onStandingsUpdate: () => Promise<void>;
 		onStatusChange?: (status: ReplayStatus) => void;
+		onAnimatedChange?: (animated: boolean) => void;
 	}
 
-	let { seriesId, seasonYear, onStandingsUpdate, onStatusChange }: Props = $props();
+	let { seriesId, seasonYear, onStandingsUpdate, onStatusChange, onAnimatedChange }: Props = $props();
 
 	// Engine
 	let engine = $state<SeasonReplayEngine | null>(null);
@@ -28,10 +29,14 @@
 	let error = $state<string | null>(null);
 	let shouldContinuePlaying = false;
 
+	// Animated mode state
+	let animatedMode = $state(false);
+	let simSpeed = $state(500); // Default to medium speed
+
 	// Initialize engine on mount
 	onMount(async () => {
 		try {
-			engine = new SeasonReplayEngine(seriesId, seasonYear, { playbackSpeed: 'instant' });
+			engine = new SeasonReplayEngine(seriesId, seasonYear, { animated: false, simSpeed: 500 });
 			await engine.initialize();
 
 			// Set up event listeners
@@ -154,6 +159,23 @@
 		status = engine.getStatus();
 	}
 
+	// Toggle animated mode
+	function toggleAnimatedMode() {
+		animatedMode = !animatedMode;
+		if (engine) {
+			engine.setOptions({ animated: animatedMode, simSpeed });
+		}
+		onAnimatedChange?.(animatedMode);
+	}
+
+	// Update simulation speed
+	function updateSpeed(newSpeed: number) {
+		simSpeed = newSpeed;
+		if (engine && animatedMode) {
+			engine.setOptions({ animated: animatedMode, simSpeed });
+		}
+	}
+
 	// Status badge helper
 	function getStatusBadgeColor(status: ReplayStatus): string {
 		switch (status) {
@@ -196,6 +218,47 @@
 	<!-- Error message -->
 	{#if error}
 		<div class="text-red-400 text-sm">{error}</div>
+	{/if}
+
+	<!-- Animated Mode Toggle -->
+	<div class="flex items-center justify-between">
+		<span class="text-sm text-zinc-300">Animated Mode</span>
+		<button
+			onclick={toggleAnimatedMode}
+			disabled={status === 'completed' || !engine}
+			aria-label="Toggle animated mode"
+			class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+				{animatedMode ? 'bg-blue-600' : 'bg-zinc-700'}"
+		>
+			<span
+				class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+					{animatedMode ? 'translate-x-6' : 'translate-x-1'}"
+			></span>
+		</button>
+	</div>
+
+	<!-- Speed Control (shown when animated mode is on) -->
+	{#if animatedMode}
+		<div class="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+			<div class="flex items-center justify-between mb-2">
+				<span class="text-xs text-zinc-400">Simulation Speed</span>
+				<span class="text-xs text-zinc-500">{simSpeed}ms</span>
+			</div>
+			<input
+				type="range"
+				min="50"
+				max="2000"
+				step="50"
+				bind:value={simSpeed}
+				oninput={() => updateSpeed(simSpeed)}
+				class="w-full accent-blue-500 h-2"
+				disabled={status === 'completed' || !engine}
+			/>
+			<div class="flex justify-between text-xs text-zinc-600 mt-1">
+				<span>Fast</span>
+				<span>Slow</span>
+			</div>
+		</div>
 	{/if}
 
 	<!-- Progress bar -->
