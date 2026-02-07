@@ -1,5 +1,5 @@
 import { getSeasonSchedule, loadSeason, loadSeasonForGame, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
-import { getSeriesMetadata, updateSeriesMetadata, updateSeries, saveGameFromState } from '$lib/game-results/index.js';
+import { getSeriesMetadata, updateSeriesMetadata, updateSeries, saveGameFromState, saveGameDatabase } from '$lib/game-results/index.js';
 import { GameEngine } from '$lib/game/engine.js';
 import type { ReplayOptions, ReplayProgress, ReplayStatus, GameResult } from './types.js';
 
@@ -109,6 +109,10 @@ export class SeasonReplayEngine {
       if (metadata?.seasonReplay) {
         console.log('[SeasonReplay] Calling updateSeries with status: completed');
         await updateSeries(this.seriesId, { status: 'completed' });
+        // Save the database to IndexedDB to persist the change
+        console.log('[SeasonReplay] Saving database to IndexedDB...');
+        await saveGameDatabase();
+        console.log('[SeasonReplay] Database saved successfully');
       } else {
         console.error('[SeasonReplay] No seasonReplay metadata found for series:', this.seriesId);
       }
@@ -150,6 +154,10 @@ export class SeasonReplayEngine {
       if (metadata?.seasonReplay) {
         console.log('[SeasonReplay] Calling updateSeries with status: completed');
         await updateSeries(this.seriesId, { status: 'completed' });
+        // Save the database to IndexedDB to persist the change
+        console.log('[SeasonReplay] Saving database to IndexedDB...');
+        await saveGameDatabase();
+        console.log('[SeasonReplay] Database saved successfully');
       } else {
         console.error('[SeasonReplay] No seasonReplay metadata found for series:', this.seriesId);
       }

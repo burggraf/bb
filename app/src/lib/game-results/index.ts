@@ -29,6 +29,7 @@
 export {
   getGameDatabase,
   closeGameDatabase,
+  saveGameDatabase,
   exportGameDatabase,
   importGameDatabase,
   clearGameDatabase

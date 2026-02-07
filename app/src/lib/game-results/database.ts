@@ -146,6 +146,20 @@ export async function closeGameDatabase(): Promise<void> {
 }
 
 /**
+ * Save the game database to IndexedDB without closing it
+ *
+ * Call this after important updates to ensure they're persisted
+ */
+export async function saveGameDatabase(): Promise<void> {
+  if (!gameDb) return;
+
+  console.log('[GameResultsDB] Saving database to IndexedDB (without closing)...');
+  const data = gameDb.export();
+  await saveDatabaseBytes(data);
+  console.log('[GameResultsDB] Database saved to IndexedDB');
+}
+
+/**
  * Export the game database as a downloadable Blob
  *
  * Returns a .sqlite file that can be opened in external tools
@@ -226,6 +240,8 @@ if (typeof window !== 'undefined') {
 // Expose to window for debugging
 if (typeof window !== 'undefined') {
   (window as any).getGameDatabase = getGameDatabase;
+  (window as any).closeGameDatabase = closeGameDatabase;
+  (window as any).saveGameDatabase = saveGameDatabase;
   (window as any).exportGameDatabase = exportGameDatabase;
   (window as any).clearGameDatabase = clearGameDatabase;
 }
