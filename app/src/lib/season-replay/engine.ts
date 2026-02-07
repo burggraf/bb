@@ -1,4 +1,4 @@
-import { getSeasonSchedule, loadSeason, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
+import { getSeasonSchedule, loadSeason, loadSeasonForGame, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
 import { getSeriesMetadata, updateSeriesMetadata, saveGameFromState } from '$lib/game-results/index.js';
 import { GameEngine } from '$lib/game/engine.js';
 import type { ReplayOptions, ReplayProgress, ReplayStatus, GameResult } from './types.js';
@@ -144,8 +144,8 @@ export class SeasonReplayEngine {
     // Get series metadata
     const metadata = await getSeriesMetadata(this.seriesId);
 
-    // Load season data
-    const season = await loadSeason(this.seasonYear);
+    // Load season data with players for both teams (loadSeasonForGame loads batters/pitchers)
+    const season = await loadSeasonForGame(this.seasonYear, game.awayTeam, game.homeTeam);
 
     // Create and run game engine
     this.gameEngine = new GameEngine(season, game.awayTeam, game.homeTeam);
