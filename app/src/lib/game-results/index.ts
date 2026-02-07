@@ -40,6 +40,7 @@ export {
 export type {
   // Core types
   Series,
+  SeriesMetadata,
   SeriesTeam,
   SeriesType,
   SeriesStatus,
@@ -70,7 +71,11 @@ export {
   updateSeries,
   deleteSeries,
   addTeamToSeries,
-  getSeriesTeams
+  getSeriesTeams,
+  getSeriesMetadata,
+  updateSeriesMetadata,
+  findSeasonReplays,
+  createSeasonReplay
 } from './series.js';
 
 // ====================================================================
