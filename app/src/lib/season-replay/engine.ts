@@ -226,12 +226,13 @@ export class SeasonReplayEngine {
     metadata: any
   ): Promise<void> {
     // Update season replay metadata with current game index and status
+    // Save currentGameIndex + 1 as the next game to play
     await updateSeriesMetadata(seriesId, {
       seasonReplay: {
         ...metadata.seasonReplay,
-        currentGameIndex: this.currentGameIndex,
+        currentGameIndex: this.currentGameIndex + 1,
         status: this.status,
-        lastPlayedDate: this.schedule[this.currentGameIndex - 1]?.date
+        lastPlayedDate: this.schedule[this.currentGameIndex]?.date
       }
     });
   }

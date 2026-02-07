@@ -37,8 +37,9 @@
 
 	// Handle standings update from replay controls
 	async function handleStandingsUpdate() {
-		if (!getSeriesStandingsEnhanced) return;
+		if (!getSeriesStandingsEnhanced || !getGamesBySeries) return;
 		standings = await getSeriesStandingsEnhanced(data.seriesId);
+		games = await getGamesBySeries(data.seriesId);
 	}
 
 	onMount(async () => {
