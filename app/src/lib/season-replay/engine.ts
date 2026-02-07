@@ -97,19 +97,22 @@ export class SeasonReplayEngine {
 
     const game = this.schedule[this.currentGameIndex];
     const result = await this.simulateGame(game);
-    this.currentGameIndex++;
 
-    this.emit('progress', this.getProgress());
+    // Only increment index and save progress if game was completed (not paused)
+    if (result) {
+      this.currentGameIndex++;
+      this.emit('progress', this.getProgress());
 
-    if (this.currentGameIndex >= this.schedule.length) {
-      this.status = 'completed';
-      this.emit('statusChange', { status: this.status });
-      // Update series status to 'completed' in database
-      const metadata = await getSeriesMetadata(this.seriesId);
-      if (metadata?.seasonReplay) {
-        await updateSeries(this.seriesId, { status: 'completed' });
-        // Save the database to IndexedDB to persist the change
-        await saveGameDatabase();
+      if (this.currentGameIndex >= this.schedule.length) {
+        this.status = 'completed';
+        this.emit('statusChange', { status: this.status });
+        // Update series status to 'completed' in database
+        const metadata = await getSeriesMetadata(this.seriesId);
+        if (metadata?.seasonReplay) {
+          await updateSeries(this.seriesId, { status: 'completed' });
+          // Save the database to IndexedDB to persist the change
+          await saveGameDatabase();
+        }
       }
     }
 
@@ -179,6 +182,13 @@ export class SeasonReplayEngine {
 
       // Simulate the full game with event emission for animated mode
       while (!this.gameEngine.isComplete()) {
+        // Check if we've been paused or stopped mid-game
+        if (this.status !== 'playing') {
+          // Emit a paused event so UI can update
+          this.emit('statusChange', { status: this.status });
+          return null; // Return null to indicate game was not completed
+        }
+
         this.gameEngine.simulatePlateAppearance();
 
         // Emit event for animated mode listeners
