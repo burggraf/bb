@@ -26,6 +26,7 @@
 	let status = $state<ReplayStatus>('idle');
 	let loading = $state(false);
 	let error = $state<string | null>(null);
+	let shouldContinuePlaying = false;
 
 	// Initialize engine on mount
 	onMount(async () => {
@@ -78,20 +79,27 @@
 		}
 		status = engine.getStatus();
 
-		// Auto-play games
-		while (engine.getStatus() === 'playing') {
+		// Set flag to continue playing
+		shouldContinuePlaying = true;
+
+		// Auto-play games with breaks for browser updates
+		while (shouldContinuePlaying && engine.getStatus() === 'playing') {
 			await playNextGame();
+			// Small delay to allow browser to update UI
+			await new Promise(resolve => setTimeout(resolve, 10));
 		}
 	}
 
 	async function pause() {
 		if (!engine) return;
+		// Signal the loop to stop
+		shouldContinuePlaying = false;
 		await engine.pause();
 		status = engine.getStatus();
 	}
 
 	async function playNextGame() {
-		if (!engine || loading) return;
+		if (!engine || loading || !shouldContinuePlaying) return;
 		loading = true;
 		error = null;
 
@@ -112,7 +120,7 @@
 	}
 
 	async function playNextDay() {
-		if (!engine || loading) return;
+		if (!engine || loading || !shouldContinuePlaying) return;
 		loading = true;
 		error = null;
 
@@ -134,6 +142,9 @@
 
 	async function stop() {
 		if (!engine) return;
+
+		// Signal the loop to stop
+		shouldContinuePlaying = false;
 
 		// Pause if playing
 		if (status === 'playing') {
