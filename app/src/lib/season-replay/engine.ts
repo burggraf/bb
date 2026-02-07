@@ -207,6 +207,12 @@ export class SeasonReplayEngine {
       };
     } catch (error) {
       console.error('[SeasonReplay] Error simulating game:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.emit('gameError', {
+        game,
+        error: errorMessage,
+        gameIndex: this.currentGameIndex
+      });
       throw error;
     }
   }
