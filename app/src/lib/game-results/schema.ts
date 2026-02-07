@@ -7,6 +7,7 @@ export const GAME_RESULTS_SCHEMA = `
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT,
+    metadata TEXT,
     series_type TEXT NOT NULL CHECK(series_type IN ('season_replay', 'tournament', 'exhibition', 'custom')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -207,4 +208,24 @@ import type { Database } from 'sql.js';
  */
 export function createGameResultsSchema(db: Database): void {
   db.exec(GAME_RESULTS_SCHEMA);
+}
+
+/**
+ * Migrate existing databases to add metadata column to series table
+ * Checks if the column exists before attempting to add it
+ */
+export function migrateSeriesMetadata(db: Database): void {
+  try {
+    const stmt = db.prepare('PRAGMA table_info(series)');
+    const hasMetadata = Array.from(stmt.iterateAsObject() as any[]).some((col: any) => col.name === 'metadata');
+    stmt.free();
+
+    if (!hasMetadata) {
+      console.log('[Schema] Adding metadata column to series table');
+      db.exec('ALTER TABLE series ADD COLUMN metadata TEXT');
+    }
+  } catch (error) {
+    console.error('[Schema] Migration error:', error);
+    throw error;
+  }
 }
