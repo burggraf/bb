@@ -153,10 +153,8 @@ export async function closeGameDatabase(): Promise<void> {
 export async function saveGameDatabase(): Promise<void> {
   if (!gameDb) return;
 
-  console.log('[GameResultsDB] Saving database to IndexedDB (without closing)...');
   const data = gameDb.export();
   await saveDatabaseBytes(data);
-  console.log('[GameResultsDB] Database saved to IndexedDB');
 }
 
 /**
