@@ -347,7 +347,6 @@ export async function createSeasonReplay(data: {
   description: string | null;
   seasonYear: number;
   totalGames: number;
-  playbackSpeed?: 'instant' | 'animated';
   gamesPerBatch?: number;
 }): Promise<Series> {
   try {
@@ -356,12 +355,13 @@ export async function createSeasonReplay(data: {
     const id = generateUUID();
     const now = new Date().toISOString();
 
+    // Playback mode is now an internal toggle on the series page, not set at creation time
     const metadata: SeriesMetadata = {
       seasonReplay: {
         seasonYear: data.seasonYear,
         currentGameIndex: 0,
         totalGames: data.totalGames,
-        playbackSpeed: data.playbackSpeed ?? 'instant',
+        playbackSpeed: 'instant',
         gamesPerBatch: data.gamesPerBatch ?? 1,
         status: 'idle',
         lastPlayedDate: undefined

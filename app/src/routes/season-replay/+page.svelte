@@ -20,7 +20,6 @@
 
 	// Form state
 	let seriesName = $state('');
-	let playbackMode = $state<'instant' | 'animated'>('instant');
 
 	// Loading/creating state
 	let isCreating = $state(false);
@@ -96,8 +95,7 @@
 				name: seriesName.trim(),
 				description: null,
 				seasonYear: year,
-				totalGames,
-				playbackSpeed: playbackMode
+				totalGames
 			});
 
 			// Redirect to series page
@@ -206,50 +204,6 @@
 					class="w-full bg-zinc-800 border border-zinc-700 rounded px-4 py-2 text-white disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
 					placeholder="Enter series name"
 				/>
-			</div>
-
-			<!-- Playback mode -->
-			<div class="mb-6">
-				<label class="block text-sm font-medium text-zinc-300 mb-2">Playback Mode</label>
-				<div class="grid grid-cols-2 gap-3">
-					<button
-						type="button"
-						onclick={() => (playbackMode = 'instant')}
-						disabled={isCreating}
-						class="p-4 rounded-lg border-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed {playbackMode === 'instant'
-							? 'border-blue-500 bg-blue-500/10'
-							: 'border-zinc-700 hover:border-zinc-600'}"
-					>
-						<div class="flex flex-col items-center gap-2">
-							<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M13 10V3L4 14h7v7l9-11h-7z"
-								/>
-							</svg>
-							<span class="font-medium text-white">Instant</span>
-							<span class="text-xs text-zinc-400 text-center">Simulate all games immediately</span>
-						</div>
-					</button>
-					<button
-						type="button"
-						onclick={() => (playbackMode = 'animated')}
-						disabled={isCreating}
-						class="p-4 rounded-lg border-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed {playbackMode === 'animated'
-							? 'border-blue-500 bg-blue-500/10'
-							: 'border-zinc-700 hover:border-zinc-600'}"
-					>
-						<div class="flex flex-col items-center gap-2">
-							<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-								<path d="M8 5v14l11-7z"/>
-							</svg>
-							<span class="font-medium text-white">Animated</span>
-							<span class="text-xs text-zinc-400 text-center">Watch games play out</span>
-						</div>
-					</button>
-				</div>
 			</div>
 
 			<!-- Error message -->
