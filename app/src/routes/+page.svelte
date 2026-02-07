@@ -180,6 +180,12 @@
 		);
 	}
 
+	// Start season replay
+	function startSeasonReplay() {
+		if (!selectedYear || !isSeasonReady) return;
+		goto(`/season-replay?year=${selectedYear}`);
+	}
+
 	// Get team display name
 	function getTeamDisplayName(teamId: string): string {
 		const team = teams.find((t) => t.id === teamId);
@@ -287,16 +293,27 @@
 					</select>
 
 					{#if isSeasonReady}
-						<div class="flex items-center gap-2 text-emerald-400 text-sm">
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M5 13l4 4L19 7"
-								/>
-							</svg>
-							<span>Downloaded</span>
+						<div class="flex items-center gap-3">
+							<div class="flex items-center gap-2 text-emerald-400 text-sm">
+								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M5 13l4 4L19 7"
+									/>
+								</svg>
+								<span>Downloaded</span>
+							</div>
+							<button
+								onclick={startSeasonReplay}
+								class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-medium transition-colors flex items-center gap-2"
+							>
+								<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M8 5v14l11-7z"/>
+								</svg>
+								Replay Season
+							</button>
 						</div>
 					{:else if downloadState?.status === 'downloading'}
 						<div class="flex items-center gap-2 text-blue-400 text-sm">
