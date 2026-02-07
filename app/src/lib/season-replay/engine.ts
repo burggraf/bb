@@ -98,7 +98,7 @@ export class SeasonReplayEngine {
     const game = this.schedule[this.currentGameIndex];
     const result = await this.simulateGame(game);
 
-    // Only increment index and save progress if game was completed (not paused)
+    // Only increment index and save progress if game was completed (not paused or errored)
     if (result) {
       this.currentGameIndex++;
       this.emit('progress', this.getProgress());
@@ -114,7 +114,14 @@ export class SeasonReplayEngine {
           await saveGameDatabase();
         }
       }
+    } else if (this.status === 'playing') {
+      // Game returned null but we're still in 'playing' status - this means an error occurred
+      // Skip the errored game and continue
+      console.warn(`[SeasonReplay] Skipping game ${this.currentGameIndex + 1} (${game.awayTeam} vs ${game.homeTeam}) due to error`);
+      this.currentGameIndex++;
+      this.emit('progress', this.getProgress());
     }
+    // If status is not 'playing' (e.g., 'paused'), don't increment index so game can be resumed
 
     return result;
   }
@@ -135,9 +142,17 @@ export class SeasonReplayEngine {
     ) {
       const game = this.schedule[this.currentGameIndex];
       const result = await this.simulateGame(game);
+
+      // Check if we were paused mid-day
+      if (this.status !== 'playing') {
+        // Exit the loop early - game can be resumed later
+        break;
+      }
+
       if (result) {
         results.push(result);
       }
+      // Always increment index for playNextDay (errors are skipped, pause is handled above)
       this.currentGameIndex++;
     }
 
@@ -234,7 +249,9 @@ export class SeasonReplayEngine {
         error: errorMessage,
         gameIndex: this.currentGameIndex
       });
-      throw error;
+      // Don't re-throw - continue to next game instead of stopping the entire replay
+      // Games with missing roster data (e.g., team has 0 batters) will be skipped
+      return null;
     }
   }
 
