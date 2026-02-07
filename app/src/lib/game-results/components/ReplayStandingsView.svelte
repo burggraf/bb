@@ -23,19 +23,19 @@
 	}
 
 	let props = $props<Props>();
-	let { seriesId, seasonYear, onStandingsUpdate, standings } = props;
+	let { seriesId, seasonYear, onStandingsUpdate } = props;
 </script>
 
 <div class="flex gap-6">
 	<!-- Standings Table (flexible width) -->
 	<div class="flex-1">
-		{#if standings.length === 0}
+		{#if props.standings.length === 0}
 			<div class="bg-zinc-900 rounded-lg p-8 text-center">
 				<p class="text-zinc-400 text-lg">No games played yet</p>
 				<p class="text-zinc-500 text-sm mt-2">Use the controls on the right to start the season replay</p>
 			</div>
 		{:else}
-			<StandingsTable {standings} />
+			<StandingsTable standings={props.standings} />
 		{/if}
 	</div>
 
