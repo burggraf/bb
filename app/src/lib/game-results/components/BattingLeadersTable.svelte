@@ -45,6 +45,10 @@
 		return [...sorted.filter(s => s.pa >= minPa).slice(0, 20), ...totalRows];
 	});
 
+	// Check if there's any data at all (before filtering)
+	const hasAnyData = $derived(stats.length > 0);
+	const hasEnoughPa = $derived(stats.some(s => s.pa >= minPa));
+
 	function getSortIndicator(column: SortColumn): string {
 		if (sortBy !== column) return '';
 		return sortDirection === 'DESC' ? ' ▼' : ' ▲';
@@ -52,8 +56,10 @@
 </script>
 
 <div class="overflow-x-auto">
-	{#if filteredStats().length === 0}
-		<p class="text-zinc-500 text-center py-8">Not enough data for leaders (minimum {minPa} PA).</p>
+	{#if !hasAnyData}
+		<p class="text-zinc-500 text-center py-8">No games played yet. Play some games to see league leaders.</p>
+	{:else if filteredStats().length === 0}
+		<p class="text-zinc-500 text-center py-8">Not enough data for leaders (minimum {minPa} PA). Play more games.</p>
 	{:else}
 		<table class="w-full text-sm">
 			<thead>
