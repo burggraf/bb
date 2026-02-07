@@ -9,9 +9,10 @@
 		onStandingsUpdate: () => Promise<void>;
 		onStatusChange?: (status: ReplayStatus) => void;
 		onAnimatedChange?: (animated: boolean) => void;
+		onEngineReady?: (engine: SeasonReplayEngine) => void;
 	}
 
-	let { seriesId, seasonYear, onStandingsUpdate, onStatusChange, onAnimatedChange }: Props = $props();
+	let { seriesId, seasonYear, onStandingsUpdate, onStatusChange, onAnimatedChange, onEngineReady }: Props = $props();
 
 	// Engine
 	let engine = $state<SeasonReplayEngine | null>(null);
@@ -27,17 +28,25 @@
 	let status = $state<ReplayStatus>('idle');
 	let loading = $state(false);
 	let error = $state<string | null>(null);
+	let gameError = $state<{ message: string; gameIndex: number } | null>(null);
 	let shouldContinuePlaying = false;
 
 	// Animated mode state
 	let animatedMode = $state(false);
 	let simSpeed = $state(500); // Default to medium speed
 
+	// Game completion state
+	let gameComplete = $state(false);
+	let previousGameIndex = $state(0);
+
 	// Initialize engine on mount
 	onMount(async () => {
 		try {
 			engine = new SeasonReplayEngine(seriesId, seasonYear, { animated: false, simSpeed: 500 });
 			await engine.initialize();
+
+			// Notify parent that engine is ready
+			onEngineReady?.(engine);
 
 			// Set up event listeners
 			engine.on('statusChange', (data: { status: ReplayStatus }) => {
@@ -47,10 +56,25 @@
 
 			engine.on('progress', (data: ReplayProgress) => {
 				progress = data;
+
+				// Detect game completion in animated mode
+				if (animatedMode && data.currentGameIndex > previousGameIndex && previousGameIndex > 0) {
+					gameComplete = true;
+					shouldContinuePlaying = false; // Pause auto-play loop
+				}
+				previousGameIndex = data.currentGameIndex;
+			});
+
+			engine.on('gameError', (data: { error: string; gameIndex: number }) => {
+				// Set game error state
+				gameError = { message: data.error, gameIndex: data.gameIndex };
+				// Pause the engine when an error occurs
+				pause();
 			});
 
 			// Get initial progress and status
 			progress = engine.getProgress();
+			previousGameIndex = progress.currentGameIndex;
 			status = engine.getStatus();
 
 			// Auto-resume if status was 'playing'
@@ -124,6 +148,23 @@
 		}
 	}
 
+	async function continueToNextGame() {
+		// Reset game completion state
+		gameComplete = false;
+		// Continue to next game
+		await playNextGame();
+
+		// If still in animated mode and not complete, resume auto-play
+		if (animatedMode && status !== 'completed' && !gameComplete) {
+			shouldContinuePlaying = true;
+			while (shouldContinuePlaying && engine && engine.getStatus() === 'playing' && !gameComplete) {
+				await playNextGame();
+				// Small delay to allow browser to update UI
+				await new Promise(resolve => setTimeout(resolve, 10));
+			}
+		}
+	}
+
 	async function playNextDay() {
 		if (!engine || loading) return;
 		loading = true;
@@ -156,6 +197,18 @@
 			await engine.pause();
 		}
 
+		status = engine.getStatus();
+	}
+
+	function skipToNextGame() {
+		if (!engine) return;
+
+		// Clear the game error
+		gameError = null;
+
+		// Skip to the next game
+		engine.skipToNextGame();
+		progress = engine.getProgress();
 		status = engine.getStatus();
 	}
 
@@ -218,6 +271,72 @@
 	<!-- Error message -->
 	{#if error}
 		<div class="text-red-400 text-sm">{error}</div>
+	{/if}
+
+	<!-- Game error with skip option -->
+	{#if gameError}
+		<div class="bg-red-900/30 border border-red-800 rounded-lg p-3 space-y-2">
+			<div class="flex items-start gap-2">
+				<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-400 mt-0.5 flex-shrink-0">
+					<circle cx="12" cy="12" r="10"></circle>
+					<line x1="12" y1="8" x2="12" y2="12"></line>
+					<line x1="12" y1="16" x2="12.01" y2="16"></line>
+				</svg>
+				<div class="flex-1">
+					<p class="text-red-300 text-sm font-medium">Game #{gameError.gameIndex + 1} Failed</p>
+					<p class="text-red-400 text-xs mt-1">{gameError.message}</p>
+				</div>
+			</div>
+			<button
+				onclick={skipToNextGame}
+				class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-800/50 hover:bg-red-800/70 text-white text-sm rounded font-medium transition-colors border border-red-700"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<polygon points="5 4 15 12 5 20 5 4"></polygon>
+					<line x1="19" y1="5" x2="19" y2="19"></line>
+				</svg>
+				Skip to Next Game
+			</button>
+		</div>
+	{/if}
+
+	<!-- Game Complete Message -->
+	{#if gameComplete && animatedMode}
+		<div class="bg-blue-900/30 border border-blue-700 rounded-lg p-4 space-y-3">
+			<div class="text-center">
+				<p class="text-blue-300 font-medium text-sm">Game Complete!</p>
+				<p class="text-zinc-400 text-xs mt-1">
+					{progress.currentGameIndex} of {progress.totalGames} games finished
+				</p>
+			</div>
+			<button
+				onclick={continueToNextGame}
+				disabled={loading || status === 'completed'}
+				class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded font-medium transition-colors"
+			>
+				{#if loading}
+					<svg
+						class="animate-spin h-4 w-4"
+						xmlns="http://www.w3.org/2000/svg"
+						fill="none"
+						viewBox="0 0 24 24"
+					>
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path
+							class="opacity-75"
+							fill="currentColor"
+							d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+						></path>
+					</svg>
+					Loading...
+				{:else}
+					<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+						<polygon points="5 4 15 12 5 20 5 4"></polygon>
+					</svg>
+					Continue to Next Game
+				{/if}
+			</button>
+		</div>
 	{/if}
 
 	<!-- Animated Mode Toggle -->

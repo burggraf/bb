@@ -155,6 +155,17 @@ export class SeasonReplayEngine {
     return results;
   }
 
+  skipToNextGame(): void {
+    // Skip the current game by incrementing the index
+    this.currentGameIndex++;
+    this.emit('progress', this.getProgress());
+
+    if (this.currentGameIndex >= this.schedule.length) {
+      this.status = 'completed';
+      this.emit('statusChange', { status: this.status });
+    }
+  }
+
   private async simulateGame(game: ScheduledGame): Promise<GameResult | null> {
     try {
       // Get series metadata
