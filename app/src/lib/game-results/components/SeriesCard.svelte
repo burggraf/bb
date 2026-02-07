@@ -25,7 +25,9 @@
 	const statusColors: Record<string, string> = {
 		active: 'bg-green-500/20 text-green-400',
 		completed: 'bg-zinc-700 text-zinc-300',
-		archived: 'bg-yellow-500/20 text-yellow-400'
+		archived: 'bg-yellow-500/20 text-yellow-400',
+		// Use completed color for completed replays
+		'replay-completed': 'bg-zinc-700 text-zinc-300'
 	};
 
 	const replayStatusColors: Record<string, string> = {
