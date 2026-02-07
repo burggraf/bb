@@ -109,6 +109,7 @@ export async function listSeries(): Promise<Series[]> {
     }
 
     stmt.free();
+    console.log('[Series] listSeries returned:', series.map(s => ({ id: s.id, name: s.name, status: s.status })));
     return series;
   } catch (error) {
     console.error('[Series] Failed to list series:', error);
@@ -154,9 +155,12 @@ export async function updateSeries(
     values.push(new Date().toISOString());
     values.push(id);
 
+    console.log('[Series] updateSeries:', id, 'with data:', data, 'SQL:', `UPDATE series SET ${updates.join(', ')} WHERE id = ?`, 'values:', values);
     db.run(`UPDATE series SET ${updates.join(', ')} WHERE id = ?`, values);
 
-    return getSeries(id);
+    const result = await getSeries(id);
+    console.log('[Series] updateSeries result:', result);
+    return result;
   } catch (error) {
     console.error('[Series] Failed to update series:', error);
     throw new Error(`Failed to update series: ${error instanceof Error ? error.message : String(error)}`);

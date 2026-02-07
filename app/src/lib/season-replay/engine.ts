@@ -104,9 +104,13 @@ export class SeasonReplayEngine {
       this.status = 'completed';
       this.emit('statusChange', { status: this.status });
       // Update series status to 'completed' in database
+      console.log('[SeasonReplay] Replay completed, updating series status to completed for seriesId:', this.seriesId);
       const metadata = await getSeriesMetadata(this.seriesId);
       if (metadata?.seasonReplay) {
+        console.log('[SeasonReplay] Calling updateSeries with status: completed');
         await updateSeries(this.seriesId, { status: 'completed' });
+      } else {
+        console.error('[SeasonReplay] No seasonReplay metadata found for series:', this.seriesId);
       }
     }
 
@@ -141,9 +145,13 @@ export class SeasonReplayEngine {
       this.status = 'completed';
       this.emit('statusChange', { status: this.status });
       // Update series status to 'completed' in database
+      console.log('[SeasonReplay] Replay completed, updating series status to completed for seriesId:', this.seriesId);
       const metadata = await getSeriesMetadata(this.seriesId);
       if (metadata?.seasonReplay) {
+        console.log('[SeasonReplay] Calling updateSeries with status: completed');
         await updateSeries(this.seriesId, { status: 'completed' });
+      } else {
+        console.error('[SeasonReplay] No seasonReplay metadata found for series:', this.seriesId);
       }
     }
 
