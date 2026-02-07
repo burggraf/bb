@@ -90,7 +90,7 @@ export async function getStandings(seriesId: string): Promise<Standing[]> {
     const stmt = db.prepare(`
       SELECT * FROM series_standings
       WHERE series_id = ?
-      ORDER BY wins DESC, runs_scored - runs_allowed DESC
+      ORDER BY league, division, wins DESC, runs_scored - runs_allowed DESC
     `);
     stmt.bind([seriesId]);
 

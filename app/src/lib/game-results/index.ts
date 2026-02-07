@@ -236,14 +236,42 @@ export async function getSeriesStandingsEnhanced(seriesId: string): Promise<
 > {
   const standings = await getStandings(seriesId);
 
-  return standings.map((s, i) => {
+  // Sort by league, then division, then wins
+  const sortedStandings = [...standings].sort((a, b) => {
+    // First sort by league
+    const aLeague = a.league || '';
+    const bLeague = b.league || '';
+    if (aLeague !== bLeague) return aLeague.localeCompare(bLeague);
+
+    // Then sort by division
+    const aDiv = a.division || '';
+    const bDiv = b.division || '';
+    if (aDiv !== bDiv) return aDiv.localeCompare(bDiv);
+
+    // Finally sort by wins (descending), then run differential
+    const aWinDiff = a.wins - a.losses;
+    const bWinDiff = b.wins - b.losses;
+    if (aWinDiff !== bWinDiff) return bWinDiff - aWinDiff;
+    return (b.runsScored - b.runsAllowed) - (a.runsScored - a.runsAllowed);
+  });
+
+  // Calculate games back relative to division/league leader
+  return sortedStandings.map((s) => {
     const winPercentage = s.gamesPlayed > 0 ? s.wins / s.gamesPlayed : 0;
-    const leaderWins = standings[0].wins;
-    const leaderLosses = standings[0].losses;
-    const gamesBack =
-      i === 0
-        ? 0
-        : (leaderWins - leaderLosses - (s.wins - s.losses)) / 2;
+
+    // Find the leader for this team's league/division
+    const sameLeagueAndDivision = sortedStandings.filter(
+      t => t.league === s.league && t.division === s.division
+    );
+    const leader = sameLeagueAndDivision[0];
+
+    // Calculate games back from division/league leader
+    let gamesBack = 0;
+    if (leader && s !== leader) {
+      const leaderDiff = leader.wins - leader.losses;
+      const teamDiff = s.wins - s.losses;
+      gamesBack = (leaderDiff - teamDiff) / 2;
+    }
 
     return {
       ...s,

@@ -99,7 +99,7 @@
 	}
 
 	async function playNextGame() {
-		if (!engine || loading || !shouldContinuePlaying) return;
+		if (!engine || loading) return;
 		loading = true;
 		error = null;
 
@@ -120,7 +120,7 @@
 	}
 
 	async function playNextDay() {
-		if (!engine || loading || !shouldContinuePlaying) return;
+		if (!engine || loading) return;
 		loading = true;
 		error = null;
 
