@@ -1,5 +1,5 @@
 import { getSeasonSchedule, loadSeason, loadSeasonForGame, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
-import { getSeriesMetadata, updateSeriesMetadata, saveGameFromState } from '$lib/game-results/index.js';
+import { getSeriesMetadata, updateSeriesMetadata, updateSeries, saveGameFromState } from '$lib/game-results/index.js';
 import { GameEngine } from '$lib/game/engine.js';
 import type { ReplayOptions, ReplayProgress, ReplayStatus, GameResult } from './types.js';
 
@@ -235,5 +235,10 @@ export class SeasonReplayEngine {
         lastPlayedDate: this.schedule[this.currentGameIndex]?.date
       }
     });
+
+    // If replay is completed, also update the series status
+    if (this.status === 'completed') {
+      await updateSeries(seriesId, { status: 'completed' });
+    }
   }
 }

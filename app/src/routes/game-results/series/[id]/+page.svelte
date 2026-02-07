@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import type { PageData } from './$types';
 	import StandingsTable from '$lib/game-results/components/StandingsTable.svelte';
 	import GamesList from '$lib/game-results/components/GamesList.svelte';
@@ -20,6 +21,7 @@
 	let getBattingStats: typeof import('$lib/game-results/index.js').getBattingStats;
 	let getPitchingStats: typeof import('$lib/game-results/index.js').getPitchingStats;
 	let getSeriesMetadata: typeof import('$lib/game-results/index.js').getSeriesMetadata;
+	let deleteSeries: typeof import('$lib/game-results/index.js').deleteSeries;
 
 	// State
 	let loading = $state<boolean>(true);
@@ -34,12 +36,34 @@
 	let isSeasonReplay = $state(false);
 	let replayMetadata = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').getSeriesMetadata>> | null>(null);
 	let seasonYear = $state<number | null>(null);
+	let showDeleteConfirm = $state(false);
+	let deleting = $state(false);
 
 	// Handle standings update from replay controls
 	async function handleStandingsUpdate() {
 		if (!getSeriesStandingsEnhanced || !getGamesBySeries) return;
 		standings = await getSeriesStandingsEnhanced(data.seriesId);
 		games = await getGamesBySeries(data.seriesId);
+	}
+
+	// Handle delete series
+	async function handleDelete() {
+		if (!deleteSeries) return;
+
+		try {
+			deleting = true;
+			const success = await deleteSeries(data.seriesId);
+			if (success) {
+				await goto('/game-results');
+			} else {
+				error = 'Failed to delete series';
+			}
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to delete series';
+		} finally {
+			deleting = false;
+			showDeleteConfirm = false;
+		}
 	}
 
 	onMount(async () => {
@@ -51,6 +75,7 @@
 			getBattingStats = gameResults.getBattingStats;
 			getPitchingStats = gameResults.getPitchingStats;
 			getSeriesMetadata = gameResults.getSeriesMetadata;
+			deleteSeries = gameResults.deleteSeries;
 
 			series = await getSeries(data.seriesId);
 			standings = await getSeriesStandingsEnhanced(data.seriesId);
@@ -89,10 +114,20 @@
 		<!-- Header -->
 		<div class="mb-6">
 			<a href="/game-results" class="text-blue-400 hover:text-blue-300 text-sm">← Back to all series</a>
-			<h1 class="text-3xl font-bold text-white mt-2">{series.name}</h1>
-			<div class="flex gap-2 mt-2">
-				<span class="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded">{series.seriesType}</span>
-				<span class="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded">{series.status}</span>
+			<div class="flex justify-between items-start">
+				<div>
+					<h1 class="text-3xl font-bold text-white mt-2">{series.name}</h1>
+					<div class="flex gap-2 mt-2">
+						<span class="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded">{series.seriesType}</span>
+						<span class="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded">{series.status}</span>
+					</div>
+				</div>
+				<button
+					onclick={() => showDeleteConfirm = true}
+					class="bg-red-900/30 hover:bg-red-900/50 text-red-400 border border-red-800 px-4 py-2 rounded text-sm transition-colors"
+				>
+					Delete Series
+				</button>
 			</div>
 		</div>
 
@@ -159,5 +194,34 @@
 				<PitchingLeadersTable stats={pitchingStats} />
 			{/if}
 		{/if}
+	{/if}
+
+	<!-- Delete Confirmation Modal -->
+	{#if showDeleteConfirm}
+		<div class="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+			<div class="bg-zinc-900 border border-zinc-700 rounded-lg p-6 max-w-md w-full mx-4">
+				<h2 class="text-xl font-bold text-white mb-2">Delete Series?</h2>
+				<p class="text-zinc-400 mb-6">
+					Are you sure you want to delete "{series?.name}"? This will permanently delete all games and
+					statistics for this series. This action cannot be undone.
+				</p>
+				<div class="flex justify-end gap-3">
+					<button
+						onclick={() => showDeleteConfirm = false}
+						disabled={deleting}
+						class="px-4 py-2 rounded text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors disabled:opacity-50"
+					>
+						Cancel
+					</button>
+					<button
+						onclick={handleDelete}
+						disabled={deleting}
+						class="px-4 py-2 rounded text-sm bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+					>
+						{deleting ? 'Deleting...' : 'Delete'}
+					</button>
+				</div>
+			</div>
+		</div>
 	{/if}
 </div>
