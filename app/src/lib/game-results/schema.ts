@@ -217,7 +217,11 @@ export function createGameResultsSchema(db: Database): void {
 export function migrateSeriesMetadata(db: Database): void {
   try {
     const stmt = db.prepare('PRAGMA table_info(series)');
-    const hasMetadata = Array.from(stmt.iterateAsObject() as any[]).some((col: any) => col.name === 'metadata');
+    const columns: Record<string, any>[] = [];
+    while (stmt.step()) {
+      columns.push(stmt.getAsObject());
+    }
+    const hasMetadata = columns.some((col) => col.name === 'metadata');
     stmt.free();
 
     if (!hasMetadata) {

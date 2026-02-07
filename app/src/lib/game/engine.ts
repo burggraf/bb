@@ -623,7 +623,7 @@ export class GameEngine {
 			return true;
 		}
 
-		// LENIENT: If no explicit eligibility data, allow similar positions
+		// LENIENT: If no explicit eligibility data for this specific position, allow similar positions
 		// Outfielders can play other outfield positions (7-9)
 		// Infielders can play other infield positions (2-6)
 		const hasAnyEligibility = Object.keys(player.positionEligibility).length > 0;

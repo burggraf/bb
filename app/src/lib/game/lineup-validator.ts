@@ -55,6 +55,9 @@ function getPositionName(position: number): string {
  * 1. They are assigned to DH (position 10), PH (position 11), or PR (position 12) - any player can fill these
  * 2. They have explicit eligibility data for that position (> 0 outs played)
  * 3. OR the position matches their primary position
+ * 4. LENIENT: If they have SOME position eligibility data, allow similar positions (OF->OF, IF->IF)
+ *
+ * This must match the canPlayPosition logic in engine.ts
  */
 function isPlayerEligibleAtPosition(
 	player: BatterStats,
@@ -63,6 +66,11 @@ function isPlayerEligibleAtPosition(
 	// Any player can DH, PH, or PR
 	if (position === 10 || position === 11 || position === 12) {
 		return true;
+	}
+
+	// Position 1 (pitcher) has special restrictions - only players whose primary position is pitcher
+	if (position === 1) {
+		return player.primaryPosition === 1;
 	}
 
 	// Check explicit position eligibility
@@ -74,6 +82,26 @@ function isPlayerEligibleAtPosition(
 	// Check if it's their primary position
 	if (player.primaryPosition === position) {
 		return true;
+	}
+
+	// LENIENT: If no explicit eligibility data for this specific position, allow similar positions
+	// Outfielders can play other outfield positions (7-9)
+	// Infielders can play other infield positions (2-6)
+	const hasAnyEligibility = Object.keys(player.positionEligibility).length > 0;
+	if (hasAnyEligibility) {
+		// Only use this lenient rule if they have SOME eligibility data but not for this specific position
+		const isOutfield = (pos: number) => pos >= 7 && pos <= 9;
+		const isInfield = (pos: number) => pos >= 2 && pos <= 6;
+
+		const playerIsOutfield = isOutfield(player.primaryPosition);
+		const playerIsInfield = isInfield(player.primaryPosition);
+		const targetIsOutfield = isOutfield(position);
+		const targetIsInfield = isInfield(position);
+
+		// Allow outfielders to play any OF position, infielders any IF position
+		if ((playerIsOutfield && targetIsOutfield) || (playerIsInfield && targetIsInfield)) {
+			return true;
+		}
 	}
 
 	return false;
