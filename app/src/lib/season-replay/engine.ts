@@ -1,6 +1,7 @@
 import { getSeasonSchedule, loadSeason, loadSeasonForGame, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
 import { getSeriesMetadata, updateSeriesMetadata, updateSeries, saveGameFromState, saveGameDatabase } from '$lib/game-results/index.js';
 import { GameEngine } from '$lib/game/engine.js';
+import type { GameState, PlayEvent } from '$lib/game/types.js';
 import type { ReplayOptions, ReplayProgress, ReplayStatus, GameResult } from './types.js';
 
 type EventCallback = (data: any) => void;
@@ -165,9 +166,21 @@ export class SeasonReplayEngine {
       // Create and run game engine
       this.gameEngine = new GameEngine(season, game.awayTeam, game.homeTeam);
 
-      // Simulate the full game
+      // Simulate the full game with event emission for animated mode
       while (!this.gameEngine.isComplete()) {
         this.gameEngine.simulatePlateAppearance();
+
+        // Emit event for animated mode listeners
+        const currentState = this.gameEngine.getState();
+        this.emit('plateAppearance', {
+          gameState: currentState,
+          playEvent: currentState.plays[0]
+        });
+
+        // Delay if in animated mode
+        if (this.options.animated) {
+          await this.delay(this.options.simSpeed);
+        }
       }
 
       const finalState = this.gameEngine.getState();
@@ -213,6 +226,10 @@ export class SeasonReplayEngine {
     return this.status;
   }
 
+  getCurrentGameState(): GameState | null {
+    return this.gameEngine?.getState() || null;
+  }
+
   setOptions(options: Partial<ReplayOptions>): void {
     this.options = { ...this.options, ...options };
   }
@@ -240,6 +257,10 @@ export class SeasonReplayEngine {
     if (listeners) {
       listeners.forEach(callback => callback(data));
     }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private async updateMetadataStatus(
