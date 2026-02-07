@@ -1,5 +1,6 @@
 import { getGameDatabase } from './database.js';
 import type { Series, SeriesMetadata, SeriesTeam, SeriesType } from './types.js';
+import { getTeamsForYear, type TeamInfo } from '../game/teams-data.js';
 
 /**
  * Generate a UUID v4
@@ -372,6 +373,19 @@ export async function createSeasonReplay(data: {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, data.name, data.description, 'season_replay', now, now, 'active', JSON.stringify(metadata)]
     );
+
+    // Add all teams for this season to series_teams table
+    const teams = await getTeamsForYear(data.seasonYear);
+    console.log(`[Series] Adding ${teams.length} teams to season replay series`);
+
+    for (const team of teams) {
+      await addTeamToSeries(id, {
+        teamId: team.id,
+        seasonYear: data.seasonYear,
+        league: team.league || null,
+        division: team.division || null
+      });
+    }
 
     return {
       id,
