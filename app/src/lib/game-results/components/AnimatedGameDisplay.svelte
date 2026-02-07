@@ -136,8 +136,8 @@
 
     <!-- Recent Play-by-Play (last 3 plays) -->
     {#if gameState.plays.length > 0}
+      {@const recentPlays = gameState.plays.slice(0, 3).reverse()}
       <div class="border-t border-zinc-700 pt-3 mt-2">
-        {@const recentPlays = gameState.plays.slice(0, 3).reverse()}
         {#each recentPlays as play, index (index)}
           <div class="py-1 px-3 rounded {index === recentPlays.length - 1 ? 'bg-blue-900/20' : 'bg-zinc-800/50'}">
             <p class="text-xs text-zinc-300">{play.description}</p>
