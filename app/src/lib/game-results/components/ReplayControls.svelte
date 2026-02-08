@@ -101,30 +101,31 @@
 	async function resume() {
 		if (!engine || status === 'playing') return;
 
-		console.log('[ReplayControls] Starting replay...');
-
 		try {
 			// Start or resume based on current status
 			if (status === 'idle') {
-				console.log('[ReplayControls] Calling engine.start()');
 				await engine.start();
 			} else {
-				console.log('[ReplayControls] Calling engine.resume()');
 				await engine.resume();
 			}
 			status = engine.getStatus();
-			console.log('[ReplayControls] Status after start/resume:', status);
 
 			// Set flag to continue playing
 			shouldContinuePlaying = true;
 
-			// Play just ONE game to start (non-blocking)
-			console.log('[ReplayControls] Playing first game...');
-			await playNextGame();
+			// Continuously play games while we should continue
+			while (shouldContinuePlaying && status === 'playing') {
+				await playNextGame();
 
-			console.log('[ReplayControls] First game completed. Status:', status);
+				// Check if we should stop (status changed, error occurred, or game complete)
+				if (status !== 'playing' || error || engine.getStatus() === 'completed') {
+					break;
+				}
+
+				// Small delay to allow UI updates between games
+				await new Promise(resolve => setTimeout(resolve, 10));
+			}
 		} catch (e) {
-			console.error('[ReplayControls] Error in resume:', e);
 			error = e instanceof Error ? e.message : 'Failed to start replay';
 			shouldContinuePlaying = false;
 		}
