@@ -111,8 +111,11 @@
 					bVal = (teamsData[b.teamId]?.nickname || b.teamId) + b.playerId;
 					break;
 				case 'percentage':
-					aVal = a.percentageOfActual;
-					bVal = b.percentageOfActual;
+					// Calculate display percentage for sorting
+					const aExpected = a.actualSeasonTotal * (getTeamGamesPlayed(a.teamId) / getSeasonLength());
+					const bExpected = b.actualSeasonTotal * (getTeamGamesPlayed(b.teamId) / getSeasonLength());
+					aVal = aExpected > 0 ? (a.replayCurrentTotal / aExpected) : 0;
+					bVal = bExpected > 0 ? (b.replayCurrentTotal / bExpected) : 0;
 					break;
 				case 'status':
 					const order = { under: 0, inRange: 1, over: 2 };
@@ -173,7 +176,11 @@
 				violations: teamViolations.length,
 				avgPercentage:
 					teamRecords.length > 0
-						? teamRecords.reduce((sum, r) => sum + r.percentageOfActual, 0) / teamRecords.length
+						? teamRecords.reduce((sum, r) => {
+								const expected = r.actualSeasonTotal * (getTeamGamesPlayed(r.teamId) / getSeasonLength());
+								const displayPct = expected > 0 ? (r.replayCurrentTotal / expected) : 0;
+								return sum + displayPct;
+							}, 0) / teamRecords.length
 						: 0
 			};
 		});
@@ -439,6 +446,7 @@
 							{@const seasonLength = getSeasonLength()}
 							{@const prorationPct = getProrationPercentage(record)}
 							{@const expectedTotal = getExpectedTotal(record)}
+							{@const displayPercentage = expectedTotal > 0 ? (record.replayCurrentTotal / expectedTotal) : 0}
 							<tr class="border-b border-zinc-800/50 hover:bg-zinc-900/30">
 								<td class="py-3 px-4 text-white font-medium">{record.playerId}</td>
 								<td class="py-3 px-4 text-zinc-400">{getTeamName(record.teamId)}</td>
@@ -464,12 +472,12 @@
 								</td>
 								<td class="py-3 px-4 text-center">
 									<span
-										class="font-mono {(record.percentageOfActual < 0.75 ||
-											record.percentageOfActual > 1.25)
+										class="font-mono {(displayPercentage < 0.75 ||
+											displayPercentage > 1.25)
 											? 'text-yellow-400'
 											: 'text-white'}"
 									>
-										{(record.percentageOfActual * 100).toFixed(0)}%
+										{(displayPercentage * 100).toFixed(0)}%
 									</span>
 								</td>
 								<td class="py-3 px-4 text-center">
