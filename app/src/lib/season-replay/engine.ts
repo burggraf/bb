@@ -282,6 +282,9 @@ export class SeasonReplayEngine {
         const gameStats = this.extractGameStats(finalState);
         await this.usageTracker.updateGameUsage(gameStats);
 
+        // Save database to persist usage data across page refreshes
+        await saveGameDatabase();
+
         // Check for threshold violations (log but don't fail)
         try {
           const violations = await this.usageTracker.checkThresholds();
