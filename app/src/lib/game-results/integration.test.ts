@@ -40,10 +40,9 @@ vi.mock('./games.js', () => ({
 }));
 
 vi.mock('./stats.js', () => ({
-  getSeriesStandings: vi.fn(),
+  getStandings: vi.fn(),
   getBattingStats: vi.fn(),
-  getPitchingStats: vi.fn(),
-  getLeagueLeaders: vi.fn()
+  getPitchingStats: vi.fn()
 }));
 
 describe('Integration: Full Game Save Workflow', () => {
