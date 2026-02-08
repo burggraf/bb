@@ -1,10 +1,23 @@
 import { getSeasonSchedule, loadSeason, loadSeasonForGame, getBattersForTeam, getPitchersForTeam, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
 import { getSeriesMetadata, updateSeriesMetadata, updateSeries, saveGameFromState, saveGameDatabase, UsageTracker, type GameUsageStats } from '$lib/game-results/index.js';
-import { GameEngine } from '$lib/game/engine.js';
+import { GameEngine, type ManagerialOptions } from '$lib/game/engine.js';
 import type { GameState, PlayEvent } from '$lib/game/types.js';
 import type { ReplayOptions, ReplayProgress, ReplayStatus, GameResult } from './types.js';
+import type { UsageContext } from '$lib/game/lineup-builder.js';
 
 type EventCallback = (data: any) => void;
+
+/**
+ * Track pitcher rotation state for each team
+ */
+interface RotationState {
+	/** Ordered list of starter IDs by gamesStarted (most starts first) */
+	starterRotation: string[];
+	/** Current index in rotation */
+	rotationIndex: number;
+	/** Map of pitcher ID to their position in rotation */
+	rotationPosition: Map<string, number>;
+}
 
 export class SeasonReplayEngine {
   private seriesId: string;
@@ -16,6 +29,8 @@ export class SeasonReplayEngine {
   private gameEngine: GameEngine | null = null;
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
   private usageTracker: UsageTracker | null = null;
+  /** Track pitcher rotation state for each team */
+  private rotationStates = new Map<string, RotationState>();
 
   constructor(seriesId: string, seasonYear: number, options: ReplayOptions = { animated: false, simSpeed: 500 }) {
     this.seriesId = seriesId;
@@ -32,7 +47,7 @@ export class SeasonReplayEngine {
 
     // Initialize usage tracker
     console.log('[SeasonReplayEngine] Initializing usage tracker...');
-    this.usageTracker = new UsageTracker(this.seriesId);
+    this.usageTracker = new UsageTracker(this.seriesId, this.seasonYear);
     console.log('[SeasonReplayEngine] Usage tracker created');
 
     // Load schedule
@@ -83,6 +98,112 @@ export class SeasonReplayEngine {
     this.status = 'playing';
     this.emit('statusChange', { status: this.status });
     this.emit('progress', this.getProgress());
+  }
+
+  /**
+   * Initialize rotation state for a team based on their pitchers' gamesStarted
+   * This is called lazily when a team first plays a game
+   */
+  private async initializeRotationForTeam(teamId: string): Promise<void> {
+    if (this.rotationStates.has(teamId)) {
+      return; // Already initialized
+    }
+
+    console.log(`[SeasonReplay] Initializing rotation for team ${teamId}`);
+    const teamPitchersRecord = await getPitchersForTeam(this.seasonYear, teamId);
+    const teamPitchers = Object.values(teamPitchersRecord); // Convert to array
+
+    // Filter to pitchers who are actual starters (start rate >= 30%)
+    const starters = teamPitchers.filter(p => {
+      const startRate = p.gamesStarted / p.games;
+      return startRate >= 0.3 && p.gamesStarted >= 5; // At least 5 starts to qualify
+    });
+
+    if (starters.length === 0) {
+      // Fallback: use pitchers with most gamesStarted
+      const fallback = [...teamPitchers]
+        .sort((a, b) => b.gamesStarted - a.gamesStarted)
+        .slice(0, 5); // Top 5 by gamesStarted
+      starters.push(...fallback);
+    }
+
+    // Sort by gamesStarted descending (most starts = ace = first in rotation)
+    starters.sort((a, b) => b.gamesStarted - a.gamesStarted);
+
+    const starterIds = starters.map(p => p.id);
+    const rotationPosition = new Map<string, number>();
+    starterIds.forEach((id, index) => {
+      rotationPosition.set(id, index);
+    });
+
+    this.rotationStates.set(teamId, {
+      starterRotation: starterIds,
+      rotationIndex: 0,
+      rotationPosition
+    });
+
+    console.log(`[SeasonReplay] Rotation initialized for ${teamId}:`, {
+      starters: starterIds.length,
+      rotation: starterIds.slice(0, 5).map(id => {
+        const p = teamPitchersRecord[id];
+        return p?.name ?? id;
+      })
+    });
+  }
+
+  /**
+   * Select the next starting pitcher for a team based on rotation
+   * Skips overused pitchers (>125% usage) and advances rotation index
+   */
+  private async selectNextStarter(teamId: string, allPitchers: Record<string, any>): Promise<string> {
+    // Initialize rotation if not already done
+    await this.initializeRotationForTeam(teamId);
+
+    const rotation = this.rotationStates.get(teamId);
+    if (!rotation || rotation.starterRotation.length === 0) {
+      // Fallback: return pitcher with most gamesStarted
+      const pitchers = Object.values(allPitchers).filter((p: any) => p.teamId === teamId);
+      return pitchers.sort((a: any, b: any) => b.gamesStarted - a.gamesStarted)[0]?.id;
+    }
+
+    // Get usage data for this team
+    const teamUsage = this.usageTracker
+      ? await this.usageTracker.getTeamUsageForContext(teamId)
+      : new Map<string, number>();
+
+    // Find the next available starter in rotation
+    // Start from current index and loop until we find someone not overused
+    let attempts = 0;
+    const maxAttempts = rotation.starterRotation.length;
+    let selectedPitcherId: string | null = null;
+
+    while (attempts < maxAttempts) {
+      const pitcherId = rotation.starterRotation[rotation.rotationIndex];
+      const usage = teamUsage.get(pitcherId) ?? 0;
+
+      // Skip if overused (>125% of actual), unless we've tried everyone
+      if (usage <= 1.25 || attempts === maxAttempts - 1) {
+        selectedPitcherId = pitcherId;
+        break;
+      }
+
+      console.log(`[SeasonReplay] Skipping overused starter ${pitcherId} (${(usage * 100).toFixed(0)}% of actual)`);
+      rotation.rotationIndex = (rotation.rotationIndex + 1) % rotation.starterRotation.length;
+      attempts++;
+    }
+
+    if (!selectedPitcherId) {
+      // Last resort: use the first starter in rotation
+      selectedPitcherId = rotation.starterRotation[0];
+    }
+
+    // Advance rotation for next game
+    rotation.rotationIndex = (rotation.rotationIndex + 1) % rotation.starterRotation.length;
+
+    const pitcher = allPitchers[selectedPitcherId];
+    console.log(`[SeasonReplay] Selected starter ${pitcher?.name ?? selectedPitcherId} for ${teamId}`);
+
+    return selectedPitcherId;
   }
 
   async pause(): Promise<void> {
@@ -230,10 +351,87 @@ export class SeasonReplayEngine {
       const season = await loadSeasonForGame(this.seasonYear, game.awayTeam, game.homeTeam);
       console.log('[SeasonReplay] Season data loaded');
 
-      // Create and run game engine
+      // Get usage context for batter rest decisions and pitcher usage (if usage tracker is available)
+      let awayUsageContext: UsageContext | undefined;
+      let homeUsageContext: UsageContext | undefined;
+      let allPlayerUsage = new Map<string, number>(); // Combined usage for ALL players (batters + pitchers)
+
+      if (this.usageTracker) {
+        console.log('[SeasonReplay] Getting usage context for batter rest and pitcher usage...');
+        try {
+          const awayUsage = await this.usageTracker.getTeamUsageForContext(game.awayTeam);
+          const homeUsage = await this.usageTracker.getTeamUsageForContext(game.homeTeam);
+          awayUsageContext = { playerUsage: awayUsage, restThreshold: 1.25 };
+          homeUsageContext = { playerUsage: homeUsage, restThreshold: 1.25 };
+
+          // Combine ALL player usage (both batters and pitchers) for usage-aware decisions
+          // This map will be used for:
+          // - Bullpen filtering (pitchers)
+          // - Pinch hitter selection (batters)
+          // - Other usage-aware managerial decisions
+          for (const [playerId, usage] of awayUsage) {
+            allPlayerUsage.set(playerId, usage);
+          }
+          for (const [playerId, usage] of homeUsage) {
+            allPlayerUsage.set(playerId, usage);
+          }
+
+          const awayPitcherCount = Array.from(awayUsage.keys()).filter(id => season.pitchers[id]).length;
+          const homePitcherCount = Array.from(homeUsage.keys()).filter(id => season.pitchers[id]).length;
+
+          console.log('[SeasonReplay] Usage context loaded:', {
+            awayPlayers: awayUsage.size,
+            homePlayers: homeUsage.size,
+            awayPitchers: awayPitcherCount,
+            homePitchers: homePitcherCount,
+            total: allPlayerUsage.size
+          });
+        } catch (error) {
+          console.warn('[SeasonReplay] Could not load usage context:', error);
+          // Continue without usage context - better than failing
+        }
+      }
+
+      // Create and run game engine with usage context for batter rest and pitcher usage decisions
       console.log('[SeasonReplay] Creating GameEngine...');
-      this.gameEngine = new GameEngine(season, game.awayTeam, game.homeTeam);
+      const managerial: ManagerialOptions = {
+        enabled: true,
+        randomness: 0.1,
+        pitcherUsage: allPlayerUsage, // Using combined map for all players
+        restThreshold: 1.25
+      };
+      this.gameEngine = GameEngine.create(
+        season,
+        game.awayTeam,
+        game.homeTeam,
+        managerial,
+        awayUsageContext,
+        homeUsageContext
+      );
       console.log('[SeasonReplay] GameEngine created');
+
+      // Apply rotation-based starter selection
+      console.log('[SeasonReplay] Applying rotation-based starter selection...');
+      try {
+        // Get all pitchers from season data for this game
+        const allPitchers = { ...season.pitchers };
+
+        // Select starters based on rotation
+        const awayStarterId = await this.selectNextStarter(game.awayTeam, allPitchers);
+        const homeStarterId = await this.selectNextStarter(game.homeTeam, allPitchers);
+
+        // Update the starting pitchers in the engine (this also reinitializes bullpens)
+        this.gameEngine.setStartingPitcher(game.awayTeam, awayStarterId);
+        this.gameEngine.setStartingPitcher(game.homeTeam, homeStarterId);
+
+        console.log('[SeasonReplay] Starters applied via rotation:', {
+          away: awayStarterId,
+          home: homeStarterId
+        });
+      } catch (error) {
+        console.warn('[SeasonReplay] Could not apply rotation selection:', error);
+        // Continue with auto-selected starters - better than failing
+      }
 
       // Simulate the full game with event emission for animated mode
       let paCount = 0;
@@ -456,14 +654,13 @@ export class SeasonReplayEngine {
       pitcherBf.set(play.pitcherId, currentBf + 1);
     }
 
-    // Convert batters faced to outs (3 BF = 1 inning = 3 outs)
-    // This is a rough approximation - in reality, BF and outs have a more complex relationship
-    // But for usage tracking purposes, this gives us a reasonable measure of pitcher workload
+    // Convert batters faced to outs
+    // On average, pitchers record ~0.75 outs per batter faced
+    // (27 outs per 9 innings with ~36 BF per 9 innings = 27/36 = 0.75)
     const pitcherIp = new Map<string, number>();
     for (const [pitcherId, bf] of pitcherBf.entries()) {
-      // Convert BF to outs: multiply by 3 to get outs equivalent
-      // This assumes ~27 BF per 9 innings, which is roughly accurate (3 BF per inning)
-      pitcherIp.set(pitcherId, bf * 3);
+      // Convert BF to outs: multiply by 0.75 to get outs equivalent
+      pitcherIp.set(pitcherId, Math.round(bf * 0.75));
     }
 
     return { batterPa, pitcherIp };

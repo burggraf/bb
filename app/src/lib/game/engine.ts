@@ -86,6 +86,10 @@ export interface ManagerialOptions {
 	randomness?: number;
 	/** Lineup generation method */
 	lineupMethod?: 'obp' | 'sabermetric' | 'traditional';
+	/** Usage context for pitcher selection - Map of pitcher ID to usage percentage (0.0-1.0 of actual) */
+	pitcherUsage?: Map<string, number>;
+	/** Usage threshold above which a pitcher should be rested (default 1.25 = 125%) */
+	restThreshold?: number;
 }
 
 /**
@@ -2013,12 +2017,31 @@ export class GameEngine {
 		if (!pitcher || !pitcherRole || !bullpen) return false;
 
 		// Filter bullpen to exclude removed pitchers (they cannot re-enter the game)
+		// and overused pitchers (exceeding their usage threshold)
+		const restThreshold = this.managerialOptions.restThreshold ?? 1.25;
+		const pitcherUsage = this.managerialOptions.pitcherUsage;
+
+		// Helper to check if a pitcher is available (not removed and not overused)
+		const isPitcherAvailable = (pitcherId: string): boolean => {
+			if (this.removedPlayers.has(pitcherId)) return false;
+			if (pitcherUsage) {
+				const usage = pitcherUsage.get(pitcherId) ?? 0;
+				if (usage > restThreshold) {
+					// Pitcher is overused - log and skip
+					const pitcher = this.season.pitchers[pitcherId];
+					console.log(`[GameEngine] Skipping overused reliever ${pitcher?.name ?? pitcherId} (${(usage * 100).toFixed(0)}% of actual)`);
+					return false;
+				}
+			}
+			return true;
+		};
+
 		const filteredBullpen: EnhancedBullpenState = {
 			starter: bullpen.starter,
-			closer: bullpen.closer && !this.removedPlayers.has(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
-			setup: bullpen.setup?.filter(r => !this.removedPlayers.has(r.pitcherId)),
-			longRelief: bullpen.longRelief?.filter(r => !this.removedPlayers.has(r.pitcherId)),
-			relievers: bullpen.relievers.filter(r => !this.removedPlayers.has(r.pitcherId))
+			closer: bullpen.closer && isPitcherAvailable(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
+			setup: bullpen.setup?.filter(r => isPitcherAvailable(r.pitcherId)),
+			longRelief: bullpen.longRelief?.filter(r => isPitcherAvailable(r.pitcherId)),
+			relievers: bullpen.relievers.filter(r => isPitcherAvailable(r.pitcherId))
 		};
 
 		// Check for pitching change
@@ -2190,7 +2213,7 @@ export class GameEngine {
 				// When we MUST PH for a reliever (non-DH games), skip the normal decision logic
 				// and directly pick the best available batter
 				if (mustPHForReliever) {
-					// Find the best available PH by OPS
+					// Find the best available PH by OPS, with preference for underused players
 					// Model batters use vsLeft/vsRight, not vsLHP/vsRHP
 					const getOPS = (b: ModelBatterStats) => {
 						const rates = opposingPitcher.throws === 'L' ? b.rates.vsLeft : b.rates.vsRight;
@@ -2199,8 +2222,34 @@ export class GameEngine {
 						return obp + slg;
 					};
 
-					// Sort by OPS descending
-					const sortedBench = [...availableBench].sort((a, b) => getOPS(b) - getOPS(a));
+					// Get batter usage if available
+					const batterUsage = this.managerialOptions.pitcherUsage; // Note: using same map for all players
+					const restThreshold = this.managerialOptions.restThreshold ?? 1.25;
+
+					// Sort bench by a combined score of OPS and usage
+					// Prefer underused players: higher score for lower usage
+					const sortedBench = [...availableBench].sort((a, b) => {
+						const opsA = getOPS(a);
+						const opsB = getOPS(b);
+
+						const usageA = batterUsage?.get(a.id) ?? 0.75; // Default to 75% (underused)
+						const usageB = batterUsage?.get(b.id) ?? 0.75;
+
+						// Calculate usage bonus: lower usage = higher bonus
+						// 0% usage = +0.3 OPS bonus, 100%+ usage = no bonus
+						const usageBonusA = Math.max(0, (1 - usageA) * 0.3);
+						const usageBonusB = Math.max(0, (1 - usageB) * 0.3);
+
+						// Penalty for overused players
+						const overusePenaltyA = usageA > restThreshold ? -0.5 : 0;
+						const overusePenaltyB = usageB > restThreshold ? -0.5 : 0;
+
+						const scoreA = opsA + usageBonusA + overusePenaltyA;
+						const scoreB = opsB + usageBonusB + overusePenaltyB;
+
+						return scoreB - scoreA;
+					});
+
 					const bestPH = sortedBench[0];
 
 					if (bestPH) {
@@ -2221,6 +2270,45 @@ export class GameEngine {
 						toModelPitcher(opposingPitcher),
 						{ randomness: this.managerialOptions.randomness ?? 0.15, useDH: gameUsesDH }
 					);
+
+					// Apply usage awareness to the selected pinch hitter
+					if (phDecision.shouldPinchHit && phDecision.pinchHitterId) {
+						const batterUsage = this.managerialOptions.pitcherUsage; // Note: using same map for all players
+						const restThreshold = this.managerialOptions.restThreshold ?? 1.25;
+						const selectedUsage = batterUsage?.get(phDecision.pinchHitterId) ?? 0;
+
+						// If selected PH is overused, try to find an underused alternative
+						if (selectedUsage > restThreshold) {
+							const getOPS = (b: ModelBatterStats) => {
+								const rates = opposingPitcher.throws === 'L' ? b.rates.vsLeft : b.rates.vsRight;
+								const obp = rates.walk + rates.hitByPitch + rates.single + rates.double + rates.triple + rates.homeRun;
+								const slg = rates.single * 1 + rates.double * 2 + rates.triple * 3 + rates.homeRun * 4;
+								return obp + slg;
+							};
+
+							// Find underused alternatives with reasonable OPS
+							const underusedAlternatives = availableBench.filter(b => {
+								const usage = batterUsage?.get(b.id) ?? 0.75;
+								return usage < 0.9; // Significantly underused
+							});
+
+							if (underusedAlternatives.length > 0) {
+								// Sort by OPS, prefer underused players
+								underusedAlternatives.sort((a, b) => getOPS(b) - getOPS(a));
+
+								// Use the best underused alternative if their OPS is within 80% of original selection
+								const selectedPH = availableBench.find(b => b.id === phDecision.pinchHitterId);
+								const selectedOPS = selectedPH ? getOPS(selectedPH) : 0;
+								const bestAlternativeOPS = getOPS(underusedAlternatives[0]);
+
+								if (bestAlternativeOPS >= selectedOPS * 0.8) {
+									// Use underused alternative - they're "close enough" in quality
+									phDecision.pinchHitterId = underusedAlternatives[0].id;
+									phDecision.reason += ` (usage override: ${selectedUsage.toFixed(0)}% usage)`;
+								}
+							}
+						}
+					}
 				}
 
 				if (phDecision.shouldPinchHit && phDecision.pinchHitterId) {
@@ -2861,6 +2949,27 @@ export class GameEngine {
 		this.advanceBatter();
 
 		return play;
+	}
+
+	/**
+	 * Update the starting pitcher for a team and reinitialize the bullpen
+	 * Useful for season replay engine to apply rotation-based starter selection
+	 *
+	 * @param teamId - Team ID to update starter for
+	 * @param newStarterId - New starting pitcher ID
+	 */
+	setStartingPitcher(teamId: string, newStarterId: string): void {
+		const isAwayTeam = teamId === this.state.meta.awayTeam;
+		const lineup = isAwayTeam ? this.state.awayLineup : this.state.homeLineup;
+
+		// Update the starting pitcher in the lineup
+		const oldStarterId = lineup.pitcher;
+		lineup.pitcher = newStarterId;
+
+		// Reinitialize the bullpen for this team with the new starter
+		this.initializeBullpen(teamId, newStarterId);
+
+		console.log(`[GameEngine] Updated starting pitcher for ${teamId}: ${oldStarterId} -> ${newStarterId}`);
 	}
 
 	// Serialize the current game state for persistence

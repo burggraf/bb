@@ -238,16 +238,16 @@
 		return standing?.gamesPlayed || 0;
 	}
 
-	// Get proration percentage for a team
-	function getProrationPercentage(teamId: string): number {
-		const teamGamesPlayed = getTeamGamesPlayed(teamId);
-		const gamesPlayedActual = 162; // TODO: This could vary by season/year
+	// Get proration percentage for a specific player's games played actual
+	function getProrationPercentage(record: PlayerUsageRecord): number {
+		const teamGamesPlayed = getTeamGamesPlayed(record.teamId);
+		const gamesPlayedActual = record.gamesPlayedActual;
 		return gamesPlayedActual > 0 ? teamGamesPlayed / gamesPlayedActual : 0;
 	}
 
 	// Calculate expected PA/IP based on proration
 	function getExpectedTotal(record: PlayerUsageRecord): number {
-		const proration = getProrationPercentage(record.teamId);
+		const proration = getProrationPercentage(record);
 		return Math.round(record.actualSeasonTotal * proration);
 	}
 </script>
@@ -428,7 +428,7 @@
 					<tbody>
 						{#each filteredRecords() as record}
 							{@const teamGamesPlayed = getTeamGamesPlayed(record.teamId)}
-							{@const prorationPct = getProrationPercentage(record.teamId)}
+							{@const prorationPct = getProrationPercentage(record)}
 							{@const expectedTotal = getExpectedTotal(record)}
 							<tr class="border-b border-zinc-800/50 hover:bg-zinc-900/30">
 								<td class="py-3 px-4 text-white font-medium">{record.playerId}</td>

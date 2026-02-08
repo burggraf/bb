@@ -421,13 +421,25 @@ function buildLineupImpl(
 		// Build bench from team batters not in current lineup
 		const bench = positionPlayers.filter(p => !usedIds.has(p.id));
 
+		// Debug: Log usage context
+		console.log('[buildLineup] Usage context provided:', {
+			teamId,
+			restThreshold,
+			playerCount: usageContext.playerUsage.size,
+			overusedPlayers: Array.from(usageContext.playerUsage.entries())
+				.filter(([_, usage]) => usage > restThreshold)
+				.map(([id, usage]) => ({ id, usage: (usage * 100).toFixed(0) + '%' }))
+		});
+
 		// Check each batter in the lineup for overuse
+		let restCount = 0;
 		for (let i = 0; i < battingOrder.length; i++) {
 			const slot = battingOrder[i]!;
 			const usage = usageContext.playerUsage.get(slot.player.id);
 
 			// If player is over the threshold, find a replacement
 			if (usage !== undefined && usage > restThreshold) {
+				console.log(`[buildLineup] Player ${slot.player.name} is overused: ${(usage * 100).toFixed(0)}% > ${restThreshold * 100}%`);
 				// Find first available bench player who can play this position
 				const replacement = bench.find(b =>
 					b.id !== slot.player.id &&
@@ -436,6 +448,7 @@ function buildLineupImpl(
 				);
 
 				if (replacement) {
+					restCount++;
 					warnings.push(`Resting ${slot.player.name} (${(usage * 100).toFixed(0)}% of actual), replacing with ${replacement.name}`);
 					// Replace in batting order
 					battingOrder = [
@@ -452,6 +465,10 @@ function buildLineupImpl(
 					warnings.push(`WARNING: ${slot.player.name} is overused at ${(usage * 100).toFixed(0)}% of actual but no replacement available`);
 				}
 			}
+		}
+
+		if (restCount > 0) {
+			console.log(`[buildLineup] Rested ${restCount} overused players for ${teamId}`);
 		}
 	}
 

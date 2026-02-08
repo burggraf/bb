@@ -240,6 +240,11 @@ function loadBattersByTeam(db: Database, teamId: string): Record<string, BatterS
 		const { id, name, bats, team_id, primary_position, position_eligibility, pa, avg, obp, slg, ops, split, ...rates } = row;
 
 		if (!batters[id]) {
+			// Estimate games played from PA if not available
+			// Rough estimate: ~4.5 PA per game for position players
+			// This is a fallback - ideally the database would have games played
+			const estimatedGames = Math.max(1, Math.round(pa / 4.5));
+
 			batters[id] = {
 				id,
 				name,
@@ -247,6 +252,7 @@ function loadBattersByTeam(db: Database, teamId: string): Record<string, BatterS
 				teamId: team_id,
 				primaryPosition: primary_position,
 				positionEligibility: JSON.parse(position_eligibility),
+				games: estimatedGames, // Estimate from PA if games column not available
 				pa,
 				avg,
 				obp,

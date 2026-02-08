@@ -4,7 +4,7 @@
  */
 
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
-import { createGameResultsSchema, migrateSeriesMetadata } from './schema.js';
+import { createGameResultsSchema, migrateSeriesMetadata, migratePlayerUsageTable } from './schema.js';
 
 // Global SQL.js instance
 let SQL: SqlJsStatic | null = null;
@@ -117,6 +117,7 @@ export async function getGameDatabase(): Promise<Database> {
     gameDb = new SQL!.Database(savedData);
     // Run migrations on existing databases
     migrateSeriesMetadata(gameDb);
+    migratePlayerUsageTable(gameDb);
   } else {
     console.log('[GameResultsDB] Creating new game results database');
     gameDb = new SQL!.Database();

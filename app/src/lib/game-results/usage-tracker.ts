@@ -29,9 +29,11 @@ const MIN_PITCHER_THRESHOLD = 5;
 
 export class UsageTracker {
   private seriesId: string;
+  private seasonYear: number;
 
-  constructor(seriesId: string) {
+  constructor(seriesId: string, seasonYear: number) {
     this.seriesId = seriesId;
+    this.seasonYear = seasonYear;
   }
 
   /**
@@ -52,6 +54,9 @@ export class UsageTracker {
     // Clear existing data for this series
     const deleteResult = db.run('DELETE FROM player_usage WHERE series_id = ?', [this.seriesId]);
 
+    // Get the season length for this year
+    const seasonLength = this.getSeasonLength();
+
     // Insert batters meeting minimum threshold
     // Use INSERT OR REPLACE to handle players who are both batters and pitchers
     const insertBatter = db.prepare(`
@@ -64,13 +69,15 @@ export class UsageTracker {
 
     for (const [id, batter] of Object.entries(batters)) {
       if (batter.pa >= MIN_BATTER_THRESHOLD) {
+        // Use the batter's actual games played (estimated from PA / 4.5)
+        // This makes the proration calculation: actual * (teamGames / batterGames)
         insertBatter.run([
           this.seriesId,
           id,
           batter.teamId,
           0,  // is_pitcher = false
           batter.pa,
-          batter.games || 162
+          Math.max(1, batter.games || 1)  // Use batter's actual games played
         ]);
       }
     }
@@ -88,19 +95,34 @@ export class UsageTracker {
     for (const [id, pitcher] of Object.entries(pitchers)) {
       const ip = pitcher.inningsPitched || 0;
       if (ip >= MIN_PITCHER_THRESHOLD) {
+        // The `games` field from Lahman IS the actual games pitched
+        // No calculation needed - use it directly
+        const actualGamesPlayed = pitcher.games || 0;
+
         insertPitcher.run([
           this.seriesId,
           id,
           pitcher.teamId,
           1,  // is_pitcher = true
           ip * 3,  // Convert IP to outs
-          pitcher.games || 162
+          Math.max(1, actualGamesPlayed)  // Use actual games played from database
         ]);
       }
     }
 
     insertBatter.free();
     insertPitcher.free();
+  }
+
+  /**
+   * Get the season length for a given year
+   * Returns 154 for pre-1961, 162 for 1962+
+   */
+  private getSeasonLength(): number {
+    if (this.seasonYear < 1962) {
+      return 154;
+    }
+    return 162;
   }
 
   /**
@@ -114,6 +136,7 @@ export class UsageTracker {
    */
   async updateGameUsage(gameStats: GameUsageStats): Promise<void> {
     const db = await getGameDatabase();
+    const seasonLength = this.getSeasonLength();
 
     // Get all player IDs that need updates
     const allPlayerIds = [
@@ -168,16 +191,19 @@ export class UsageTracker {
       return teamId ? (teamGamesMap.get(teamId) || 0) : 0;
     };
 
+    // For batters, expected = actual * (team_games / season_length)
+    // We use season_length (162) instead of games_played_actual because
+    // games_played_actual stores the batter's actual games, not the season length
     const updateBatter = db.prepare(`
       UPDATE player_usage
       SET replay_current_total = replay_current_total + ?,
           replay_games_played = replay_games_played + 1,
           percentage_of_actual =
             CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0),
+            NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
@@ -185,7 +211,7 @@ export class UsageTracker {
 
     for (const [playerId, pa] of gameStats.batterPa) {
       const teamGamesPlayed = getTeamGamesPlayed(playerId);
-      updateBatter.run([pa, pa, teamGamesPlayed, pa, teamGamesPlayed, pa, teamGamesPlayed, this.seriesId, playerId]);
+      updateBatter.run([pa, pa, teamGamesPlayed, seasonLength, pa, teamGamesPlayed, seasonLength, pa, teamGamesPlayed, seasonLength, this.seriesId, playerId]);
     }
 
     const updatePitcher = db.prepare(`
@@ -340,5 +366,65 @@ export class UsageTracker {
       percentageOfActual: row.percentage_of_actual,
       status: row.status
     };
+  }
+
+  /**
+   * Get usage data for a team in the format needed by UsageContext
+   * Returns a Map of player ID to usage percentage (0.0-1.0)
+   *
+   * @param teamId - Team ID to get usage data for
+   * @returns Map of player ID to usage percentage
+   */
+  async getTeamUsageForContext(teamId: string): Promise<Map<string, number>> {
+    const db = await getGameDatabase();
+
+    const stmt = db.prepare(`
+      SELECT player_id, percentage_of_actual
+      FROM player_usage
+      WHERE series_id = ? AND team_id = ?
+    `);
+    stmt.bind([this.seriesId, teamId]);
+
+    const usageMap = new Map<string, number>();
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as Record<string, any>;
+      usageMap.set(row.player_id, row.percentage_of_actual);
+    }
+    stmt.free();
+
+    return usageMap;
+  }
+
+  /**
+   * Get usage data for all teams in a series
+   * Useful for season replay engine to build usage contexts
+   *
+   * @returns Map of team ID to player usage map
+   */
+  async getAllTeamsUsageForContext(): Promise<Map<string, Map<string, number>>> {
+    const db = await getGameDatabase();
+
+    const stmt = db.prepare(`
+      SELECT team_id, player_id, percentage_of_actual
+      FROM player_usage
+      WHERE series_id = ?
+    `);
+    stmt.bind([this.seriesId]);
+
+    const teamUsageMap = new Map<string, Map<string, number>>();
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as Record<string, any>;
+      const teamId = row.team_id;
+
+      if (!teamUsageMap.has(teamId)) {
+        teamUsageMap.set(teamId, new Map<string, number>());
+      }
+
+      const playerMap = teamUsageMap.get(teamId)!;
+      playerMap.set(row.player_id, row.percentage_of_actual);
+    }
+    stmt.free();
+
+    return teamUsageMap;
   }
 }

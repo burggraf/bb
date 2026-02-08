@@ -258,3 +258,50 @@ export function migrateSeriesMetadata(db: Database): void {
     throw error;
   }
 }
+
+/**
+ * Migrate existing databases to add player_usage table
+ * This table was added later, so existing databases need it created
+ */
+export function migratePlayerUsageTable(db: Database): void {
+  try {
+    // Check if player_usage table exists
+    const stmt = db.prepare('SELECT name FROM sqlite_master WHERE type="table" AND name="player_usage"');
+    const hasTable = stmt.step();
+    stmt.free();
+
+    if (!hasTable) {
+      console.log('[Schema] Creating player_usage table (migration)');
+      db.exec(`
+        CREATE TABLE player_usage (
+          series_id TEXT NOT NULL,
+          player_id TEXT NOT NULL,
+          team_id TEXT NOT NULL,
+          is_pitcher INTEGER NOT NULL,
+
+          -- Target values (from season export)
+          actual_season_total INTEGER NOT NULL,
+          games_played_actual INTEGER NOT NULL,
+
+          -- Replay values (cumulative)
+          replay_current_total INTEGER NOT NULL DEFAULT 0,
+          replay_games_played INTEGER NOT NULL DEFAULT 0,
+
+          -- Calculated fields
+          percentage_of_actual REAL NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'inRange',
+
+          PRIMARY KEY (series_id, player_id),
+          FOREIGN KEY (series_id) REFERENCES series(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX idx_player_usage_series_pitcher ON player_usage(series_id, is_pitcher);
+        CREATE INDEX idx_player_usage_team ON player_usage(team_id);
+        CREATE INDEX idx_player_usage_status ON player_usage(status);
+      `);
+    }
+  } catch (error) {
+    console.error('[Schema] Migration error for player_usage:', error);
+    throw error;
+  }
+}
