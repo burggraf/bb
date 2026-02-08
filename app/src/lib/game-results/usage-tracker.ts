@@ -373,14 +373,38 @@ export class UsageTracker {
    * Get usage data for a team in the format needed by UsageContext
    * Returns a Map of player ID to usage percentage (0.0-1.0)
    *
+   * IMPORTANT: Returns percentage based on TEAM season progress, not player game pace.
+   * This is needed by the lineup builder to correctly filter overused players.
+   * Calculation: replay / (actual * (teamGamesPlayed / seasonLength))
+   *
    * @param teamId - Team ID to get usage data for
-   * @returns Map of player ID to usage percentage
+   * @returns Map of player ID to usage percentage based on team season progress
    */
   async getTeamUsageForContext(teamId: string): Promise<Map<string, number>> {
     const db = await getGameDatabase();
+    const seasonLength = this.getSeasonLength();
 
+    // Get team games played
+    const teamGamesStmt = db.prepare(`
+      SELECT COUNT(*) as games_played
+      FROM games g
+      WHERE g.series_id = ?
+        AND (g.away_team_id = ? OR g.home_team_id = ?)
+        AND g.status = 'completed'
+    `);
+    teamGamesStmt.bind([this.seriesId, teamId, teamId]);
+    let teamGamesPlayed = 0;
+    if (teamGamesStmt.step()) {
+      const row = teamGamesStmt.getAsObject() as Record<string, any>;
+      teamGamesPlayed = row.games_played;
+    }
+    teamGamesStmt.free();
+
+    const seasonProgress = seasonLength > 0 ? teamGamesPlayed / seasonLength : 0;
+
+    // Get player usage data
     const stmt = db.prepare(`
-      SELECT player_id, percentage_of_actual
+      SELECT player_id, actual_season_total, replay_current_total
       FROM player_usage
       WHERE series_id = ? AND team_id = ?
     `);
@@ -389,7 +413,16 @@ export class UsageTracker {
     const usageMap = new Map<string, number>();
     while (stmt.step()) {
       const row = stmt.getAsObject() as Record<string, any>;
-      usageMap.set(row.player_id, row.percentage_of_actual);
+      const actualTotal = row.actual_season_total;
+      const replayTotal = row.replay_current_total;
+
+      // Calculate percentage based on team season progress
+      // Expected = actual * (teamGamesPlayed / seasonLength)
+      // Percentage = replay / expected
+      const expected = actualTotal * seasonProgress;
+      const percentage = expected > 0 ? replayTotal / expected : 0;
+
+      usageMap.set(row.player_id, percentage);
     }
     stmt.free();
 
@@ -400,29 +433,81 @@ export class UsageTracker {
    * Get usage data for all teams in a series
    * Useful for season replay engine to build usage contexts
    *
-   * @returns Map of team ID to player usage map
+   * IMPORTANT: Returns percentage based on TEAM season progress, not player game pace.
+   * This is needed by the lineup builder to correctly filter overused players.
+   * Calculation: replay / (actual * (teamGamesPlayed / seasonLength))
+   *
+   * @returns Map of team ID to player usage map based on team season progress
    */
   async getAllTeamsUsageForContext(): Promise<Map<string, Map<string, number>>> {
     const db = await getGameDatabase();
+    const seasonLength = this.getSeasonLength();
 
+    // First, get all teams in this series
+    const teamsStmt = db.prepare(`
+      SELECT DISTINCT team_id
+      FROM player_usage
+      WHERE series_id = ?
+    `);
+    teamsStmt.bind([this.seriesId]);
+
+    const teamIds: string[] = [];
+    while (teamsStmt.step()) {
+      const row = teamsStmt.getAsObject() as Record<string, any>;
+      teamIds.push(row.team_id);
+    }
+    teamsStmt.free();
+
+    // For each team, get games played and build usage map
+    const teamUsageMap = new Map<string, Map<string, number>>();
+    const teamGamesMap = new Map<string, number>();
+
+    // Get games played for each team
+    for (const teamId of teamIds) {
+      const teamGamesStmt = db.prepare(`
+        SELECT COUNT(*) as games_played
+        FROM games g
+        WHERE g.series_id = ?
+          AND (g.away_team_id = ? OR g.home_team_id = ?)
+          AND g.status = 'completed'
+      `);
+      teamGamesStmt.bind([this.seriesId, teamId, teamId]);
+      if (teamGamesStmt.step()) {
+        const row = teamGamesStmt.getAsObject() as Record<string, any>;
+        teamGamesMap.set(teamId, row.games_played);
+      }
+      teamGamesStmt.free();
+    }
+
+    // Get all player usage data and calculate percentages
     const stmt = db.prepare(`
-      SELECT team_id, player_id, percentage_of_actual
+      SELECT team_id, player_id, actual_season_total, replay_current_total
       FROM player_usage
       WHERE series_id = ?
     `);
     stmt.bind([this.seriesId]);
 
-    const teamUsageMap = new Map<string, Map<string, number>>();
     while (stmt.step()) {
       const row = stmt.getAsObject() as Record<string, any>;
       const teamId = row.team_id;
+      const actualTotal = row.actual_season_total;
+      const replayTotal = row.replay_current_total;
 
       if (!teamUsageMap.has(teamId)) {
         teamUsageMap.set(teamId, new Map<string, number>());
       }
 
       const playerMap = teamUsageMap.get(teamId)!;
-      playerMap.set(row.player_id, row.percentage_of_actual);
+      const teamGamesPlayed = teamGamesMap.get(teamId) ?? 0;
+      const seasonProgress = seasonLength > 0 ? teamGamesPlayed / seasonLength : 0;
+
+      // Calculate percentage based on team season progress
+      // Expected = actual * (teamGamesPlayed / seasonLength)
+      // Percentage = replay / expected
+      const expected = actualTotal * seasonProgress;
+      const percentage = expected > 0 ? replayTotal / expected : 0;
+
+      playerMap.set(row.player_id, percentage);
     }
     stmt.free();
 
