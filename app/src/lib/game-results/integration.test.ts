@@ -40,10 +40,9 @@ vi.mock('./games.js', () => ({
 }));
 
 vi.mock('./stats.js', () => ({
-  getSeriesStandings: vi.fn(),
+  getStandings: vi.fn(),
   getBattingStats: vi.fn(),
-  getPitchingStats: vi.fn(),
-  getLeagueLeaders: vi.fn()
+  getPitchingStats: vi.fn()
 }));
 
 describe('Integration: Full Game Save Workflow', () => {
@@ -74,7 +73,7 @@ describe('Integration: Full Game Save Workflow', () => {
       expect(indexModule.getSeriesStandings).toBeInstanceOf(Function);
       expect(indexModule.getBattingStats).toBeInstanceOf(Function);
       expect(indexModule.getPitchingStats).toBeInstanceOf(Function);
-      expect(indexModule.getLeagueLeaders).toBeInstanceOf(Function);
+      // getLeagueLeaders was removed, replaced by getLeagueLeadersByCategory
 
       // Convenience functions
       expect(indexModule.saveGameFromState).toBeInstanceOf(Function);

@@ -1,5 +1,5 @@
-import { getSeasonSchedule, loadSeason, loadSeasonForGame, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
-import { getSeriesMetadata, updateSeriesMetadata, updateSeries, saveGameFromState, saveGameDatabase } from '$lib/game-results/index.js';
+import { getSeasonSchedule, loadSeason, loadSeasonForGame, getBattersForTeam, getPitchersForTeam, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
+import { getSeriesMetadata, updateSeriesMetadata, updateSeries, saveGameFromState, saveGameDatabase, UsageTracker, type GameUsageStats } from '$lib/game-results/index.js';
 import { GameEngine } from '$lib/game/engine.js';
 import type { GameState, PlayEvent } from '$lib/game/types.js';
 import type { ReplayOptions, ReplayProgress, ReplayStatus, GameResult } from './types.js';
@@ -15,6 +15,7 @@ export class SeasonReplayEngine {
   private status: ReplayStatus = 'idle';
   private gameEngine: GameEngine | null = null;
   private eventListeners: Map<string, Set<EventCallback>> = new Map();
+  private usageTracker: UsageTracker | null = null;
 
   constructor(seriesId: string, seasonYear: number, options: ReplayOptions = { animated: false, simSpeed: 500 }) {
     this.seriesId = seriesId;
@@ -24,7 +25,13 @@ export class SeasonReplayEngine {
 
   async initialize(): Promise<void> {
     // Load season data
-    await loadSeason(this.seasonYear);
+    const season = await loadSeason(this.seasonYear);
+
+    // Initialize usage tracker
+    this.usageTracker = new UsageTracker(this.seriesId);
+
+    // Seed usage targets from season data
+    await this.seedUsageTargets(season);
 
     // Load schedule
     this.schedule = await getSeasonSchedule(this.seasonYear);
@@ -230,6 +237,23 @@ export class SeasonReplayEngine {
       const gameId = await saveGameFromState(finalState, this.seriesId, this.currentGameIndex + 1, game.date);
       console.log('[SeasonReplay] Game saved successfully:', gameId);
 
+      // Update usage tracking
+      if (this.usageTracker) {
+        const gameStats = this.extractGameStats(finalState);
+        await this.usageTracker.updateGameUsage(gameStats);
+
+        // Check for threshold violations (log but don't fail)
+        try {
+          const violations = await this.usageTracker.checkThresholds();
+          if (violations.length > 0) {
+            console.log(`[SeasonReplay] Found ${violations.length} usage violations after game ${this.currentGameIndex + 1}`);
+          }
+        } catch (error) {
+          console.error('[SeasonReplay] Error checking usage thresholds:', error);
+          // Continue anyway - don't let threshold checking break the replay
+        }
+      }
+
       // Update series metadata
       await this.updateMetadataStatus(this.seriesId, finalState, metadata);
 
@@ -322,5 +346,54 @@ export class SeasonReplayEngine {
         lastPlayedDate: this.schedule[this.currentGameIndex]?.date
       }
     });
+  }
+
+  private async seedUsageTargets(season: any): Promise<void> {
+    if (!this.usageTracker) return;
+
+    // Collect all batters and pitchers from the season
+    const allBatters: Record<string, any> = {};
+    const allPitchers: Record<string, any> = {};
+
+    // Load batters and pitchers for each team in the season
+    for (const teamId of Object.keys(season.teams)) {
+      const teamBatters = await getBattersForTeam(this.seasonYear, teamId);
+      const teamPitchers = await getPitchersForTeam(this.seasonYear, teamId);
+
+      Object.assign(allBatters, teamBatters);
+      Object.assign(allPitchers, teamPitchers);
+    }
+
+    await this.usageTracker.seedUsageTargets(allBatters, allPitchers);
+  }
+
+  private extractGameStats(gameState: GameState): GameUsageStats {
+    const batterPa = new Map<string, number>();
+    const pitcherIp = new Map<string, number>();
+
+    for (const play of gameState.plays) {
+      // Skip summary events and non-plate-appearance events
+      if (play.isSummary || play.eventType !== 'plateAppearance') continue;
+
+      // Count PA for each batter
+      const currentPa = batterPa.get(play.batterId) || 0;
+      batterPa.set(play.batterId, currentPa + 1);
+
+      // Count outs for each pitcher (1 out = 1/3 inning)
+      // Only count outs (strikeout, groundOut, flyOut, lineOut, popOut)
+      const outcome = play.outcome;
+      if (
+        outcome === 'strikeout' ||
+        outcome === 'groundOut' ||
+        outcome === 'flyOut' ||
+        outcome === 'lineOut' ||
+        outcome === 'popOut'
+      ) {
+        const currentIp = pitcherIp.get(play.pitcherId) || 0;
+        pitcherIp.set(play.pitcherId, currentIp + 1);
+      }
+    }
+
+    return { batterPa, pitcherIp };
   }
 }

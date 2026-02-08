@@ -7,6 +7,7 @@
 	import BattingLeadersTable from '$lib/game-results/components/BattingLeadersTable.svelte';
 	import PitchingLeadersTable from '$lib/game-results/components/PitchingLeadersTable.svelte';
 	import ReplayStandingsView from '$lib/game-results/components/ReplayStandingsView.svelte';
+	import UsageReportView from '$lib/game-results/components/UsageReportView.svelte';
 	import type { BattingStat, PitchingStat } from '$lib/game-results';
 
 	interface Props {
@@ -31,7 +32,7 @@
 	let games = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').getGamesBySeries>>>([]);
 	let battingStats = $state<BattingStat[]>([]);
 	let pitchingStats = $state<PitchingStat[]>([]);
-	let activeTab = $state<'standings' | 'games' | 'leaders'>('games');
+	let activeTab = $state<'standings' | 'games' | 'leaders' | 'usage'>('games');
 	let leadersSubTab = $state<'batting' | 'pitching'>('batting');
 	let isSeasonReplay = $state(false);
 	let replayMetadata = $state<Awaited<ReturnType<typeof import('$lib/game-results/index.js').getSeriesMetadata>> | null>(null);
@@ -152,6 +153,14 @@
 				>
 					Leaders
 				</button>
+				{#if isSeasonReplay}
+					<button
+						class="pb-2 px-1 text-sm {activeTab === 'usage' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-zinc-400 hover:text-white'}"
+						onclick={() => (activeTab = 'usage')}
+					>
+						Usage
+					</button>
+				{/if}
 			</div>
 		</div>
 
@@ -169,6 +178,12 @@
 			{/if}
 		{:else if activeTab === 'games'}
 			<GamesList {games} />
+		{:else if activeTab === 'usage'}
+			{#if isSeasonReplay && seasonYear}
+				<UsageReportView seriesId={data.seriesId} {seasonYear} />
+			{:else}
+				<div class="text-zinc-500 text-center py-8">Usage tracking only available for season replays.</div>
+			{/if}
 		{:else}
 			<!-- Leaders sub-tabs -->
 			<div class="mb-4">
