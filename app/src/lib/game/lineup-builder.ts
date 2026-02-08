@@ -239,9 +239,17 @@ function assignPositions(
 			playerPool.delete(best.player.id);
 		}
 
+		// CRITICAL: Third priority - use ANY remaining player as last resort
+		// Game simulation takes priority over positional realism. If we can't find
+		// someone with primary or secondary eligibility, just use any unused player.
 		if (!assigned.has(Array.from(assigned.keys()).find(id => assigned.get(id) === position) ?? '')) {
-			// Still couldn't fill - will fail validation later
-			warnings.push(`WARNING: Unable to fill ${getPositionName(position)} position`);
+			const anyUnused = players.find(p => !usedPlayers.has(p.id));
+			if (anyUnused) {
+				assigned.set(anyUnused.id, position);
+				usedPlayers.add(anyUnused.id);
+				playerPool.delete(anyUnused.id);
+				warnings.push(`WARNING: ${anyUnused.name} assigned to ${getPositionName(position)} without positional eligibility - using best available player`);
+			}
 		}
 	}
 
