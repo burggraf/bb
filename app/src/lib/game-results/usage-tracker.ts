@@ -209,7 +209,7 @@ export class UsageTracker {
     `);
 
     for (const [playerId, pa] of gameStats.batterPa) {
-      updateBatter.run([pa, pa, pa, pa, pa, this.seriesId, playerId]);
+      updateBatter.run([pa, pa, pa, pa, this.seriesId, playerId]);
     }
 
     const updatePitcher = db.prepare(`
