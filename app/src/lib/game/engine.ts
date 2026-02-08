@@ -1316,9 +1316,88 @@ export class GameEngine {
 							isSummary: true
 						});
 					} else {
-						console.warn(`No bench pitcher available to fill vacated pitcher slot at batting order ${vacatedSlot.index + 1}`);
-						benchSearchFailed = true;
-						// Leave the slot empty - this will cause a validation error
+						// EMERGENCY: No bench pitcher available - try any pitcher on roster (even if in lineup)
+						console.warn(`No bench pitcher available to fill vacated pitcher slot at batting order ${vacatedSlot.index + 1} - trying emergency fallback`);
+
+						// Find ANY pitcher on the team (primaryPosition === 1) - even if they're already in the lineup
+						const allTeamPitchers = allTeamBatters.filter(b => b.primaryPosition === 1);
+
+						if (allTeamPitchers.length > 0) {
+							// Use the first available pitcher - may require shuffling if they're already in the lineup
+							const emergencyPitcher = allTeamPitchers[0];
+							const existingIndex = lineup.players.findIndex(p => p.playerId === emergencyPitcher.id);
+
+							if (existingIndex !== -1 && existingIndex !== vacatedSlot.index) {
+								// Pitcher is already in lineup - swap them
+								// Move the player currently at vacatedSlot to the pitcher's current slot
+								const playerAtVacatedSlot = lineup.players[vacatedSlot.index]; // Should be null at this point
+								lineup.players[existingIndex] = { playerId: null, position: lineup.players[existingIndex].position };
+								lineup.players[vacatedSlot.index] = { playerId: emergencyPitcher.id, position: 1 };
+
+								const battingOrder = vacatedSlot.index + 1;
+								maybeAddPlay({
+									inning: this.state.inning,
+									isTopInning: this.state.isTopInning,
+									outcome: 'out' as Outcome,
+									batterId: '',
+									batterName: '',
+									pitcherId: '',
+									pitcherName: '',
+									description: `Lineup adjustment: ${this.formatName(emergencyPitcher.name)} (P) moves to fill pitcher slot at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
+								runsScored: 0,
+									eventType: 'lineupAdjustment',
+									substitutedPlayer: emergencyPitcher.id,
+									isSummary: true
+								});
+
+								// The slot the pitcher vacated still needs filling - will be handled below
+							} else {
+								// Pitcher not in lineup or already at this slot - just assign them
+								lineup.players[vacatedSlot.index] = { playerId: emergencyPitcher.id, position: 1 };
+								const battingOrder = vacatedSlot.index + 1;
+								maybeAddPlay({
+									inning: this.state.inning,
+									isTopInning: this.state.isTopInning,
+									outcome: 'out' as Outcome,
+									batterId: '',
+									batterName: '',
+									pitcherId: '',
+									pitcherName: '',
+									description: `Lineup adjustment: ${this.formatName(emergencyPitcher.name)} (P) fills pitcher slot at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
+								runsScored: 0,
+									eventType: 'lineupAdjustment',
+									substitutedPlayer: emergencyPitcher.id,
+									isSummary: true
+								});
+							}
+						} else {
+							// ULTIMATE EMERGENCY: No pitchers at all - this should be extremely rare
+							// As a last resort, find any player on the team to put at pitcher
+							const anyPlayer = allTeamBatters[0];
+							if (anyPlayer) {
+								lineup.players[vacatedSlot.index] = { playerId: anyPlayer.id, position: 1 };
+								const battingOrder = vacatedSlot.index + 1;
+								maybeAddPlay({
+									inning: this.state.inning,
+									isTopInning: this.state.isTopInning,
+									outcome: 'out' as Outcome,
+									batterId: '',
+									batterName: '',
+									pitcherId: '',
+									pitcherName: '',
+									description: `Lineup adjustment: ${this.formatName(anyPlayer.name)} forced to pitch at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency)`,
+								runsScored: 0,
+									eventType: 'lineupAdjustment',
+									substitutedPlayer: anyPlayer.id,
+									isSummary: true
+								});
+							} else {
+								// This should be impossible - team must have players
+								console.error(`CRITICAL: No players available for team ${teamId} to fill pitcher slot`);
+								benchSearchFailed = true;
+							}
+						}
+						benchSearchFailed = true; // Enable emergency mode for position eligibility
 					}
 				} else {
 					// Vacated slot is for a field position - find a bench player to fill it directly
@@ -1361,9 +1440,83 @@ export class GameEngine {
 							isSummary: true
 						});
 					} else {
-						console.warn(`No bench player available to fill vacated field position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position} at batting order ${vacatedSlot.index + 1}`);
-						benchSearchFailed = true;
-						// Leave the slot empty - this will cause a validation error
+						// EMERGENCY: No eligible bench player - try ANY bench player (ignoring position eligibility)
+						console.warn(`No eligible bench player for position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position} at batting order ${vacatedSlot.index + 1} - trying emergency fallback`);
+
+						// Find ANY bench player (ignoring position eligibility)
+						const availableBenchAny = allTeamBatters.filter(b =>
+							!currentLineupPlayerIds.includes(b.id) &&
+							!this.usedPinchHitters.has(b.id) &&
+							!this.removedPlayers.has(b.id) &&
+							!assignedBenchPlayerIds.has(b.id)
+						);
+
+						if (availableBenchAny.length > 0) {
+							// Use any available bench player - emergency mode will handle position eligibility
+							const emergencyPlayer = availableBenchAny[0];
+							lineup.players[vacatedSlot.index] = {
+								playerId: emergencyPlayer.id,
+								position: vacatedSlot.position
+							};
+							assignedBenchPlayerIds.add(emergencyPlayer.id);
+
+							const battingOrder = vacatedSlot.index + 1;
+							const positionName = POSITION_NAMES[vacatedSlot.position] ?? `Pos${vacatedSlot.position}`;
+							maybeAddPlay({
+								inning: this.state.inning,
+								isTopInning: this.state.isTopInning,
+								outcome: 'out' as Outcome,
+								batterId: '',
+								batterName: '',
+								pitcherId: '',
+								pitcherName: '',
+								description: `Lineup adjustment: ${this.formatName(emergencyPlayer.name)} (${positionName}) fills position at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency - not natural position)`,
+								runsScored: 0,
+								eventType: 'lineupAdjustment',
+								substitutedPlayer: emergencyPlayer.id,
+								isSummary: true
+							});
+						} else {
+							// ULTIMATE EMERGENCY: Try to find any player on the team (even if in lineup)
+							// This requires shuffling
+							console.warn(`No bench players at all - trying roster shuffle for position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position}`);
+
+							// Find any player who isn't currently at this exact batting order position
+							for (const player of allTeamBatters) {
+								const existingIndex = lineup.players.findIndex(p => p.playerId === player.id);
+								if (existingIndex !== -1 && existingIndex !== vacatedSlot.index) {
+									// Swap: move this player to the vacated slot, move null to their slot
+									lineup.players[existingIndex] = { playerId: null, position: lineup.players[existingIndex].position };
+									lineup.players[vacatedSlot.index] = { playerId: player.id, position: vacatedSlot.position };
+
+									const battingOrder = vacatedSlot.index + 1;
+									const positionName = POSITION_NAMES[vacatedSlot.position] ?? `Pos${vacatedSlot.position}`;
+									maybeAddPlay({
+										inning: this.state.inning,
+										isTopInning: this.state.isTopInning,
+										outcome: 'out' as Outcome,
+										batterId: '',
+										batterName: '',
+										pitcherId: '',
+										pitcherName: '',
+										description: `Lineup adjustment: ${this.formatName(player.name)} (${positionName}) moves to fill position at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency shuffle)`,
+										runsScored: 0,
+										eventType: 'lineupAdjustment',
+										substitutedPlayer: player.id,
+										isSummary: true
+									});
+
+									// Successfully filled - exit loop
+									break;
+								}
+							}
+
+							// After shuffle attempt, check if slot is still null
+							if (!lineup.players[vacatedSlot.index].playerId) {
+								console.error(`CRITICAL: Failed to fill vacated field position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position} at batting order ${vacatedSlot.index + 1}`);
+							}
+						}
+						benchSearchFailed = true; // Enable emergency mode for position eligibility
 					}
 				}
 			}
