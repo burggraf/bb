@@ -35,25 +35,29 @@ export class SeasonReplayEngine {
     this.usageTracker = new UsageTracker(this.seriesId);
     console.log('[SeasonReplayEngine] Usage tracker created');
 
-    // Seed usage targets from season data
-    console.log('[SeasonReplayEngine] Seeding usage targets...');
-    await this.seedUsageTargets(season);
-    console.log('[SeasonReplayEngine] Usage targets seeded');
-
     // Load schedule
     console.log('[SeasonReplayEngine] Loading schedule...');
     this.schedule = await getSeasonSchedule(this.seasonYear);
     console.log('[SeasonReplayEngine] Schedule loaded, games:', this.schedule.length);
 
-    // Restore state from metadata
+    // Check for existing replay state BEFORE seeding
     const metadata = await getSeriesMetadata(this.seriesId);
-    if (metadata?.seasonReplay) {
+    const isNewReplay = !metadata?.seasonReplay;
+
+    if (isNewReplay) {
+      // Seed usage targets from season data (only for new replays)
+      console.log('[SeasonReplayEngine] Seeding usage targets for new replay...');
+      await this.seedUsageTargets(season);
+      console.log('[SeasonReplayEngine] Usage targets seeded');
+      // Save the initial database state with seeded usage targets
+      await saveGameDatabase();
+      console.log('[SeasonReplayEngine] Saved initial database with usage targets');
+    } else {
+      console.log('[SeasonReplayEngine] Resuming existing replay, using existing usage data from database');
       this.currentGameIndex = metadata.seasonReplay.currentGameIndex;
       this.status = metadata.seasonReplay.status;
-    } else {
-      this.currentGameIndex = 0;
-      this.status = 'idle';
     }
+
     console.log('[SeasonReplayEngine] initialize() complete, status:', this.status);
   }
 
