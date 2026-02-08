@@ -27,6 +27,7 @@
 
 	let status = $state<ReplayStatus>('idle');
 	let loading = $state(false);
+	let isAutoPlaying = $state(false); // Track if we're in auto-play loop
 	let error = $state<string | null>(null);
 	let gameError = $state<{ message: string; gameIndex: number } | null>(null);
 	let shouldContinuePlaying = false;
@@ -109,6 +110,7 @@
 				await engine.resume();
 			}
 			status = engine.getStatus();
+			isAutoPlaying = true; // Mark auto-play as active
 
 			// Set flag to continue playing
 			shouldContinuePlaying = true;
@@ -125,9 +127,11 @@
 				// Small delay to allow UI updates between games
 				await new Promise(resolve => setTimeout(resolve, 10));
 			}
+			isAutoPlaying = false; // Auto-play loop ended
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to start replay';
 			shouldContinuePlaying = false;
+			isAutoPlaying = false;
 		}
 	}
 
@@ -135,13 +139,17 @@
 		if (!engine) return;
 		// Signal the loop to stop
 		shouldContinuePlaying = false;
+		isAutoPlaying = false;
 		await engine.pause();
 		status = engine.getStatus();
 	}
 
 	async function playNextGame() {
 		if (!engine || loading) return;
-		loading = true;
+		// Only show loading for manual actions, not during auto-play
+		if (!isAutoPlaying) {
+			loading = true;
+		}
 		error = null;
 
 		try {
@@ -162,7 +170,10 @@
 			// Stop the loop on error
 			shouldContinuePlaying = false;
 		} finally {
-			loading = false;
+			// Only clear loading for manual actions
+			if (!isAutoPlaying) {
+				loading = false;
+			}
 		}
 	}
 
@@ -175,11 +186,13 @@
 		// If still in animated mode and not complete, resume auto-play
 		if (animatedMode && status !== 'completed' && !gameComplete) {
 			shouldContinuePlaying = true;
+			isAutoPlaying = true;
 			while (shouldContinuePlaying && engine && engine.getStatus() === 'playing' && !gameComplete) {
 				await playNextGame();
 				// Small delay to allow browser to update UI
 				await new Promise(resolve => setTimeout(resolve, 10));
 			}
+			isAutoPlaying = false;
 		}
 	}
 
@@ -202,20 +215,6 @@
 		} finally {
 			loading = false;
 		}
-	}
-
-	async function stop() {
-		if (!engine) return;
-
-		// Signal the loop to stop
-		shouldContinuePlaying = false;
-
-		// Pause if playing
-		if (status === 'playing') {
-			await engine.pause();
-		}
-
-		status = engine.getStatus();
 	}
 
 	function skipToNextGame() {
@@ -465,7 +464,7 @@
 			<!-- Next Game -->
 			<button
 				onclick={playNextGame}
-				disabled={status === 'completed' || !engine || loading}
+				disabled={status === 'completed' || !engine || isAutoPlaying || loading}
 				class="flex items-center justify-center gap-1 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded font-medium transition-colors"
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -478,7 +477,7 @@
 			<!-- Next Day -->
 			<button
 				onclick={playNextDay}
-				disabled={status === 'completed' || !engine || loading}
+				disabled={status === 'completed' || !engine || isAutoPlaying || loading}
 				class="flex items-center justify-center gap-1 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded font-medium transition-colors"
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -490,17 +489,5 @@
 				Next Day
 			</button>
 		{/if}
-
-		<!-- Stop button (spans 2 columns) -->
-		<button
-			onclick={stop}
-			disabled={status === 'idle' || status === 'completed' || !engine}
-			class="col-span-2 flex items-center justify-center gap-2 px-4 py-2 bg-red-900/50 hover:bg-red-900/70 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded font-medium transition-colors border border-red-800"
-		>
-			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-				<rect x="6" y="6" width="12" height="12"></rect>
-			</svg>
-			Stop
-		</button>
 	</div>
 </div>
