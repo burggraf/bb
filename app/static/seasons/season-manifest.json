@@ -1,9 +1,9 @@
 {
   "meta": {
-    "generatedAt": "2026-02-08T01:42:22.179Z",
+    "generatedAt": "2026-02-08T01:57:40.187Z",
     "totalYears": 115,
-    "totalSize": 72878187,
-    "totalCompressedSize": 26027923
+    "totalSize": 72880950,
+    "totalCompressedSize": 26028910
   },
   "seasons": [
     {
@@ -111,8 +111,8 @@
     {
       "year": 1927,
       "file": "1927.sqlite.gz",
-      "size": 420171,
-      "compressedSize": 150061
+      "size": 422934,
+      "compressedSize": 151048
     },
     {
       "year": 1928,
