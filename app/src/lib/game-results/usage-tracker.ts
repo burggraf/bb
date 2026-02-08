@@ -163,7 +163,11 @@ export class UsageTracker {
       SELECT * FROM player_usage
       WHERE series_id = ? AND player_id = ?
     `);
-    const row = stmt.get(this.seriesId, playerId) as any;
+    stmt.bind([this.seriesId, playerId]);
+    let row: any = null;
+    if (stmt.step()) {
+      row = stmt.getAsObject();
+    }
     stmt.free();
 
     if (!row) return null;
@@ -184,7 +188,11 @@ export class UsageTracker {
       WHERE series_id = ? AND team_id = ?
       ORDER BY percentage_of_actual DESC
     `);
-    const rows = stmt.all(this.seriesId, teamId) as any[];
+    stmt.bind([this.seriesId, teamId]);
+    const rows: any[] = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
     stmt.free();
 
     return rows.map(r => this.rowToRecord(r));
@@ -210,7 +218,11 @@ export class UsageTracker {
       LEFT JOIN players p ON pu.player_id = p.id
       WHERE pu.series_id = ? AND pu.status = 'under'
     `);
-    const underRows = underStmt.all(this.seriesId) as any[];
+    underStmt.bind([this.seriesId]);
+    const underRows: any[] = [];
+    while (underStmt.step()) {
+      underRows.push(underStmt.getAsObject());
+    }
     underStmt.free();
 
     for (const row of underRows) {
@@ -231,7 +243,11 @@ export class UsageTracker {
       LEFT JOIN players p ON pu.player_id = p.id
       WHERE pu.series_id = ? AND pu.status = 'over'
     `);
-    const overRows = overStmt.all(this.seriesId) as any[];
+    overStmt.bind([this.seriesId]);
+    const overRows: any[] = [];
+    while (overStmt.step()) {
+      overRows.push(overStmt.getAsObject());
+    }
     overStmt.free();
 
     for (const row of overRows) {
