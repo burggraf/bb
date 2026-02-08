@@ -49,8 +49,12 @@ export class UsageTracker {
   ): Promise<void> {
     const db = await getGameDatabase();
 
+    console.log('[UsageTracker] seedUsageTargets called for seriesId:', this.seriesId);
+    console.log('[UsageTracker] Batters count:', Object.keys(batters).length, 'Pitchers count:', Object.keys(pitchers).length);
+
     // Clear existing data for this series
-    db.run('DELETE FROM player_usage WHERE series_id = ?', [this.seriesId]);
+    const deleteResult = db.run('DELETE FROM player_usage WHERE series_id = ?', [this.seriesId]);
+    console.log('[UsageTracker] Deleted', deleteResult.changes, 'existing rows for seriesId:', this.seriesId);
 
     // Insert batters meeting minimum threshold
     // Use INSERT OR REPLACE to handle players who are both batters and pitchers
@@ -101,6 +105,14 @@ export class UsageTracker {
 
     insertBatter.free();
     insertPitcher.free();
+
+    // Log summary
+    const batterCount = Object.keys(batters).filter(b => batters[b].pa >= MIN_BATTER_THRESHOLD).length;
+    const pitcherCount = Object.keys(pitchers).filter(p => {
+      const ip = pitchers[p].inningsPitched || 0;
+      return ip >= MIN_PITCHER_THRESHOLD;
+    }).length;
+    console.log('[UsageTracker] Seeded usage targets:', batterCount, 'batters,', pitcherCount, 'pitchers for seriesId:', this.seriesId);
   }
 
   /**
@@ -113,6 +125,9 @@ export class UsageTracker {
    */
   async updateGameUsage(gameStats: GameUsageStats): Promise<void> {
     const db = await getGameDatabase();
+
+    console.log('[UsageTracker] updateGameUsage called for seriesId:', this.seriesId);
+    console.log('[UsageTracker] Batter PA count:', gameStats.batterPa.size, 'Pitcher IP count:', gameStats.pitcherIp.size);
 
     const updateBatter = db.prepare(`
       UPDATE player_usage
@@ -184,6 +199,19 @@ export class UsageTracker {
    */
   async getTeamUsage(teamId: string): Promise<PlayerUsageRecord[]> {
     const db = await getGameDatabase();
+
+    // DEBUG: Log the query parameters
+    console.log('[UsageTracker] getTeamUsage called with seriesId:', this.seriesId, 'teamId:', teamId);
+
+    // DEBUG: Check what's in the table
+    const countStmt = db.prepare('SELECT COUNT(*) as count FROM player_usage WHERE series_id = ?');
+    countStmt.bind([this.seriesId]);
+    let totalCount = 0;
+    if (countStmt.step()) {
+      totalCount = countStmt.getAsObject().count;
+    }
+    countStmt.free();
+    console.log('[UsageTracker] Total rows in player_usage for seriesId:', this.seriesId, '=', totalCount);
 
     const stmt = db.prepare(`
       SELECT * FROM player_usage

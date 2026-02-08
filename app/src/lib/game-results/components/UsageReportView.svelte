@@ -58,12 +58,16 @@
 			teamsData = Object.fromEntries(yearTeams.map((t) => [t.id, t]));
 
 			// Get all usage data
+			console.log('[UsageReportView] Loading usage data for', seriesTeams.length, 'teams');
 			const allRecords: PlayerUsageRecord[] = [];
 			for (const team of seriesTeams) {
+				console.log('[UsageReportView] Getting usage for team:', team.teamId);
 				const teamRecords = await getTeamUsage(team.teamId);
+				console.log('[UsageReportView] Got', teamRecords.length, 'records for team:', team.teamId);
 				allRecords.push(...teamRecords);
 			}
 			usageRecords = allRecords;
+			console.log('[UsageReportView] Total usage records loaded:', allRecords.length);
 
 			// Get violations
 			violations = await checkThresholds();
