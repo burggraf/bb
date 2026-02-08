@@ -1033,43 +1033,75 @@ ORDER BY pitcher_throws;
 
 function getTeamsSQL(year: number): string {
   return `
+WITH
+-- Find teams that have player statistics with valid player records for this year
+teams_with_data AS (
+  SELECT DISTINCT e.batting_team_id as team_id
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  JOIN dim.players b ON e.batter_id = b.player_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+  UNION
+  SELECT DISTINCT e.fielding_team_id as team_id
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  JOIN dim.players p ON e.pitcher_id = p.player_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+)
 SELECT DISTINCT
   t.team_id,
   t.league,
   t.city,
   t.nickname
 FROM dim.teams t
-WHERE t.team_id IN (
-  SELECT away_team_id FROM game.games WHERE EXTRACT(YEAR FROM date) = ${year}
-  UNION
-  SELECT home_team_id FROM game.games WHERE EXTRACT(YEAR FROM date) = ${year}
-)
+WHERE t.team_id IN (SELECT team_id FROM teams_with_data)
 ORDER BY t.league, t.city;
 `;
 }
 
 function getGamesSQL(year: number): string {
   return `
-SELECT
-  game_id,
-  date::VARCHAR as date,
-  away_team_id,
-  home_team_id,
-  COALESCE(use_dh, false) as use_dh,
-  start_time::VARCHAR as start_time,
-  doubleheader_status,
-  time_of_day,
-  game_type,
-  sky,
-  field_condition,
-  precipitation,
-  wind_direction,
-  park_id,
-  temperature_fahrenheit,
-  attendance,
-  wind_speed_mph
-FROM game.games
-WHERE EXTRACT(YEAR FROM date) = ${year}
+WITH
+-- Find teams that have player statistics with valid player records for this year
+teams_with_data AS (
+  SELECT DISTINCT e.batting_team_id as team_id
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  JOIN dim.players b ON e.batter_id = b.player_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+  UNION
+  SELECT DISTINCT e.fielding_team_id as team_id
+  FROM event.events e
+  JOIN game.games g ON e.game_id = g.game_id
+  JOIN dim.players p ON e.pitcher_id = p.player_id
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+),
+-- Games where both teams have player data
+valid_games AS (
+  SELECT
+    g.game_id,
+    g.date::VARCHAR as date,
+    g.away_team_id,
+    g.home_team_id,
+    COALESCE(g.use_dh, false) as use_dh,
+    g.start_time::VARCHAR as start_time,
+    g.doubleheader_status,
+    g.time_of_day,
+    g.game_type,
+    g.sky,
+    g.field_condition,
+    g.precipitation,
+    g.wind_direction,
+    g.park_id,
+    g.temperature_fahrenheit,
+    g.attendance,
+    g.wind_speed_mph
+  FROM game.games g
+  WHERE EXTRACT(YEAR FROM g.date) = ${year}
+    AND g.away_team_id IN (SELECT team_id FROM teams_with_data)
+    AND g.home_team_id IN (SELECT team_id FROM teams_with_data)
+)
+SELECT * FROM valid_games
 ORDER BY date;
 `;
 }
