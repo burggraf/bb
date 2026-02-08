@@ -238,6 +238,11 @@
 		return standing?.gamesPlayed || 0;
 	}
 
+	// Get season length for a given year (154 for pre-1962, 162 for 1962+)
+	function getSeasonLength(): number {
+		return seasonYear < 1962 ? 154 : 162;
+	}
+
 	// Get proration percentage based on player's games played
 	// Expected = actual * (playerGamesReplay / playerGamesActual)
 	function getProrationPercentage(record: PlayerUsageRecord): number {
@@ -402,7 +407,7 @@
 							<th class="text-left py-3 px-4 text-zinc-400 font-medium">Team</th>
 							<th class="text-left py-3 px-4 text-zinc-400 font-medium">Type</th>
 							<th class="text-center py-3 px-4 text-zinc-400 font-medium">
-								Team Games<br/>(Replay/Actual)
+								Team Games<br/>(Replay/Season)
 							</th>
 							<th class="text-center py-3 px-4 text-zinc-400 font-medium">
 								{#if selectedPlayerType === 'pitchers'}
@@ -429,6 +434,7 @@
 					<tbody>
 						{#each filteredRecords() as record}
 							{@const teamGamesPlayed = getTeamGamesPlayed(record.teamId)}
+							{@const seasonLength = getSeasonLength()}
 							{@const prorationPct = getProrationPercentage(record)}
 							{@const expectedTotal = getExpectedTotal(record)}
 							<tr class="border-b border-zinc-800/50 hover:bg-zinc-900/30">
@@ -438,8 +444,8 @@
 									{record.isPitcher ? 'P' : 'B'}
 								</td>
 								<td class="py-3 px-4 text-center text-zinc-400 font-mono text-xs">
-									{teamGamesPlayed}/{record.gamesPlayedActual}
-									<div class="text-zinc-500">({(prorationPct * 100).toFixed(0)}%)</div>
+									{teamGamesPlayed}/{seasonLength}
+									<div class="text-zinc-500">{((teamGamesPlayed / seasonLength) * 100).toFixed(0)}%</div>
 								</td>
 								<td class="py-3 px-4 text-center">
 									{#if record.isPitcher}
