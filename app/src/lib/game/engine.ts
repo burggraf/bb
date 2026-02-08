@@ -398,8 +398,8 @@ export class GameEngine {
 		// Validate initial lineups
 		// Create augmented batters record that includes pitchers for validation
 		const augmentedBatters = this.createAugmentedBattersRecord();
-		const awayValidation = validateLineup(awayLineup.players, augmentedBatters);
-		const homeValidation = validateLineup(homeLineup.players, augmentedBatters);
+		const awayValidation = validateLineup(awayLineup.players, augmentedBatters, { year: season.meta.year });
+		const homeValidation = validateLineup(homeLineup.players, augmentedBatters, { year: season.meta.year });
 
 		if (!awayValidation.isValid) {
 			throw new Error(`Invalid away lineup for ${awayTeam}: ${awayValidation.errors.join(', ')}`);
@@ -920,7 +920,10 @@ export class GameEngine {
 		options?: { allowEmergencyPositions?: boolean }
 	): { isValid: boolean; errors: string[] } {
 		const augmentedBatters = this.createAugmentedBattersRecord();
-		const result = validateLineup(lineup.players, augmentedBatters, options);
+		const result = validateLineup(lineup.players, augmentedBatters, {
+			...options,
+			year: this.season.meta.year
+		});
 		return { isValid: result.isValid, errors: result.errors };
 	}
 
@@ -1234,8 +1237,9 @@ export class GameEngine {
 				}
 
 				// Now that we've verified availability, clear the pitcher slots
+				// IMPORTANT: Keep the original position so validation knows which position needs filling
 				for (const slot of vacatedPitcherSlots) {
-					lineup.players[slot.index] = { playerId: null, position: 0 };
+					lineup.players[slot.index] = { playerId: null, position: slot.position };
 				}
 			}
 
@@ -2486,7 +2490,8 @@ export class GameEngine {
 				// no player is at position 11 (PH), and each player is eligible for their position
 				const augmentedBatters = this.createAugmentedBattersRecord();
 				const validation = validateLineup(battingTeam.players, augmentedBatters, {
-					allowEmergencyPositions: this.emergencyRosterMode.get(battingTeam.teamId) ?? false
+					allowEmergencyPositions: this.emergencyRosterMode.get(battingTeam.teamId) ?? false,
+					year: this.season.meta.year
 				});
 				if (!validation.isValid) {
 					console.error(`CRITICAL: Invalid lineup after half-inning ${state.inning} (${state.isTopInning ? 'top' : 'bottom'}) for team ${battingTeam.teamId}:`);

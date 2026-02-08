@@ -22,6 +22,8 @@ export interface LineupValidationResult {
 export interface ValidateLineupOptions {
 	/** Allow players at positions they're not rated for (emergency roster exhaustion) */
 	allowEmergencyPositions?: boolean;
+	/** Season year for era-specific validation rules (e.g., early baseball had more position flexibility) */
+	year?: number;
 }
 
 /**
@@ -166,22 +168,33 @@ export function validateLineup(
 			seenPositions.add(slot.position);
 		}
 
-		// Check position eligibility (unless in emergency mode)
-		if (!options?.allowEmergencyPositions && !isPlayerEligibleAtPosition(player, slot.position)) {
+		// Check position eligibility (unless in emergency mode or early era)
+		// Early baseball (pre-1920) had less strict position specialization - players often played multiple positions
+		// even if not explicitly rated for them. We allow more flexibility for these early seasons.
+		const isEarlyEra = options?.year && options.year < 1920;
+		const allowAnyPosition = options?.allowEmergencyPositions || isEarlyEra;
+
+		if (!allowAnyPosition && !isPlayerEligibleAtPosition(player, slot.position)) {
 			const primaryName = getPositionName(player.primaryPosition);
 			errors.push(
 				`Player ${player.name} at ${getPositionName(slot.position)} but only eligible at ${primaryName} (and others per positionEligibility)`
 			);
 		}
 
-		// Check if playing away from primary position (warning, not error)
+		// For early era, only warn about severe position mismatches (e.g., pitcher at a skill position)
+		// For normal eras, check if playing away from primary position (warning, not error)
 		if (player.primaryPosition !== slot.position) {
 			const primaryName = getPositionName(player.primaryPosition);
-			warnings.push(`Player ${player.name} at ${getPositionName(slot.position)} (primary: ${primaryName})`);
+			if (isEarlyEra && player.primaryPosition === 1 && slot.position >= 2 && slot.position <= 6) {
+				// Pitcher playing infield in early era is a warning but acceptable
+				warnings.push(`Player ${player.name} (pitcher) at ${getPositionName(slot.position)} (early era flexibility)`);
+			} else if (!isEarlyEra) {
+				warnings.push(`Player ${player.name} at ${getPositionName(slot.position)} (primary: ${primaryName})`);
+			}
 		}
 
-		// Rule 4: Position 1 must be a pitcher
-		if (slot.position === 1 && player.primaryPosition !== 1) {
+		// Rule 4: Position 1 must be a pitcher (except for early era when this was sometimes allowed)
+		if (slot.position === 1 && player.primaryPosition !== 1 && !isEarlyEra) {
 			errors.push(`Position 1 (P) must be a pitcher, but ${player.name} is assigned there`);
 		}
 	}
