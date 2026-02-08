@@ -53,8 +53,9 @@ export class UsageTracker {
     db.run('DELETE FROM player_usage WHERE series_id = ?', [this.seriesId]);
 
     // Insert batters meeting minimum threshold
+    // Use INSERT OR REPLACE to handle players who are both batters and pitchers
     const insertBatter = db.prepare(`
-      INSERT INTO player_usage (
+      INSERT OR REPLACE INTO player_usage (
         series_id, player_id, team_id, is_pitcher,
         actual_season_total, games_played_actual,
         percentage_of_actual, status
@@ -75,8 +76,9 @@ export class UsageTracker {
     }
 
     // Insert pitchers meeting minimum threshold
+    // Use INSERT OR REPLACE to handle players who are both batters and pitchers
     const insertPitcher = db.prepare(`
-      INSERT INTO player_usage (
+      INSERT OR REPLACE INTO player_usage (
         series_id, player_id, team_id, is_pitcher,
         actual_season_total, games_played_actual,
         percentage_of_actual, status
