@@ -59,10 +59,15 @@
 			engine.on('progress', (data: ReplayProgress) => {
 				progress = data;
 
-				// Detect game completion in animated mode
-				if (animatedMode && data.currentGameIndex > previousGameIndex && previousGameIndex > 0) {
+				// Detect game completion in animated mode - check engine options directly
+				// to get current state rather than relying on closure
+				// NOTE: Don't set shouldContinuePlaying = false here, as that breaks the auto-play loop
+				// The auto-play loop should continue unless the user explicitly pauses
+				const isAnimated = engine.getOptions().animated;
+				if (isAnimated && data.currentGameIndex > previousGameIndex && previousGameIndex > 0) {
 					gameComplete = true;
-					shouldContinuePlaying = false; // Pause auto-play loop
+					// In animated mode, we show a "Game Complete!" message but don't break auto-play
+					// The user can continue manually by clicking "Continue to Next Game" or toggle animated mode off
 				}
 				previousGameIndex = data.currentGameIndex;
 			});
@@ -117,6 +122,8 @@
 
 			// Continuously play games while we should continue
 			while (shouldContinuePlaying && status === 'playing') {
+				// Clear game complete state before playing next game
+				gameComplete = false;
 				await playNextGame();
 
 				// Check if we should stop (status changed, error occurred, or game complete)
@@ -230,12 +237,30 @@
 	}
 
 	// Toggle animated mode
-	function toggleAnimatedMode() {
+	async function toggleAnimatedMode() {
 		animatedMode = !animatedMode;
 		if (engine) {
 			engine.setOptions({ animated: animatedMode, simSpeed });
 		}
 		onAnimatedChange?.(animatedMode);
+
+		// Clear game complete state when toggling
+		gameComplete = false;
+
+		// If turning animated mode OFF and the replay is currently stuck/paused, resume it
+		if (!animatedMode && status === 'playing' && !isAutoPlaying) {
+			shouldContinuePlaying = true;
+			isAutoPlaying = true;
+			// Resume auto-play loop without calling engine.resume() since status is already 'playing'
+			while (shouldContinuePlaying && status === 'playing') {
+				await playNextGame();
+				if (status !== 'playing' || error || engine.getStatus() === 'completed') {
+					break;
+				}
+				await new Promise(resolve => setTimeout(resolve, 10));
+			}
+			isAutoPlaying = false;
+		}
 	}
 
 	// Update simulation speed (slider value 0-100, convert to milliseconds delay)

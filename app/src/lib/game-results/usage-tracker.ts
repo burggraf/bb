@@ -69,15 +69,15 @@ export class UsageTracker {
 
     for (const [id, batter] of Object.entries(batters)) {
       if (batter.pa >= MIN_BATTER_THRESHOLD) {
-        // Use the batter's actual games played (estimated from PA / 4.5)
-        // This makes the proration calculation: actual * (teamGames / batterGames)
+        // games_played_actual stores player's actual games for display purposes
+        // Proration uses team season length, not player games
         insertBatter.run([
           this.seriesId,
           id,
           batter.teamId,
           0,  // is_pitcher = false
           batter.pa,
-          Math.max(1, batter.games || 1)  // Use batter's actual games played
+          Math.max(1, batter.games || 1)  // Player's actual games played (for display)
         ]);
       }
     }
@@ -129,8 +129,11 @@ export class UsageTracker {
    * Update usage stats after a game
    *
    * Increments replay totals and games played, recalculates percentage
-   * based on prorated targets (using team games played), and updates status
+   * based on prorated targets (using team games played vs season length), and updates status
    * based on threshold violations.
+   *
+   * Expected = actual * (teamGamesReplay / seasonLength)
+   * This ensures that when the team has played a full season, expected = actual
    *
    * @param gameStats - Usage stats from the game (PA per batter, outs per pitcher)
    */
@@ -191,8 +194,9 @@ export class UsageTracker {
       return teamId ? (teamGamesMap.get(teamId) || 0) : 0;
     };
 
-    // For batters, expected = actual * (player_games / games_played_actual)
-    // We use replay_games_played + 1 (after increment) to get the player's games in replay
+    // For batters, expected = actual * (replay_games_played + 1) / games_played_actual
+    // This accounts for how many games the player has actually played in the replay
+    // The percentage tracks whether the player is on pace to reach their actual totals
     const updateBatter = db.prepare(`
       UPDATE player_usage
       SET replay_current_total = replay_current_total + ?,
@@ -218,18 +222,17 @@ export class UsageTracker {
           replay_games_played = replay_games_played + 1,
           percentage_of_actual =
             CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0),
+            NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
     `);
 
     for (const [playerId, ip] of gameStats.pitcherIp) {
-      const teamGamesPlayed = getTeamGamesPlayed(playerId);
-      updatePitcher.run([ip, ip, teamGamesPlayed, ip, teamGamesPlayed, ip, teamGamesPlayed, this.seriesId, playerId]);
+      updatePitcher.run([ip, ip, ip, ip, this.seriesId, playerId]);
     }
 
     updateBatter.free();
