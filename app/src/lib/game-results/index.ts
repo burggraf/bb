@@ -56,7 +56,9 @@ export type {
   // Input types
   GameSaveInput,
   GameEventInput,
-  InningLineInput
+  InningLineInput,
+  // Player usage tracking
+  PlayerUsageRecord
 } from './types.js';
 
 // Re-export Outcome from game engine for convenience

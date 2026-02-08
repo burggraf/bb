@@ -96,6 +96,28 @@ export const GAME_RESULTS_SCHEMA = `
     FOREIGN KEY (event_id) REFERENCES game_events(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS player_usage (
+    series_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    team_id TEXT NOT NULL,
+    is_pitcher INTEGER NOT NULL,
+
+    -- Target values (from season export)
+    actual_season_total INTEGER NOT NULL,
+    games_played_actual INTEGER NOT NULL,
+
+    -- Replay values (cumulative)
+    replay_current_total INTEGER NOT NULL DEFAULT 0,
+    replay_games_played INTEGER NOT NULL DEFAULT 0,
+
+    -- Calculated fields
+    percentage_of_actual REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'inRange',
+
+    PRIMARY KEY (series_id, player_id),
+    FOREIGN KEY (series_id) REFERENCES series(id) ON DELETE CASCADE
+  );
+
   -- Indexes
   CREATE INDEX IF NOT EXISTS idx_games_series ON games(series_id);
   CREATE INDEX IF NOT EXISTS idx_games_away ON games(away_team_id, away_season_year);
@@ -104,6 +126,9 @@ export const GAME_RESULTS_SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_events_batter ON game_events(batter_id) WHERE batter_id IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_events_pitcher ON game_events(pitcher_id) WHERE pitcher_id IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_events_outcome ON game_events(outcome) WHERE outcome IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS idx_player_usage_series_pitcher ON player_usage(series_id, is_pitcher);
+  CREATE INDEX IF NOT EXISTS idx_player_usage_team ON player_usage(team_id);
+  CREATE INDEX IF NOT EXISTS idx_player_usage_status ON player_usage(status);
 
   -- Views
   CREATE VIEW IF NOT EXISTS series_standings AS

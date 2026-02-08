@@ -267,3 +267,26 @@ export interface InningLineInput {
   hits: number;
   errors: number;
 }
+
+/**
+ * Player usage tracking for season replay
+ * Tracks cumulative PA/IP to ensure realistic usage (75-125% of actual totals)
+ */
+export interface PlayerUsageRecord {
+  seriesId: string;
+  playerId: string;
+  teamId: string;
+  isPitcher: boolean;
+
+  // Target values (from season export - immutable)
+  actualSeasonTotal: number; // PA for batters, IP (outs) for pitchers
+  gamesPlayedActual: number; // How many games they actually played
+
+  // Replay values (updated after each game)
+  replayCurrentTotal: number; // Cumulative PA/IP in replay
+  replayGamesPlayed: number; // Games played in replay
+
+  // Calculated fields (for queries)
+  percentageOfActual: number; // replayCurrentTotal / actualSeasonTotal
+  status: 'under' | 'inRange' | 'over'; // Based on 75-125% thresholds
+}

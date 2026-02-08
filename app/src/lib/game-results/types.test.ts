@@ -4,7 +4,8 @@ import type {
   GameEvent,
   SeriesType,
   GameEventType,
-  Outcome
+  Outcome,
+  PlayerUsageRecord
 } from './types.js';
 
 describe('Game Results Types', () => {
@@ -107,5 +108,48 @@ describe('Game Results Types', () => {
 
     expect(event.eventType).toBe('startingLineup');
     expect(event.outcome).toBeNull();
+  });
+
+  it('should create a valid PlayerUsageRecord for a batter', () => {
+    const record: PlayerUsageRecord = {
+      seriesId: 'test-series-1',
+      playerId: 'batter-1',
+      teamId: 'team-1',
+      isPitcher: false,
+      actualSeasonTotal: 500, // 500 PA in actual season
+      gamesPlayedActual: 150,
+      replayCurrentTotal: 50, // 50 PA in replay so far
+      replayGamesPlayed: 15,
+      percentageOfActual: 0.1, // 10% of actual
+      status: 'under'
+    };
+
+    expect(record.isPitcher).toBe(false);
+    expect(record.actualSeasonTotal).toBe(500);
+    expect(record.status).toBe('under');
+  });
+
+  it('should create a valid PlayerUsageRecord for a pitcher', () => {
+    const record: PlayerUsageRecord = {
+      seriesId: 'test-series-1',
+      playerId: 'pitcher-1',
+      teamId: 'team-1',
+      isPitcher: true,
+      actualSeasonTotal: 800, // 800 outs (266.2 IP) in actual season
+      gamesPlayedActual: 35,
+      replayCurrentTotal: 200, // 200 outs (66.2 IP) in replay so far
+      replayGamesPlayed: 8,
+      percentageOfActual: 0.25, // 25% of actual
+      status: 'under'
+    };
+
+    expect(record.isPitcher).toBe(true);
+    expect(record.actualSeasonTotal).toBe(800);
+    expect(record.status).toBe('under');
+  });
+
+  it('should accept all valid PlayerUsageRecord status values', () => {
+    const statuses: Array<PlayerUsageRecord['status']> = ['under', 'inRange', 'over'];
+    expect(statuses).toHaveLength(3);
   });
 });
