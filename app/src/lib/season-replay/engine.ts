@@ -55,7 +55,6 @@ export class SeasonReplayEngine {
     usageCountStmt.free();
 
     const needsSeeding = usageCount === 0;
-    console.log('[SeasonReplayEngine] Usage record count for seriesId:', this.seriesId, '=', usageCount, '(needsSeeding:', needsSeeding, ')');
 
     if (needsSeeding) {
       // Seed usage targets from season data (only for new replays or replays without usage data)
