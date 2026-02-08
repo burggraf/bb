@@ -7,6 +7,7 @@
  * - Pinch-hitter selection
  * - Platoon advantage
  * - League norms calculation
+ * - Roster management and rotation building
  */
 
 // Types
@@ -57,3 +58,13 @@ export { calculatePitcherQuality } from './pitcher-quality.js';
 
 // Pitcher Classifier
 export { classifyPitchers } from './pitcher-classifier.js';
+
+// Roster Manager
+export {
+	RosterManager,
+	type RotationSlot,
+	type RestDecision,
+	type UsageContext,
+	type UsageRecord,
+	type TeamInfo
+} from './roster-manager.js';
