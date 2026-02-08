@@ -32,7 +32,7 @@ import type {
 import { transition, createBaserunningState } from './state-machine/index.js';
 import { isHit } from './state-machine/outcome-types.js';
 import type { PitcherRole } from '@bb/model';
-import { buildLineup, usesDH } from './lineup-builder.js';
+import { buildLineup, usesDH, type UsageContext } from './lineup-builder.js';
 import { validateLineup, type LineupValidationResult } from './lineup-validator.js';
 
 /**
@@ -388,7 +388,7 @@ export class GameEngine {
 		const homeLeague = season.teams[homeTeam]?.league ?? 'NL';
 		const year = season.meta.year;
 
-		// Generate lineups using the new lineup builder
+		// Generate lineups using the new lineup builder (sync, no usage context)
 		const awayResult = buildLineup(season.batters, season.pitchers, awayTeam, awayLeague, year);
 		const homeResult = buildLineup(season.batters, season.pitchers, homeTeam, homeLeague, year);
 
@@ -436,6 +436,55 @@ export class GameEngine {
 
 		// Record starting lineups
 		this.recordStartingLineups();
+	}
+
+	/**
+	 * Static factory method for lineup creation with usage context
+	 *
+	 * Use this when you need to pass usage context for batter rest decisions.
+	 * For simple cases without usage tracking, use the constructor directly.
+	 *
+	 * @param season - Season package with team and player data
+	 * @param awayTeam - Away team ID
+	 * @param homeTeam - Home team ID
+	 * @param managerial - Optional managerial settings
+	 * @param awayUsageContext - Optional usage context for away team batters
+	 * @param homeUsageContext - Optional usage context for home team batters
+	 * @returns GameEngine - Initialized game engine
+	 */
+	static create(
+		season: SeasonPackage,
+		awayTeam: string,
+		homeTeam: string,
+		managerial?: ManagerialOptions,
+		awayUsageContext?: UsageContext,
+		homeUsageContext?: UsageContext
+	): GameEngine {
+		// Get league info for DH rules
+		const awayLeague = season.teams[awayTeam]?.league ?? 'NL';
+		const homeLeague = season.teams[homeTeam]?.league ?? 'NL';
+		const year = season.meta.year;
+
+		// Build lineups with usage context if provided
+		const awayResult = buildLineup(season.batters, season.pitchers, awayTeam, awayLeague, year, awayUsageContext);
+		const homeResult = buildLineup(season.batters, season.pitchers, homeTeam, homeLeague, year, homeUsageContext);
+
+		// Create engine with pre-built lineups by storing results temporarily
+		// and calling the regular constructor
+		const engine = new GameEngine(season, awayTeam, homeTeam, managerial);
+
+		// Replace the lineups with the ones built with usage context
+		engine.state.awayLineup = awayResult.lineup;
+		engine.state.homeLineup = homeResult.lineup;
+
+		// Reinitialize bullpens with the correct pitchers
+		engine.initializeBullpen(awayTeam, awayResult.lineup.pitcher!);
+		engine.initializeBullpen(homeTeam, homeResult.lineup.pitcher!);
+
+		// Record starting lineups
+		engine.recordStartingLineups();
+
+		return engine;
 	}
 
 	/**

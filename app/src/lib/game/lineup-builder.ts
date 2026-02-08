@@ -16,6 +16,16 @@ import type {
 } from './types.js';
 
 /**
+ * Context for player usage tracking during lineup building
+ */
+export interface UsageContext {
+	/** Map of player ID to current usage percentage (0.0-1.0) of actual season totals */
+	playerUsage: Map<string, number>;
+	/** Usage percentage threshold above which a player should be rested (default 1.25 = 125%) */
+	restThreshold?: number;
+}
+
+/**
  * Result of lineup building operation
  */
 export interface LineupBuildResult {
@@ -351,21 +361,15 @@ function buildBattingOrder(
 }
 
 /**
- * Build a complete valid lineup for a team
- *
- * @param batters - All batters in the season
- * @param pitchers - All pitchers in the season
- * @param teamId - ID of the team to build lineup for
- * @param league - 'AL' or 'NL'
- * @param year - Season year (for DH rules)
- * @returns LineupBuildResult with lineup, starting pitcher, and any warnings
+ * Internal implementation of lineup building
  */
-export function buildLineup(
+function buildLineupImpl(
 	batters: Record<string, BatterStats>,
 	pitchers: Record<string, PitcherStats>,
 	teamId: string,
 	league: string,
-	year: number
+	year: number,
+	usageContext?: UsageContext
 ): LineupBuildResult {
 	const warnings: string[] = [];
 
@@ -407,7 +411,49 @@ export function buildLineup(
 	}
 
 	// Build batting order for position players
-	const battingOrder = buildBattingOrder(assignedPlayers, dhGame);
+	let battingOrder = buildBattingOrder(assignedPlayers, dhGame);
+
+	// Apply rest checks if usage context is provided
+	if (usageContext) {
+		const restThreshold = usageContext.restThreshold ?? 1.25; // Default 125%
+		const usedIds = new Set(battingOrder.map(b => b.player.id));
+
+		// Build bench from team batters not in current lineup
+		const bench = positionPlayers.filter(p => !usedIds.has(p.id));
+
+		// Check each batter in the lineup for overuse
+		for (let i = 0; i < battingOrder.length; i++) {
+			const slot = battingOrder[i]!;
+			const usage = usageContext.playerUsage.get(slot.player.id);
+
+			// If player is over the threshold, find a replacement
+			if (usage !== undefined && usage > restThreshold) {
+				// Find first available bench player who can play this position
+				const replacement = bench.find(b =>
+					b.id !== slot.player.id &&
+					(b.primaryPosition === slot.position ||
+						(b.positionEligibility[slot.position] ?? 0) > 0)
+				);
+
+				if (replacement) {
+					warnings.push(`Resting ${slot.player.name} (${(usage * 100).toFixed(0)}% of actual), replacing with ${replacement.name}`);
+					// Replace in batting order
+					battingOrder = [
+						...battingOrder.slice(0, i),
+						{ ...slot, player: replacement },
+						...battingOrder.slice(i + 1)
+					];
+					// Remove replacement from bench
+					const benchIndex = bench.indexOf(replacement);
+					if (benchIndex > -1) {
+						bench.splice(benchIndex, 1);
+					}
+				} else {
+					warnings.push(`WARNING: ${slot.player.name} is overused at ${(usage * 100).toFixed(0)}% of actual but no replacement available`);
+				}
+			}
+		}
+	}
 
 	// Build final lineup slots
 	const lineupSlots: LineupSlot[] = [];
@@ -471,3 +517,30 @@ export function buildLineup(
 		warnings
 	};
 }
+
+/**
+ * Build a complete valid lineup for a team
+ *
+ * @param batters - All batters in the season
+ * @param pitchers - All pitchers in the season
+ * @param teamId - ID of the team to build lineup for
+ * @param league - 'AL' or 'NL'
+ * @param year - Season year (for DH rules)
+ * @param usageContext - Optional context for player usage tracking
+ * @returns LineupBuildResult with lineup, starting pitcher, and any warnings
+ */
+export function buildLineup(
+	batters: Record<string, BatterStats>,
+	pitchers: Record<string, PitcherStats>,
+	teamId: string,
+	league: string,
+	year: number,
+	usageContext?: UsageContext
+): LineupBuildResult {
+	return buildLineupImpl(batters, pitchers, teamId, league, year, usageContext);
+}
+
+/**
+ * Internal implementation of lineup building
+ */
+export { buildLineupImpl };
