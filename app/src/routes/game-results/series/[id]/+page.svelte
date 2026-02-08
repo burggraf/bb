@@ -10,6 +10,8 @@
 	import UsageReportView from '$lib/game-results/components/UsageReportView.svelte';
 	import type { BattingStat, PitchingStat } from '$lib/game-results';
 
+	console.log('[SeriesPage] Component script executing');
+
 	interface Props {
 		data: PageData;
 	}

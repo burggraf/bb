@@ -24,17 +24,26 @@ export class SeasonReplayEngine {
   }
 
   async initialize(): Promise<void> {
+    console.log('[SeasonReplayEngine] initialize() starting');
     // Load season data
+    console.log('[SeasonReplayEngine] Loading season data...');
     const season = await loadSeason(this.seasonYear);
+    console.log('[SeasonReplayEngine] Season data loaded');
 
     // Initialize usage tracker
+    console.log('[SeasonReplayEngine] Initializing usage tracker...');
     this.usageTracker = new UsageTracker(this.seriesId);
+    console.log('[SeasonReplayEngine] Usage tracker created');
 
     // Seed usage targets from season data
+    console.log('[SeasonReplayEngine] Seeding usage targets...');
     await this.seedUsageTargets(season);
+    console.log('[SeasonReplayEngine] Usage targets seeded');
 
     // Load schedule
+    console.log('[SeasonReplayEngine] Loading schedule...');
     this.schedule = await getSeasonSchedule(this.seasonYear);
+    console.log('[SeasonReplayEngine] Schedule loaded, games:', this.schedule.length);
 
     // Restore state from metadata
     const metadata = await getSeriesMetadata(this.seriesId);
@@ -45,6 +54,7 @@ export class SeasonReplayEngine {
       this.currentGameIndex = 0;
       this.status = 'idle';
     }
+    console.log('[SeasonReplayEngine] initialize() complete, status:', this.status);
   }
 
   async start(): Promise<void> {
@@ -193,25 +203,47 @@ export class SeasonReplayEngine {
 
   private async simulateGame(game: ScheduledGame): Promise<GameResult | null> {
     try {
+      console.log('[SeasonReplay] simulateGame() starting for', game.awayTeam, 'vs', game.homeTeam);
       // Get series metadata
       const metadata = await getSeriesMetadata(this.seriesId);
 
       // Load season data with players for both teams (loadSeasonForGame loads batters/pitchers)
+      console.log('[SeasonReplay] Loading season data for game...');
       const season = await loadSeasonForGame(this.seasonYear, game.awayTeam, game.homeTeam);
+      console.log('[SeasonReplay] Season data loaded');
 
       // Create and run game engine
+      console.log('[SeasonReplay] Creating GameEngine...');
       this.gameEngine = new GameEngine(season, game.awayTeam, game.homeTeam);
+      console.log('[SeasonReplay] GameEngine created');
 
       // Simulate the full game with event emission for animated mode
+      let paCount = 0;
+      console.log('[SeasonReplay] Starting game simulation loop...');
       while (!this.gameEngine.isComplete()) {
         // Check if we've been paused or stopped mid-game
         if (this.status !== 'playing') {
           // Emit a paused event so UI can update
           this.emit('statusChange', { status: this.status });
+          console.log('[SeasonReplay] Game paused/stopped mid-game');
           return null; // Return null to indicate game was not completed
         }
 
+        // Safety check: prevent infinite loops (500 PAs is way more than any real game)
+        if (paCount > 500) {
+          console.error('[SeasonReplay] Game exceeded 500 plate appearances - likely infinite loop!');
+          const currentState = this.gameEngine.getState();
+          console.error('[SeasonReplay] Game state:', {
+            inning: currentState.inning,
+            isTop: currentState.isTopInning,
+            outs: currentState.outs,
+            playsCount: currentState.plays.length
+          });
+          return null;
+        }
+
         this.gameEngine.simulatePlateAppearance();
+        paCount++;
 
         // Emit event for animated mode listeners
         const currentState = this.gameEngine.getState();
@@ -220,11 +252,19 @@ export class SeasonReplayEngine {
           playEvent: currentState.plays[0]
         });
 
+        // Yield to browser every 10 plate appearances in non-animated mode
+        // to prevent main thread blocking
+        if (!this.options.animated && paCount % 10 === 0) {
+          console.log(`[SeasonReplay] Yielding after ${paCount} PAs, inning: ${currentState.inning}, ${currentState.isTopInning ? 'top' : 'bottom'}`);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
         // Delay if in animated mode
         if (this.options.animated) {
           await this.delay(this.options.simSpeed);
         }
       }
+      console.log('[SeasonReplay] Game simulation complete, PA count:', paCount);
 
       const finalState = this.gameEngine.getState();
 
@@ -351,20 +391,29 @@ export class SeasonReplayEngine {
   private async seedUsageTargets(season: any): Promise<void> {
     if (!this.usageTracker) return;
 
+    console.log('[SeasonReplayEngine] seedUsageTargets() starting');
     // Collect all batters and pitchers from the season
     const allBatters: Record<string, any> = {};
     const allPitchers: Record<string, any> = {};
 
     // Load batters and pitchers for each team in the season
-    for (const teamId of Object.keys(season.teams)) {
+    const teamIds = Object.keys(season.teams);
+    console.log('[SeasonReplayEngine] Loading data for', teamIds.length, 'teams');
+
+    for (let i = 0; i < teamIds.length; i++) {
+      const teamId = teamIds[i];
+      console.log(`[SeasonReplayEngine] Loading team ${i + 1}/${teamIds.length}: ${teamId}`);
       const teamBatters = await getBattersForTeam(this.seasonYear, teamId);
       const teamPitchers = await getPitchersForTeam(this.seasonYear, teamId);
 
       Object.assign(allBatters, teamBatters);
       Object.assign(allPitchers, teamPitchers);
+      console.log(`[SeasonReplayEngine] Loaded team ${teamId}: ${Object.keys(teamBatters).length} batters, ${Object.keys(teamPitchers).length} pitchers`);
     }
 
+    console.log('[SeasonReplayEngine] Calling usageTracker.seedUsageTargets...');
     await this.usageTracker.seedUsageTargets(allBatters, allPitchers);
+    console.log('[SeasonReplayEngine] seedUsageTargets() complete');
   }
 
   private extractGameStats(gameState: GameState): GameUsageStats {

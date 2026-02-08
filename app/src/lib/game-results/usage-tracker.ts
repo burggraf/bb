@@ -215,9 +215,8 @@ export class UsageTracker {
 
     // Check under-used players (< 75%)
     const underStmt = db.prepare(`
-      SELECT pu.*, p.name
+      SELECT pu.*
       FROM player_usage pu
-      LEFT JOIN players p ON pu.player_id = p.id
       WHERE pu.series_id = ? AND pu.status = 'under'
     `);
     underStmt.bind([this.seriesId]);
@@ -230,7 +229,7 @@ export class UsageTracker {
     for (const row of underRows) {
       violations.push({
         playerId: row.player_id,
-        playerName: row.name || 'Unknown',
+        playerName: `Player ${row.player_id}`, // Player name not available in game-results DB
         isPitcher: row.is_pitcher === 1,
         percentageOfActual: row.percentage_of_actual,
         status: 'under',
@@ -240,9 +239,8 @@ export class UsageTracker {
 
     // Check over-used players (> 125%)
     const overStmt = db.prepare(`
-      SELECT pu.*, p.name
+      SELECT pu.*
       FROM player_usage pu
-      LEFT JOIN players p ON pu.player_id = p.id
       WHERE pu.series_id = ? AND pu.status = 'over'
     `);
     overStmt.bind([this.seriesId]);
@@ -255,7 +253,7 @@ export class UsageTracker {
     for (const row of overRows) {
       violations.push({
         playerId: row.player_id,
-        playerName: row.name || 'Unknown',
+        playerName: `Player ${row.player_id}`, // Player name not available in game-results DB
         isPitcher: row.is_pitcher === 1,
         percentageOfActual: row.percentage_of_actual,
         status: 'over',

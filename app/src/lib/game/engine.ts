@@ -2401,8 +2401,10 @@ export class GameEngine {
 		}
 
 		// Check for inning change BEFORE updating state (so summary doesn't include this play)
-		// We need to check what the outs WOULD be, not what they currently are
-		const wouldBeThirdOut = newOuts >= 3;
+		// The state machine resets outs to 0 when it reaches 3, so we need to detect
+		// the third out by checking if we go from 2 outs to 0 outs (2 + 1 = 3rd out, then reset)
+		// OR if newOuts is already 3 (in case the state machine doesn't reset)
+		const wouldBeThirdOut = (state.outs === 2 && newOuts === 0) || newOuts >= 3;
 
 		// Capture current inning state BEFORE any changes
 		// This ensures the play is recorded with the correct inning information
