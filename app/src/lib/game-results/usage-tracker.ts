@@ -191,27 +191,25 @@ export class UsageTracker {
       return teamId ? (teamGamesMap.get(teamId) || 0) : 0;
     };
 
-    // For batters, expected = actual * (team_games / season_length)
-    // We use season_length (162) instead of games_played_actual because
-    // games_played_actual stores the batter's actual games, not the season length
+    // For batters, expected = actual * (player_games / games_played_actual)
+    // We use replay_games_played + 1 (after increment) to get the player's games in replay
     const updateBatter = db.prepare(`
       UPDATE player_usage
       SET replay_current_total = replay_current_total + ?,
           replay_games_played = replay_games_played + 1,
           percentage_of_actual =
             CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0),
+            NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
     `);
 
     for (const [playerId, pa] of gameStats.batterPa) {
-      const teamGamesPlayed = getTeamGamesPlayed(playerId);
-      updateBatter.run([pa, pa, teamGamesPlayed, seasonLength, pa, teamGamesPlayed, seasonLength, pa, teamGamesPlayed, seasonLength, this.seriesId, playerId]);
+      updateBatter.run([pa, pa, pa, pa, pa, this.seriesId, playerId]);
     }
 
     const updatePitcher = db.prepare(`

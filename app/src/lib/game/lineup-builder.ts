@@ -386,10 +386,56 @@ function buildLineupImpl(
 	}
 
 	// Exclude pitchers from position players
-	const positionPlayers = teamBatters.filter(b => b.primaryPosition !== POSITIONS.PITCHER);
+	let positionPlayers = teamBatters.filter(b => b.primaryPosition !== POSITIONS.PITCHER);
 
 	if (positionPlayers.length < 8) {
 		throw new Error(`Team ${teamId} has only ${positionPlayers.length} position players (excluding pitchers), need at least 8`);
+	}
+
+	// IMPORTANT: Pre-filter overused players BEFORE building lineup
+	// This prevents players from accumulating way too much PA/IP before rest checks kick in
+	if (usageContext) {
+		const restThreshold = usageContext.restThreshold ?? 1.25;
+
+		// Separate players into available and overused
+		const availablePlayers: typeof positionPlayers = [];
+		const overusedPlayers: typeof positionPlayers = [];
+
+		for (const player of positionPlayers) {
+			const usage = usageContext.playerUsage.get(player.id);
+			if (usage !== undefined && usage > restThreshold) {
+				overusedPlayers.push(player);
+			} else {
+				availablePlayers.push(player);
+			}
+		}
+
+		// If we don't have enough available players, we'll need to use some overused ones
+		// But we should prefer the least overused players
+		if (availablePlayers.length < 8) {
+			const shortage = 8 - availablePlayers.length;
+			// Sort overused players by usage (ascending) - use the least overused first
+			const sortedOverused = overusedPlayers
+				.map(p => ({ player: p, usage: usageContext.playerUsage.get(p.id) ?? 2 }))
+				.sort((a, b) => a.usage - b.usage);
+
+			// Add the least overused players to fill the roster
+			for (let i = 0; i < Math.min(shortage, sortedOverused.length); i++) {
+				availablePlayers.push(sortedOverused[i].player);
+				warnings.push(`WARNING: Using overused player ${sortedOverused[i].player.name} (${(sortedOverused[i].usage * 100).toFixed(0)}% of actual) due to roster shortage`);
+			}
+		}
+
+		// Use the filtered list for lineup building
+		positionPlayers = availablePlayers;
+
+		// Debug logging
+		console.log('[buildLineup] Usage-aware filtering:', {
+			teamId,
+			available: availablePlayers.length,
+			overused: overusedPlayers.length,
+			warnings: warnings.length
+		});
 	}
 
 	// Select starting pitcher
