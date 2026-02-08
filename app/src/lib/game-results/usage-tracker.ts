@@ -384,13 +384,12 @@ export class UsageTracker {
     const db = await getGameDatabase();
     const seasonLength = this.getSeasonLength();
 
-    // Get team games played
+    // Get team games played (all games in the games table are completed)
     const teamGamesStmt = db.prepare(`
       SELECT COUNT(*) as games_played
       FROM games g
       WHERE g.series_id = ?
         AND (g.away_team_id = ? OR g.home_team_id = ?)
-        AND g.status = 'completed'
     `);
     teamGamesStmt.bind([this.seriesId, teamId, teamId]);
     let teamGamesPlayed = 0;
@@ -464,12 +463,12 @@ export class UsageTracker {
 
     // Get games played for each team
     for (const teamId of teamIds) {
+      // Get games played for each team (all games in the games table are completed)
       const teamGamesStmt = db.prepare(`
         SELECT COUNT(*) as games_played
         FROM games g
         WHERE g.series_id = ?
           AND (g.away_team_id = ? OR g.home_team_id = ?)
-          AND g.status = 'completed'
       `);
       teamGamesStmt.bind([this.seriesId, teamId, teamId]);
       if (teamGamesStmt.step()) {
