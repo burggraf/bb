@@ -69,8 +69,8 @@
 			engine.on('gameError', (data: { error: string; gameIndex: number }) => {
 				// Set game error state
 				gameError = { message: data.error, gameIndex: data.gameIndex };
-				// Pause the engine when an error occurs
-				pause();
+				// Don't pause - let the replay continue and skip the errored game
+				// The engine will skip games with missing data and continue
 			});
 
 			// Get initial progress and status
