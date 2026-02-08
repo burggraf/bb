@@ -238,17 +238,12 @@
 		return standing?.gamesPlayed || 0;
 	}
 
-	// Get season length for a given year (154 for pre-1962, 162 for 1962+)
-	function getSeasonLength(): number {
-		return seasonYear < 1962 ? 154 : 162;
-	}
-
-	// Get proration percentage based on team progress through season
-	// Expected = actual * (teamGamesReplay / seasonLength)
+	// Get proration percentage based on player's games played
+	// Expected = actual * (playerGamesReplay / playerGamesActual)
 	function getProrationPercentage(record: PlayerUsageRecord): number {
-		const teamGamesPlayed = getTeamGamesPlayed(record.teamId);
-		const seasonLength = getSeasonLength();
-		return seasonLength > 0 ? teamGamesPlayed / seasonLength : 0;
+		const playerGamesReplay = record.replayGamesPlayed;
+		const playerGamesActual = record.gamesPlayedActual;
+		return playerGamesActual > 0 ? playerGamesReplay / playerGamesActual : 0;
 	}
 
 	// Calculate expected PA/IP based on proration

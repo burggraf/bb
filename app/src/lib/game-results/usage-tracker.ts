@@ -129,12 +129,11 @@ export class UsageTracker {
    * Update usage stats after a game
    *
    * Increments replay totals and games played, recalculates percentage
-   * based on prorated targets (using team games played vs season length), and updates status
+   * based on prorated targets using player's games played, and updates status
    * based on threshold violations.
    *
-   * Expected = actual * (teamGamesReplay / seasonLength)
-   * At 50% of season (81/162 games), expected = 50% of actual
-   * When team has played full season, expected = actual
+   * Expected = actual * (playerGamesReplay / playerGamesActual)
+   * If player appeared in 36 of 96 actual games, expected = 36/96 of actual PA
    *
    * @param gameStats - Usage stats from the game (PA per batter, outs per pitcher)
    */
@@ -195,27 +194,26 @@ export class UsageTracker {
       return teamId ? (teamGamesMap.get(teamId) || 0) : 0;
     };
 
-    // For batters, expected = actual * (teamGamesReplay / seasonLength)
-    // This tracks whether players are on pace based on team's progress through the season
-    // When team has played 50% of season, expected = 50% of actual
+    // For batters, expected = actual * (replay_games_played / games_played_actual)
+    // This tracks whether players are on pace based on how many games they've appeared in
+    // If player appeared in 36 of 96 actual games, expected = 36/96 of actual PA
     const updateBatter = db.prepare(`
       UPDATE player_usage
       SET replay_current_total = replay_current_total + ?,
           replay_games_played = replay_games_played + 1,
           percentage_of_actual =
             CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0),
+            NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
     `);
 
     for (const [playerId, pa] of gameStats.batterPa) {
-      const teamGamesPlayed = getTeamGamesPlayed(playerId);
-      updateBatter.run([pa, pa, teamGamesPlayed, seasonLength, pa, teamGamesPlayed, seasonLength, pa, teamGamesPlayed, seasonLength, this.seriesId, playerId]);
+      updateBatter.run([pa, pa, pa, pa, this.seriesId, playerId]);
     }
 
     const updatePitcher = db.prepare(`
@@ -224,18 +222,17 @@ export class UsageTracker {
           replay_games_played = replay_games_played + 1,
           percentage_of_actual =
             CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0),
+            NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
     `);
 
     for (const [playerId, ip] of gameStats.pitcherIp) {
-      const teamGamesPlayed = getTeamGamesPlayed(playerId);
-      updatePitcher.run([ip, ip, teamGamesPlayed, seasonLength, ip, teamGamesPlayed, seasonLength, ip, teamGamesPlayed, seasonLength, this.seriesId, playerId]);
+      updatePitcher.run([ip, ip, ip, ip, this.seriesId, playerId]);
     }
 
     updateBatter.free();
