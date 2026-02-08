@@ -1,0 +1,162 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - navigation [ref=e4]:
+      - generic [ref=e6]:
+        - link "⚾ Baseball Sim" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: ⚾
+          - generic [ref=e9]: Baseball Sim
+        - generic [ref=e10]:
+          - link "Home" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Game Results" [ref=e12] [cursor=pointer]:
+            - /url: /game-results
+          - link "Data Browser" [ref=e13] [cursor=pointer]:
+            - /url: /data-browser
+    - generic [ref=e26]:
+      - heading "Database Viewer" [level=1] [ref=e27]
+      - generic [ref=e28]:
+        - generic [ref=e29]: "Season:"
+        - combobox "Season:" [ref=e30]:
+          - option "1910" [selected]
+          - option "1911"
+          - option "1912"
+          - option "1913"
+          - option "1914"
+          - option "1915"
+          - option "1916"
+          - option "1917"
+          - option "1918"
+          - option "1919"
+          - option "1920"
+          - option "1921"
+          - option "1922"
+          - option "1923"
+          - option "1924"
+          - option "1925"
+          - option "1926"
+          - option "1927"
+          - option "1928"
+          - option "1929"
+          - option "1930"
+          - option "1931"
+          - option "1932"
+          - option "1933"
+          - option "1934"
+          - option "1935"
+          - option "1936"
+          - option "1937"
+          - option "1938"
+          - option "1939"
+          - option "1940"
+          - option "1941"
+          - option "1942"
+          - option "1943"
+          - option "1944"
+          - option "1945"
+          - option "1946"
+          - option "1947"
+          - option "1948"
+          - option "1949"
+          - option "1950"
+          - option "1951"
+          - option "1952"
+          - option "1953"
+          - option "1954"
+          - option "1955"
+          - option "1956"
+          - option "1957"
+          - option "1958"
+          - option "1959"
+          - option "1960"
+          - option "1961"
+          - option "1962"
+          - option "1963"
+          - option "1964"
+          - option "1965"
+          - option "1966"
+          - option "1967"
+          - option "1968"
+          - option "1969"
+          - option "1970"
+          - option "1971"
+          - option "1972"
+          - option "1973"
+          - option "1974"
+          - option "1975"
+          - option "1976"
+          - option "1977"
+          - option "1978"
+          - option "1979"
+          - option "1980"
+          - option "1981"
+          - option "1982"
+          - option "1983"
+          - option "1984"
+          - option "1985"
+          - option "1986"
+          - option "1987"
+          - option "1988"
+          - option "1989"
+          - option "1990"
+          - option "1991"
+          - option "1992"
+          - option "1993"
+          - option "1994"
+          - option "1995"
+          - option "1996"
+          - option "1997"
+          - option "1998"
+          - option "1999"
+          - option "2000"
+          - option "2001"
+          - option "2002"
+          - option "2003"
+          - option "2004"
+          - option "2005"
+          - option "2006"
+          - option "2007"
+          - option "2008"
+          - option "2009"
+          - option "2010"
+          - option "2011"
+          - option "2012"
+          - option "2013"
+          - option "2014"
+          - option "2015"
+          - option "2016"
+          - option "2017"
+          - option "2018"
+          - option "2019"
+          - option "2020"
+          - option "2021"
+          - option "2022"
+          - option "2023"
+          - option "2024"
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - heading "Tables" [level=2] [ref=e33]
+          - list [ref=e34]:
+            - listitem [ref=e35] [cursor=pointer]: batter_rates
+            - listitem [ref=e36] [cursor=pointer]: batters
+            - listitem [ref=e37] [cursor=pointer]: games
+            - listitem [ref=e38] [cursor=pointer]: league_averages
+            - listitem [ref=e39] [cursor=pointer]: meta
+            - listitem [ref=e40] [cursor=pointer]: norms
+            - listitem [ref=e41] [cursor=pointer]: parks
+            - listitem [ref=e42] [cursor=pointer]: pitcher_batter_league
+            - listitem [ref=e43] [cursor=pointer]: pitcher_rates
+            - listitem [ref=e44] [cursor=pointer]: pitchers
+            - listitem [ref=e45] [cursor=pointer]: teams
+        - generic [ref=e46]:
+          - heading "Schema" [level=2] [ref=e47]
+          - paragraph [ref=e49]: Select a table to view schema
+      - generic [ref=e50]:
+        - heading "Query" [level=2] [ref=e51]
+        - textbox "SQL query editor" [ref=e52]:
+          - /placeholder: SELECT * FROM batters LIMIT 10
+        - button "Run Query" [ref=e53] [cursor=pointer]
+      - generic [ref=e54]:
+        - heading "Results" [level=2] [ref=e55]
+        - paragraph [ref=e56]: Run a query to see results
+  - generic [ref=e25]: Database Viewer - Baseball Sim

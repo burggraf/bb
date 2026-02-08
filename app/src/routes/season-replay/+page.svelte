@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { createSeasonReplay, findSeasonReplays } from '$lib/game-results/index.js';
-	import { isSeasonCached, getSeasonSchedule, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
+	import { downloadSeason, isSeasonCached, getSeasonSchedule, type ScheduledGame } from '$lib/game/sqlite-season-loader.js';
 
 	// Get year from query param
 	let yearParam = $derived($page.url.searchParams.get('year'));
@@ -12,6 +12,8 @@
 	// State for season availability
 	let isSeasonDownloaded = $state(false);
 	let isLoadingSeason = $state(true);
+	let isDownloadingSeason = $state(false);
+	let downloadProgress = $state(0);
 	let seasonError = $state<string | null>(null);
 
 	// State for existing replays
@@ -38,13 +40,17 @@
 		}
 		year = parsedYear;
 
-		// Check if season is cached
+		// Check if season is cached, download if not
 		try {
 			isSeasonDownloaded = await isSeasonCached(year);
 			if (!isSeasonDownloaded) {
-				seasonError = 'Season data not downloaded. Please download the season first.';
-				isLoadingSeason = false;
-				return;
+				// Auto-download the season
+				isDownloadingSeason = true;
+				await downloadSeason(year, (progress) => {
+					downloadProgress = Math.round(progress * 100);
+				});
+				isSeasonDownloaded = true;
+				isDownloadingSeason = false;
 			}
 
 			// Get total games count
@@ -60,6 +66,7 @@
 			seasonError = error instanceof Error ? error.message : 'Failed to load season data';
 		} finally {
 			isLoadingSeason = false;
+			isDownloadingSeason = false;
 			isLoadingReplays = false;
 		}
 	});
@@ -123,7 +130,7 @@
 	</div>
 
 	<!-- Loading state -->
-	{#if isLoadingSeason}
+	{#if isLoadingSeason || isDownloadingSeason}
 		<div class="bg-zinc-900 rounded-lg p-8 text-center">
 			<div class="flex justify-center mb-4">
 				<svg class="animate-spin h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24">
@@ -142,7 +149,18 @@
 					></path>
 				</svg>
 			</div>
-			<p class="text-zinc-400">Loading season data...</p>
+			{#if isDownloadingSeason}
+				<p class="text-zinc-400 mb-2">Downloading {year} season data...</p>
+				<div class="w-full bg-zinc-800 rounded-full h-2 mb-2">
+					<div
+						class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+						style="width: {downloadProgress}%"
+					></div>
+				</div>
+				<p class="text-xs text-zinc-500">{downloadProgress}%</p>
+			{:else}
+				<p class="text-zinc-400">Loading season data...</p>
+			{/if}
 		</div>
 	{:else if seasonError}
 		<div class="bg-zinc-900 rounded-lg p-8 text-center">

@@ -1,0 +1,29 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - link "⚾ Baseball Sim" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e8]: ⚾
+        - generic [ref=e9]: Baseball Sim
+      - generic [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Game Results" [ref=e12] [cursor=pointer]:
+          - /url: /game-results
+        - link "Data Browser" [ref=e13] [cursor=pointer]:
+          - /url: /data-browser
+  - generic [ref=e15]:
+    - banner [ref=e16]:
+      - heading "Welcome" [level=1] [ref=e17]
+      - paragraph [ref=e18]: Statistical baseball simulation powered by 115+ years of MLB data
+    - main [ref=e19]:
+      - generic [ref=e20]:
+        - heading "Download Teams Data" [level=2] [ref=e21]
+        - paragraph [ref=e22]: Download team information for all seasons (1910-2024). This is a one-time download (~5 KB).
+        - button "Download Teams Data" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+          - text: Download Teams Data
+      - button "Start Game" [disabled] [ref=e27]
+      - generic [ref=e28]:
+        - heading "About Baseball Sim" [level=3] [ref=e29]
+        - paragraph [ref=e30]: This game uses a Bayesian hierarchical log5 model to simulate batter-pitcher matchups with statistical accuracy. All player stats are sourced from Retrosheet and Baseball Databank. Cross-era matchups are supported — pit the 1927 Yankees against the 1976 Reds!

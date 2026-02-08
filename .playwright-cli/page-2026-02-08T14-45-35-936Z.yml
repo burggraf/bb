@@ -1,0 +1,24 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - navigation [ref=e4]:
+      - generic [ref=e6]:
+        - link "⚾ Baseball Sim" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e8]: ⚾
+          - generic [ref=e9]: Baseball Sim
+        - generic [ref=e10]:
+          - link "Home" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Game Results" [ref=e12] [cursor=pointer]:
+            - /url: /game-results
+          - link "Data Browser" [ref=e13] [cursor=pointer]:
+            - /url: /data-browser
+    - generic [ref=e148]:
+      - generic [ref=e149]:
+        - heading "Game Results" [level=1] [ref=e150]
+        - paragraph [ref=e151]: View your saved baseball game results
+      - generic [ref=e152]:
+        - paragraph [ref=e153]: No games saved yet.
+        - link "Simulate a game to get started!" [ref=e154] [cursor=pointer]:
+          - /url: /game
+  - generic [ref=e155]: Game Results - Baseball Sim
