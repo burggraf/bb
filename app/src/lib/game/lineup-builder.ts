@@ -239,23 +239,15 @@ function assignPositions(
 			playerPool.delete(best.player.id);
 		}
 
-		// CRITICAL: Third priority - use ANY remaining player as last resort
-		// Game simulation takes priority over positional realism. If we can't find
-		// someone with primary or secondary eligibility, just use any unused player.
+		// If we still couldn't fill this position, add a warning
 		if (!assigned.has(Array.from(assigned.keys()).find(id => assigned.get(id) === position) ?? '')) {
-			const anyUnused = players.find(p => !usedPlayers.has(p.id));
-			if (anyUnused) {
-				assigned.set(anyUnused.id, position);
-				usedPlayers.add(anyUnused.id);
-				playerPool.delete(anyUnused.id);
-				warnings.push(`WARNING: ${anyUnused.name} assigned to ${getPositionName(position)} without positional eligibility - using best available player`);
-			}
+			warnings.push(`WARNING: Unable to fill ${getPositionName(position)} position - no eligible players found`);
 		}
 	}
 
 	// Validate we filled all 8 positions
 	if (assigned.size < 8) {
-		throw new Error(`Only able to assign ${assigned.size} positions, need 8. Team may have incomplete roster data.`);
+		throw new Error(`Only able to assign ${assigned.size} positions, need 8. Team may have incomplete roster data or missing position eligibility data.`);
 	}
 
 	return assigned;
@@ -400,55 +392,30 @@ function buildLineupImpl(
 		throw new Error(`Team ${teamId} has only ${positionPlayers.length} position players (excluding pitchers), need at least 8`);
 	}
 
-	// IMPORTANT: Pre-filter overused players BEFORE building lineup
-	// This prevents players from accumulating way too much PA/IP before rest checks kick in
+	// IMPORTANT: Usage tracking is for MONITORING ONLY during initial lineup building.
+	// We do NOT filter out players based on usage when building the starting lineup.
+	// Building a valid lineup with players who can play each position takes priority.
+	// Usage management is secondary - we want to simulate all games first.
 	if (usageContext) {
 		const restThreshold = usageContext.restThreshold ?? 1.25;
 
-		// Separate players into available and overused
-		const availablePlayers: typeof positionPlayers = [];
-		const overusedPlayers: typeof positionPlayers = [];
-
+		// Count overused players for monitoring, but don't filter them out
+		let overusedCount = 0;
 		for (const player of positionPlayers) {
 			const usage = usageContext.playerUsage.get(player.id);
 			if (usage !== undefined && usage > restThreshold) {
-				overusedPlayers.push(player);
-			} else {
-				availablePlayers.push(player);
+				overusedCount++;
+				warnings.push(`NOTE: ${player.name} is at ${(usage * 100).toFixed(0)}% of actual usage (threshold: ${(restThreshold * 100).toFixed(0)}%)`);
 			}
 		}
 
-		// CRITICAL: Always ensure we can build a lineup. Game simulation takes
-		// priority over usage tracking. If we don't have enough available players,
-		// use ALL overused players to ensure we can field a team.
-		if (availablePlayers.length < 8) {
-			// Sort overused players by usage (ascending) - use the least overused first
-			const sortedOverused = overusedPlayers
-				.map(p => ({ player: p, usage: usageContext.playerUsage.get(p.id) ?? 2 }))
-				.sort((a, b) => a.usage - b.usage);
-
-			// Add ALL overused players - we must be able to build a lineup
-			for (const overused of sortedOverused) {
-				availablePlayers.push(overused.player);
-				warnings.push(`WARNING: Using overused player ${overused.player.name} (${(overused.usage * 100).toFixed(0)}% of actual) - game simulation takes priority over usage limits`);
-			}
-
-			// After adding all overused players, if we still don't have enough,
-			// that's a real roster data problem (not a usage tracking issue)
-			if (availablePlayers.length < 8) {
-				throw new Error(`Team ${teamId} has only ${availablePlayers.length} position players available (including overused). Cannot build lineup - incomplete roster data.`);
-			}
-		}
-
-		// Use the filtered list for lineup building
-		positionPlayers = availablePlayers;
-
-		// Debug logging
-		console.log('[buildLineup] Usage-aware filtering:', {
+		// Log usage-aware monitoring data
+		console.log('[buildLineup] Usage monitoring:', {
 			teamId,
-			available: availablePlayers.length,
-			overused: overusedPlayers.length,
-			warnings: warnings.length
+			totalPositionPlayers: positionPlayers.length,
+			overusedCount,
+			restThreshold: `${(restThreshold * 100).toFixed(0)}%`,
+			note: 'Players not filtered - lineup building takes priority'
 		});
 	}
 
