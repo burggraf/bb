@@ -54,7 +54,8 @@ describe('UsageReporter Module', () => {
     const module = await import('./usage-reporter.js');
 
     // Valid sort options should be accepted
-    const validSortOptions: Array<Parameters<typeof module.getPlayerUsageRows>[1]['sortBy']> = [
+    type PlayerUsageOptions = Parameters<typeof module.getPlayerUsageRows>[1];
+    const validSortOptions: Array<NonNullable<PlayerUsageOptions>['sortBy']> = [
       'percentageOfActual',
       'deviation',
       'replayCurrentTotal',
@@ -71,7 +72,8 @@ describe('UsageReporter Module', () => {
     const module = await import('./usage-reporter.js');
 
     // Valid status options
-    const validStatusOptions: Array<Parameters<typeof module.getPlayerUsageRows>[1]['status']> = [
+    type PlayerUsageOptions = Parameters<typeof module.getPlayerUsageRows>[1];
+    const validStatusOptions: Array<NonNullable<PlayerUsageOptions>['status']> = [
       'under',
       'inRange',
       'over',
@@ -82,7 +84,7 @@ describe('UsageReporter Module', () => {
     expect(statusOption).toBeDefined();
 
     // Valid order direction options
-    const validOrderOptions: Array<Parameters<typeof module.getPlayerUsageRows>[1]['orderDirection']> = [
+    const validOrderOptions: Array<NonNullable<PlayerUsageOptions>['orderDirection']> = [
       'ASC',
       'DESC'
     ];

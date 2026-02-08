@@ -311,12 +311,23 @@ describe('UsageTracker', () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
       let prepareCallCount = 0;
-      const mockStmt = {
-        all: vi.fn(() => {
+      const createMockStmt = (rows: any[]) => ({
+        bind: vi.fn(),
+        step: vi.fn(() => {
+          const result = rows.length > 0;
+          rows.shift(); // Remove first row
+          return result;
+        }),
+        getAsObject: vi.fn(() => rows[0]),
+        free: vi.fn()
+      });
+
+      const mockDb = {
+        prepare: vi.fn(() => {
           prepareCallCount++;
           if (prepareCallCount === 1) {
             // First call (under-used query)
-            return [
+            return createMockStmt([
               {
                 player_id: 'batter-1',
                 name: 'Underused Batter',
@@ -324,16 +335,11 @@ describe('UsageTracker', () => {
                 percentage_of_actual: 0.5,  // 50% - under
                 status: 'under'
               }
-            ];
+            ]);
           }
           // Second call (over-used query)
-          return [];
-        }),
-        free: vi.fn()
-      };
-
-      const mockDb = {
-        prepare: vi.fn(() => mockStmt)
+          return createMockStmt([]);
+        })
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);
@@ -351,11 +357,26 @@ describe('UsageTracker', () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
       let callCount = 0;
-      const mockStmt = {
-        all: vi.fn(() => {
+      const createMockStmt = (rows: any[]) => ({
+        bind: vi.fn(),
+        step: vi.fn(() => {
+          const result = rows.length > 0;
+          rows.shift();
+          return result;
+        }),
+        getAsObject: vi.fn(() => rows[0]),
+        free: vi.fn()
+      });
+
+      const mockDb = {
+        prepare: vi.fn(() => {
           callCount++;
-          if (callCount === 1) return [];  // No under-used
-          return [
+          if (callCount === 1) {
+            // No under-used
+            return createMockStmt([]);
+          }
+          // Over-used
+          return createMockStmt([
             {
               player_id: 'pitcher-1',
               name: 'Overused Pitcher',
@@ -363,13 +384,8 @@ describe('UsageTracker', () => {
               percentage_of_actual: 1.5,  // 150% - over
               status: 'over'
             }
-          ];
-        }),
-        free: vi.fn()
-      };
-
-      const mockDb = {
-        prepare: vi.fn(() => mockStmt)
+          ]);
+        })
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);
@@ -388,7 +404,9 @@ describe('UsageTracker', () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
       const mockStmt = {
-        all: vi.fn(() => []),  // No violations
+        bind: vi.fn(),
+        step: vi.fn(() => false),  // No rows
+        getAsObject: vi.fn(),
         free: vi.fn()
       };
 
@@ -408,15 +426,15 @@ describe('UsageTracker', () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
       const mockStmt = {
-        all: vi.fn(() => [
-          {
-            player_id: 'unknown-1',
-            name: null,  // Missing name
-            is_pitcher: 0,
-            percentage_of_actual: 0.5,
-            status: 'under'
-          }
-        ]),
+        bind: vi.fn(),
+        step: vi.fn(() => true),
+        getAsObject: vi.fn(() => ({
+          player_id: 'unknown-1',
+          name: null,  // Missing name
+          is_pitcher: 0,
+          percentage_of_actual: 0.5,
+          status: 'under'
+        })),
         free: vi.fn()
       };
 
@@ -438,7 +456,9 @@ describe('UsageTracker', () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
       const mockStmt = {
-        get: vi.fn(() => null),  // Not found
+        bind: vi.fn(),
+        step: vi.fn(() => false),  // No row
+        getAsObject: vi.fn(),
         free: vi.fn()
       };
 
@@ -471,7 +491,9 @@ describe('UsageTracker', () => {
       };
 
       const mockStmt = {
-        get: vi.fn(() => mockRow),
+        bind: vi.fn(),
+        step: vi.fn(() => true),
+        getAsObject: vi.fn(() => mockRow),
         free: vi.fn()
       };
 
@@ -524,8 +546,11 @@ describe('UsageTracker', () => {
         }
       ];
 
+      let rowIndex = 0;
       const mockStmt = {
-        all: vi.fn(() => mockRows),
+        bind: vi.fn(),
+        step: vi.fn(() => rowIndex < mockRows.length),
+        getAsObject: vi.fn(() => mockRows[rowIndex++]),
         free: vi.fn()
       };
 

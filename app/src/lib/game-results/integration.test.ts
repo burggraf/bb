@@ -74,7 +74,7 @@ describe('Integration: Full Game Save Workflow', () => {
       expect(indexModule.getSeriesStandings).toBeInstanceOf(Function);
       expect(indexModule.getBattingStats).toBeInstanceOf(Function);
       expect(indexModule.getPitchingStats).toBeInstanceOf(Function);
-      expect(indexModule.getLeagueLeaders).toBeInstanceOf(Function);
+      // getLeagueLeaders was removed, replaced by getLeagueLeadersByCategory
 
       // Convenience functions
       expect(indexModule.saveGameFromState).toBeInstanceOf(Function);
