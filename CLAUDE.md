@@ -54,7 +54,7 @@ cd data-prep && pnpm exec tsx src/export-season.ts 1976  # Export a season
 - Batter stats with platoon splits (vs LHP/RHP)
 - Pitcher stats with platoon splits (vs LHB/RHB)
 - League averages per season
-- Output: `app/static/seasons/{year}.json`
+- Output: `app/static/seasons/{year}.sqlite.gz` (SQLite database, gzip-compressed)
 
 ### The MatchupModel (`packages/model/`)
 
@@ -111,9 +111,9 @@ The app uses Svelte 5 runes (`$state`, `$derived`, etc.). Key patterns:
 ### Data Flow for Adding New Seasons
 
 1. Extract from DuckDB: `cd data-prep && pnpm exec tsx src/export-season.ts YEAR`
-2. JSON goes to `app/static/seasons/YEAR.json`
-3. Update `getAvailableYears()` in `season-loader.ts` to include new year
-4. Season data loads in browser via `fetch('/seasons/YEAR.json')`
+2. SQLite database goes to `app/static/seasons/YEAR.sqlite.gz`
+3. Update `season-manifest.json` to include the new year
+4. Season data loads in browser via `sqlite-season-loader.ts` using sql.js (WebAssembly)
 
 ### Pitcher Selection & Bullpen Management
 

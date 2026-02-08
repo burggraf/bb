@@ -166,6 +166,7 @@ function calculateOBP(batter: BatterStats): number {
 /**
  * Assign fielding positions to position players
  * Prioritizes primary positions, then uses secondary eligibility only when needed
+ * When multiple players have the same primary position, selects based on quality (PA, then OBP)
  */
 function assignPositions(
 	players: BatterStats[]
@@ -182,9 +183,17 @@ function assignPositions(
 	// Fill positions in priority order
 	for (const position of POSITION_PRIORITY) {
 		// First priority: Find someone whose PRIMARY position is this position
-		const primaryPlayer = players.find(p =>
+		// When multiple players have the same primary position, select the best one
+		const primaryCandidates = players.filter(p =>
 			!usedPlayers.has(p.id) && p.primaryPosition === position
 		);
+
+		let primaryPlayer: BatterStats | undefined;
+		if (primaryCandidates.length > 0) {
+			// Sort by PA (primary starter had more playing time), then by OBP
+			primaryCandidates.sort((a, b) => b.pa - a.pa || calculateOBP(b) - calculateOBP(a));
+			primaryPlayer = primaryCandidates[0];
+		}
 
 		if (primaryPlayer) {
 			assigned.set(primaryPlayer.id, position);
