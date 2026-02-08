@@ -58,11 +58,19 @@ export type {
   GameEventInput,
   InningLineInput,
   // Player usage tracking
-  PlayerUsageRecord
+  PlayerUsageRecord,
+  // Usage tracking types
+  UsageViolation,
+  GameUsageStats
 } from './types.js';
 
 // Re-export Outcome from game engine for convenience
 export type { Outcome } from '../game/types.js';
+
+// ====================================================================
+// Usage Tracking
+// ====================================================================
+export { UsageTracker } from './usage-tracker.js';
 
 // ====================================================================
 // Series Management
