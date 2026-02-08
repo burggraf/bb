@@ -93,7 +93,7 @@ describe('UsageTracker', () => {
       const mockDb = {
         run: vi.fn(),
         prepare: vi.fn(() => ({
-          run: vi.fn((...args: any[]) => {
+          run: vi.fn((args: any[]) => {
             mockRunCalls.push(args);
           }),
           free: vi.fn()
@@ -112,7 +112,7 @@ describe('UsageTracker', () => {
 
       // Find the pitcher insert call
       const pitcherCall = mockRunCalls.find((call: any) => {
-        // The 5th parameter (index 4) should be outs (IP * 3)
+        // args is now an array, the 5th parameter (index 4) should be outs (IP * 3)
         return call.length >= 5 && call[4] === 30;
       });
 
@@ -167,8 +167,8 @@ describe('UsageTracker', () => {
       // Check that the statement's run method was called
       expect(mockStmt.run).toHaveBeenCalled();
 
-      // Get the first call arguments
-      const runCall = mockStmt.run.mock.calls[0];
+      // Get the first call arguments - now an array
+      const runCall = mockStmt.run.mock.calls[0][0];
       expect(runCall[0]).toBe('test-series');
       expect(runCall[1]).toBe('batter-1');
       expect(runCall[2]).toBe('NYA');
@@ -184,7 +184,7 @@ describe('UsageTracker', () => {
 
       const mockUpdateCalls: any[] = [];
       const mockStmt = {
-        run: vi.fn((...args: any[]) => {
+        run: vi.fn((args: any[]) => {
           mockUpdateCalls.push(args);
         }),
         free: vi.fn()
@@ -216,7 +216,7 @@ describe('UsageTracker', () => {
 
       const mockUpdateCalls: any[] = [];
       const mockStmt = {
-        run: vi.fn((...args: any[]) => {
+        run: vi.fn((args: any[]) => {
           mockUpdateCalls.push(args);
         }),
         free: vi.fn()
@@ -310,26 +310,30 @@ describe('UsageTracker', () => {
     it('should detect under-used players (< 75%)', async () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
-      const mockQuery = vi.fn()
-        .mockReturnValueOnce({
-          all: vi.fn(() => [
-            {
-              player_id: 'batter-1',
-              name: 'Underused Batter',
-              is_pitcher: 0,
-              percentage_of_actual: 0.5,  // 50% - under
-              status: 'under'
-            }
-          ]),
-          get: vi.fn()
-        })
-        .mockReturnValueOnce({
-          all: vi.fn(() => []),  // No over-used
-          get: vi.fn()
-        });
+      let prepareCallCount = 0;
+      const mockStmt = {
+        all: vi.fn(() => {
+          prepareCallCount++;
+          if (prepareCallCount === 1) {
+            // First call (under-used query)
+            return [
+              {
+                player_id: 'batter-1',
+                name: 'Underused Batter',
+                is_pitcher: 0,
+                percentage_of_actual: 0.5,  // 50% - under
+                status: 'under'
+              }
+            ];
+          }
+          // Second call (over-used query)
+          return [];
+        }),
+        free: vi.fn()
+      };
 
       const mockDb = {
-        query: mockQuery
+        prepare: vi.fn(() => mockStmt)
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);
@@ -346,13 +350,12 @@ describe('UsageTracker', () => {
     it('should detect over-used players (> 125%)', async () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
-      const mockQuery = vi.fn()
-        .mockReturnValueOnce({
-          all: vi.fn(() => []),  // No under-used
-          get: vi.fn()
-        })
-        .mockReturnValueOnce({
-          all: vi.fn(() => [
+      let callCount = 0;
+      const mockStmt = {
+        all: vi.fn(() => {
+          callCount++;
+          if (callCount === 1) return [];  // No under-used
+          return [
             {
               player_id: 'pitcher-1',
               name: 'Overused Pitcher',
@@ -360,12 +363,13 @@ describe('UsageTracker', () => {
               percentage_of_actual: 1.5,  // 150% - over
               status: 'over'
             }
-          ]),
-          get: vi.fn()
-        });
+          ];
+        }),
+        free: vi.fn()
+      };
 
       const mockDb = {
-        query: mockQuery
+        prepare: vi.fn(() => mockStmt)
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);
@@ -383,18 +387,13 @@ describe('UsageTracker', () => {
     it('should return empty array when no violations', async () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
-      const mockQuery = vi.fn()
-        .mockReturnValueOnce({
-          all: vi.fn(() => []),  // No under-used
-          get: vi.fn()
-        })
-        .mockReturnValueOnce({
-          all: vi.fn(() => []),  // No over-used
-          get: vi.fn()
-        });
+      const mockStmt = {
+        all: vi.fn(() => []),  // No violations
+        free: vi.fn()
+      };
 
       const mockDb = {
-        query: mockQuery
+        prepare: vi.fn(() => mockStmt)
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);
@@ -408,26 +407,21 @@ describe('UsageTracker', () => {
     it('should handle missing player names', async () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
-      const mockQuery = vi.fn()
-        .mockReturnValueOnce({
-          all: vi.fn(() => [
-            {
-              player_id: 'unknown-1',
-              name: null,  // Missing name
-              is_pitcher: 0,
-              percentage_of_actual: 0.5,
-              status: 'under'
-            }
-          ]),
-          get: vi.fn()
-        })
-        .mockReturnValueOnce({
-          all: vi.fn(() => []),  // No over-used
-          get: vi.fn()
-        });
+      const mockStmt = {
+        all: vi.fn(() => [
+          {
+            player_id: 'unknown-1',
+            name: null,  // Missing name
+            is_pitcher: 0,
+            percentage_of_actual: 0.5,
+            status: 'under'
+          }
+        ]),
+        free: vi.fn()
+      };
 
       const mockDb = {
-        query: mockQuery
+        prepare: vi.fn(() => mockStmt)
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);
@@ -443,10 +437,13 @@ describe('UsageTracker', () => {
     it('should return null for non-existent player', async () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
+      const mockStmt = {
+        get: vi.fn(() => null),  // Not found
+        free: vi.fn()
+      };
+
       const mockDb = {
-        query: vi.fn(() => ({
-          get: vi.fn(() => null)  // Not found
-        }))
+        prepare: vi.fn(() => mockStmt)
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);
@@ -473,10 +470,13 @@ describe('UsageTracker', () => {
         status: 'under'
       };
 
+      const mockStmt = {
+        get: vi.fn(() => mockRow),
+        free: vi.fn()
+      };
+
       const mockDb = {
-        query: vi.fn(() => ({
-          get: vi.fn(() => mockRow)
-        }))
+        prepare: vi.fn(() => mockStmt)
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);
@@ -524,10 +524,13 @@ describe('UsageTracker', () => {
         }
       ];
 
+      const mockStmt = {
+        all: vi.fn(() => mockRows),
+        free: vi.fn()
+      };
+
       const mockDb = {
-        query: vi.fn(() => ({
-          all: vi.fn(() => mockRows)
-        }))
+        prepare: vi.fn(() => mockStmt)
       } as unknown as Database;
 
       mockGetGameDatabase.mockResolvedValue(mockDb);

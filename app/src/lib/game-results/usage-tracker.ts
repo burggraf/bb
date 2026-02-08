@@ -8,7 +8,7 @@
 
 import { getGameDatabase } from './database.js';
 import type { Database } from 'sql.js';
-import type { PlayerUsageRecord } from './schema.js';
+import type { PlayerUsageRecord } from './types.js';
 
 export interface UsageViolation {
   playerId: string;
@@ -63,14 +63,14 @@ export class UsageTracker {
 
     for (const [id, batter] of Object.entries(batters)) {
       if (batter.pa >= MIN_BATTER_THRESHOLD) {
-        insertBatter.run(
+        insertBatter.run([
           this.seriesId,
           id,
           batter.teamId,
           0,  // is_pitcher = false
           batter.pa,
           batter.games || 162
-        );
+        ]);
       }
     }
 
@@ -86,14 +86,14 @@ export class UsageTracker {
     for (const [id, pitcher] of Object.entries(pitchers)) {
       const ip = pitcher.inningsPitched || 0;
       if (ip >= MIN_PITCHER_THRESHOLD) {
-        insertPitcher.run(
+        insertPitcher.run([
           this.seriesId,
           id,
           pitcher.teamId,
           1,  // is_pitcher = true
           ip * 3,  // Convert IP to outs
           pitcher.games || 162
-        );
+        ]);
       }
     }
 
@@ -126,7 +126,7 @@ export class UsageTracker {
     `);
 
     for (const [playerId, pa] of gameStats.batterPa) {
-      updateBatter.run(pa, pa, pa, pa, this.seriesId, playerId);
+      updateBatter.run([pa, pa, pa, pa, this.seriesId, playerId]);
     }
 
     const updatePitcher = db.prepare(`
@@ -143,7 +143,7 @@ export class UsageTracker {
     `);
 
     for (const [playerId, ip] of gameStats.pitcherIp) {
-      updatePitcher.run(ip, ip, ip, ip, this.seriesId, playerId);
+      updatePitcher.run([ip, ip, ip, ip, this.seriesId, playerId]);
     }
 
     updateBatter.free();
@@ -159,10 +159,12 @@ export class UsageTracker {
   async getPlayerUsage(playerId: string): Promise<PlayerUsageRecord | null> {
     const db = await getGameDatabase();
 
-    const row = db.query(`
+    const stmt = db.prepare(`
       SELECT * FROM player_usage
       WHERE series_id = ? AND player_id = ?
-    `).get(this.seriesId, playerId) as any;
+    `);
+    const row = stmt.get(this.seriesId, playerId) as any;
+    stmt.free();
 
     if (!row) return null;
     return this.rowToRecord(row);
@@ -177,11 +179,13 @@ export class UsageTracker {
   async getTeamUsage(teamId: string): Promise<PlayerUsageRecord[]> {
     const db = await getGameDatabase();
 
-    const rows = db.query(`
+    const stmt = db.prepare(`
       SELECT * FROM player_usage
       WHERE series_id = ? AND team_id = ?
       ORDER BY percentage_of_actual DESC
-    `).all(this.seriesId, teamId) as any[];
+    `);
+    const rows = stmt.all(this.seriesId, teamId) as any[];
+    stmt.free();
 
     return rows.map(r => this.rowToRecord(r));
   }
@@ -200,12 +204,14 @@ export class UsageTracker {
     const violations: UsageViolation[] = [];
 
     // Check under-used players (< 75%)
-    const underRows = db.query(`
+    const underStmt = db.prepare(`
       SELECT pu.*, p.name
       FROM player_usage pu
       LEFT JOIN players p ON pu.player_id = p.id
       WHERE pu.series_id = ? AND pu.status = 'under'
-    `).all(this.seriesId) as any[];
+    `);
+    const underRows = underStmt.all(this.seriesId) as any[];
+    underStmt.free();
 
     for (const row of underRows) {
       violations.push({
@@ -219,12 +225,14 @@ export class UsageTracker {
     }
 
     // Check over-used players (> 125%)
-    const overRows = db.query(`
+    const overStmt = db.prepare(`
       SELECT pu.*, p.name
       FROM player_usage pu
       LEFT JOIN players p ON pu.player_id = p.id
       WHERE pu.series_id = ? AND pu.status = 'over'
-    `).all(this.seriesId) as any[];
+    `);
+    const overRows = overStmt.all(this.seriesId) as any[];
+    overStmt.free();
 
     for (const row of overRows) {
       violations.push({
