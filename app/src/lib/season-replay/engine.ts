@@ -42,10 +42,23 @@ export class SeasonReplayEngine {
 
     // Check for existing replay state BEFORE seeding
     const metadata = await getSeriesMetadata(this.seriesId);
-    const isNewReplay = !metadata?.seasonReplay;
 
-    if (isNewReplay) {
-      // Seed usage targets from season data (only for new replays)
+    // Check if usage targets have been seeded by querying the database
+    // A new replay has seasonReplay metadata but NO usage records yet
+    const db = await getGameDatabase();
+    const usageCountStmt = db.prepare('SELECT COUNT(*) as count FROM player_usage WHERE series_id = ?');
+    usageCountStmt.bind([this.seriesId]);
+    let usageCount = 0;
+    if (usageCountStmt.step()) {
+      usageCount = usageCountStmt.getAsObject().count;
+    }
+    usageCountStmt.free();
+
+    const needsSeeding = usageCount === 0;
+    console.log('[SeasonReplayEngine] Usage record count for seriesId:', this.seriesId, '=', usageCount, '(needsSeeding:', needsSeeding, ')');
+
+    if (needsSeeding) {
+      // Seed usage targets from season data (only for new replays or replays without usage data)
       console.log('[SeasonReplayEngine] Seeding usage targets for new replay...');
       await this.seedUsageTargets(season);
       console.log('[SeasonReplayEngine] Usage targets seeded');
@@ -54,8 +67,10 @@ export class SeasonReplayEngine {
       console.log('[SeasonReplayEngine] Saved initial database with usage targets');
     } else {
       console.log('[SeasonReplayEngine] Resuming existing replay, using existing usage data from database');
-      this.currentGameIndex = metadata.seasonReplay.currentGameIndex;
-      this.status = metadata.seasonReplay.status;
+      if (metadata?.seasonReplay) {
+        this.currentGameIndex = metadata.seasonReplay.currentGameIndex;
+        this.status = metadata.seasonReplay.status;
+      }
     }
 
     console.log('[SeasonReplayEngine] initialize() complete, status:', this.status);
