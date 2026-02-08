@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { PlayerUsageRecord, UsageViolation } from '$lib/game-results';
+	import type { PlayerUsageRecord, UsageViolation, Standing } from '$lib/game-results';
 	import type { SeriesTeam } from '$lib/game-results';
 	import type { TeamInfo } from '$lib/game/teams-data';
 	import { getSeriesTeams } from '$lib/game-results';
@@ -16,6 +16,7 @@
 	// Dynamic imports
 	let getTeamUsage: typeof import('$lib/game-results/index.js').UsageTracker['prototype']['getTeamUsage'];
 	let checkThresholds: typeof import('$lib/game-results/index.js').UsageTracker['prototype']['checkThresholds'];
+	let getSeriesStandingsEnhanced: typeof import('$lib/game-results/index.js').getSeriesStandingsEnhanced;
 
 	// State
 	let loading = $state(true);
@@ -24,6 +25,7 @@
 	let teamsData = $state<Record<string, TeamInfo>>({});
 	let usageRecords = $state<PlayerUsageRecord[]>([]);
 	let violations = $state<UsageViolation[]>([]);
+	let standings = $state<Standing[]>([]);
 
 	// Filters
 	let selectedTeam = $state<string | null>(null);
@@ -43,6 +45,7 @@
 			// Load teams
 			const gameResults = await import('$lib/game-results/index.js');
 			const UsageTrackerClass = gameResults.UsageTracker;
+			getSeriesStandingsEnhanced = gameResults.getSeriesStandingsEnhanced;
 
 			// Create UsageTracker instance and bind methods
 			const tracker = new UsageTrackerClass(seriesId);
@@ -56,6 +59,9 @@
 			const allTeamsData = await loadTeamsData();
 			const yearTeams = allTeamsData[seasonYear.toString()] || [];
 			teamsData = Object.fromEntries(yearTeams.map((t) => [t.id, t]));
+
+			// Get standings (for team games played)
+			standings = await getSeriesStandingsEnhanced(seriesId);
 
 			// Get all usage data
 			const allRecords: PlayerUsageRecord[] = [];
@@ -225,6 +231,25 @@
 		}
 		return `${record.replayCurrentTotal} / ${record.actualSeasonTotal} PA`;
 	}
+
+	// Get team games played in replay (from standings)
+	function getTeamGamesPlayed(teamId: string): number {
+		const standing = standings.find((s) => s.teamId === teamId && s.seasonYear === seasonYear);
+		return standing?.gamesPlayed || 0;
+	}
+
+	// Get proration percentage for a team
+	function getProrationPercentage(teamId: string): number {
+		const teamGamesPlayed = getTeamGamesPlayed(teamId);
+		const gamesPlayedActual = 162; // TODO: This could vary by season/year
+		return gamesPlayedActual > 0 ? teamGamesPlayed / gamesPlayedActual : 0;
+	}
+
+	// Calculate expected PA/IP based on proration
+	function getExpectedTotal(record: PlayerUsageRecord): number {
+		const proration = getProrationPercentage(record.teamId);
+		return Math.round(record.actualSeasonTotal * proration);
+	}
 </script>
 
 <div class="usage-report-view">
@@ -375,34 +400,58 @@
 							</th>
 							<th class="text-left py-3 px-4 text-zinc-400 font-medium">Team</th>
 							<th class="text-left py-3 px-4 text-zinc-400 font-medium">Type</th>
+							<th class="text-center py-3 px-4 text-zinc-400 font-medium">
+								Team Games<br/>(Replay/Actual)
+							</th>
+							<th class="text-center py-3 px-4 text-zinc-400 font-medium">
+								{#if selectedPlayerType === 'pitchers'}
+									IP
+								{:else}
+									PA
+								{/if}
+								<br/>(Replay/Expected/Actual)
+							</th>
 							<th
 								class="text-center py-3 px-4 text-zinc-400 font-medium cursor-pointer hover:text-white transition-colors"
 								onclick={() => toggleSort('percentage')}
 							>
 								% of Actual{getSortIndicator('percentage')}
 							</th>
-							<th class="text-center py-3 px-4 text-zinc-400 font-medium">Replay / Actual</th>
 							<th
 								class="text-center py-3 px-4 text-zinc-400 font-medium cursor-pointer hover:text-white transition-colors"
 								onclick={() => toggleSort('status')}
 							>
 								Status{getSortIndicator('status')}
 							</th>
-							<th
-								class="text-center py-3 px-4 text-zinc-400 font-medium cursor-pointer hover:text-white transition-colors"
-								onclick={() => toggleSort('actual')}
-							>
-								Games (Actual){getSortIndicator('actual')}
-							</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each filteredRecords() as record}
+							{@const teamGamesPlayed = getTeamGamesPlayed(record.teamId)}
+							{@const prorationPct = getProrationPercentage(record.teamId)}
+							{@const expectedTotal = getExpectedTotal(record)}
 							<tr class="border-b border-zinc-800/50 hover:bg-zinc-900/30">
 								<td class="py-3 px-4 text-white font-medium">{record.playerId}</td>
 								<td class="py-3 px-4 text-zinc-400">{getTeamName(record.teamId)}</td>
 								<td class="py-3 px-4 text-zinc-400">
-									{record.isPitcher ? 'Pitcher' : 'Batter'}
+									{record.isPitcher ? 'P' : 'B'}
+								</td>
+								<td class="py-3 px-4 text-center text-zinc-400 font-mono text-xs">
+									{teamGamesPlayed}/{record.gamesPlayedActual}
+									<div class="text-zinc-500">({(prorationPct * 100).toFixed(0)}%)</div>
+								</td>
+								<td class="py-3 px-4 text-center">
+									{#if record.isPitcher}
+										<div class="font-mono text-xs">
+											{(record.replayCurrentTotal / 3).toFixed(1)} / {(expectedTotal / 3).toFixed(1)} / {(record.actualSeasonTotal / 3).toFixed(1)}
+											<div class="text-zinc-500">IP</div>
+										</div>
+									{:else}
+										<div class="font-mono text-xs">
+											{record.replayCurrentTotal} / {expectedTotal} / {record.actualSeasonTotal}
+											<div class="text-zinc-500">PA</div>
+										</div>
+									{/if}
 								</td>
 								<td class="py-3 px-4 text-center">
 									<span
@@ -413,9 +462,6 @@
 									>
 										{(record.percentageOfActual * 100).toFixed(0)}%
 									</span>
-								</td>
-								<td class="py-3 px-4 text-center text-zinc-400 font-mono text-xs">
-									{getFormattedValue(record)}
 								</td>
 								<td class="py-3 px-4 text-center">
 									<span
@@ -429,9 +475,6 @@
 												? 'Over'
 												: 'OK'}
 									</span>
-								</td>
-								<td class="py-3 px-4 text-center text-zinc-400">
-									{record.gamesPlayedActual}
 								</td>
 							</tr>
 						{/each}
