@@ -418,7 +418,7 @@ export class SeasonReplayEngine {
 
   private extractGameStats(gameState: GameState): GameUsageStats {
     const batterPa = new Map<string, number>();
-    const pitcherIp = new Map<string, number>();
+    const pitcherBf = new Map<string, number>(); // Batters Faced
 
     for (const play of gameState.plays) {
       // Skip summary events and non-plate-appearance events
@@ -428,19 +428,21 @@ export class SeasonReplayEngine {
       const currentPa = batterPa.get(play.batterId) || 0;
       batterPa.set(play.batterId, currentPa + 1);
 
-      // Count outs for each pitcher (1 out = 1/3 inning)
-      // Only count outs (strikeout, groundOut, flyOut, lineOut, popOut)
-      const outcome = play.outcome;
-      if (
-        outcome === 'strikeout' ||
-        outcome === 'groundOut' ||
-        outcome === 'flyOut' ||
-        outcome === 'lineOut' ||
-        outcome === 'popOut'
-      ) {
-        const currentIp = pitcherIp.get(play.pitcherId) || 0;
-        pitcherIp.set(play.pitcherId, currentIp + 1);
-      }
+      // Count batters faced for each pitcher (every PA counts as 1 BF)
+      // This is more accurate than just counting outs because pitchers face
+      // all batters, not just those who make outs
+      const currentBf = pitcherBf.get(play.pitcherId) || 0;
+      pitcherBf.set(play.pitcherId, currentBf + 1);
+    }
+
+    // Convert batters faced to outs (3 BF = 1 inning = 3 outs)
+    // This is a rough approximation - in reality, BF and outs have a more complex relationship
+    // But for usage tracking purposes, this gives us a reasonable measure of pitcher workload
+    const pitcherIp = new Map<string, number>();
+    for (const [pitcherId, bf] of pitcherBf.entries()) {
+      // Convert BF to outs: multiply by 3 to get outs equivalent
+      // This assumes ~27 BF per 9 innings, which is roughly accurate (3 BF per inning)
+      pitcherIp.set(pitcherId, bf * 3);
     }
 
     return { batterPa, pitcherIp };

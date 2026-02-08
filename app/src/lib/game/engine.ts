@@ -2446,6 +2446,7 @@ export class GameEngine {
 			runnersAfter: adjustedBases,
 			scorerIds: adjustedScorerIds,
 			runnersBefore,
+			eventType: 'plateAppearance',
 		};
 
 		// Add the play BEFORE the summary when it's an inning-ending play
