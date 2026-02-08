@@ -47,16 +47,7 @@ export function transition(
 	outcome: Outcome,
 	batterId: string
 ): TransitionResult {
-	// Clone the current state to avoid mutation
-	const nextState: BaserunningState = {
-		outs: currentState.outs,
-		bases: currentState.bases,
-		runners: {
-			first: currentState.runners.first,
-			second: currentState.runners.second,
-			third: currentState.runners.third,
-		},
-	};
+	let result: TransitionResult;
 
 	const advancement: BaserunningEvent[] = [];
 
@@ -66,56 +57,83 @@ export function transition(
 		case 'double':
 		case 'triple':
 		case 'homeRun':
-			return handleHit(currentState, outcome, batterId, advancement);
+			result = handleHit(currentState, outcome, batterId, advancement);
+			break;
 
 		// Walks and HBP
 		case 'walk':
 		case 'hitByPitch':
-			return handleWalkOrHBP(currentState, outcome, batterId, advancement);
+			result = handleWalkOrHBP(currentState, outcome, batterId, advancement);
+			break;
 
 		// Strikeout
 		case 'strikeout':
-			return handleStrikeout(currentState, batterId, advancement);
+			result = handleStrikeout(currentState, batterId, advancement);
+			break;
 
 		// Ball-in-play outs
 		case 'groundOut':
-			return handleGroundOut(currentState, batterId, advancement);
+			result = handleGroundOut(currentState, batterId, advancement);
+			break;
 		case 'flyOut':
-			return handleFlyOut(currentState, batterId, advancement);
+			result = handleFlyOut(currentState, batterId, advancement);
+			break;
 		case 'lineOut':
-			return handleLineOut(currentState, batterId, advancement);
+			result = handleLineOut(currentState, batterId, advancement);
+			break;
 		case 'popOut':
-			return handlePopOut(currentState, batterId, advancement);
+			result = handlePopOut(currentState, batterId, advancement);
+			break;
 
 		// Sacrifices
 		case 'sacrificeFly':
-			return handleSacrificeFly(currentState, batterId, advancement);
+			result = handleSacrificeFly(currentState, batterId, advancement);
+			break;
 		case 'sacrificeBunt':
-			return handleSacrificeBunt(currentState, batterId, advancement);
+			result = handleSacrificeBunt(currentState, batterId, advancement);
+			break;
 
 		// Other reach-base outcomes
 		case 'fieldersChoice': {
 			const fcResult = handleFieldersChoice(currentState, batterId, advancement);
-			return {
+			result = {
 				...fcResult,
 				outRunnerId: fcResult.outRunnerId,
 			};
+			break;
 		}
 		case 'reachedOnError':
-			return handleReachedOnError(currentState, batterId, advancement);
+			result = handleReachedOnError(currentState, batterId, advancement);
+			break;
 		case 'catcherInterference':
-			return handleCatcherInterference(currentState, batterId, advancement);
+			result = handleCatcherInterference(currentState, batterId, advancement);
+			break;
 
 		default:
 			// Fallback for any unknown outcomes
 			const _exhaustive: never = outcome;
-			return {
-				nextState,
+			result = {
+				nextState: currentState,
 				runsScored: 0,
 				scorerIds: [],
 				advancement,
 			};
 	}
+
+	// Handle inning end: 3 outs resets to 0 and clears bases
+	// Runs scored on the 3rd out don't count
+	if (result.nextState.outs === 3) {
+		result.nextState = {
+			outs: 0,
+			bases: 0,
+			runners: { first: null, second: null, third: null },
+		};
+		// Clear runs scored - runs can't score on the 3rd out
+		result.runsScored = 0;
+		result.scorerIds = [];
+	}
+
+	return result;
 }
 
 /**

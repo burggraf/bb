@@ -207,10 +207,11 @@ export function shouldPullPitcher(
 		// === STARTER LOGIC: Era-specific complete game considerations ===
 		typicalBfp = avgBfp ?? options?.seasonStarterBFP ?? 27;
 
-		// Pull thresholds are now absolute BFP values (not fractions of typicalBfp)
-		const hardLimit = pullThresholds.hardLimit;
-		const considerThreshold = pullThresholds.consider;
-		const likelyThreshold = pullThresholds.likely;
+		// Pull thresholds from era config are fractions of typicalBfp
+		// Convert to absolute BFP values
+		const hardLimit = pullThresholds.hardLimit * typicalBfp;
+		const considerThreshold = pullThresholds.consider * typicalBfp;
+		const likelyThreshold = pullThresholds.likely * typicalBfp;
 
 		// Workhorses get extended hard limit
 		const workhorseBonus = pitcher.isWorkhorse ? 1.2 : 1.0;
