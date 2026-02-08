@@ -101,23 +101,43 @@
 	async function resume() {
 		if (!engine || status === 'playing') return;
 
+		console.log('[ReplayControls] Starting replay...');
+
 		// Start or resume based on current status
 		if (status === 'idle') {
+			console.log('[ReplayControls] Calling engine.start()');
 			await engine.start();
 		} else {
+			console.log('[ReplayControls] Calling engine.resume()');
 			await engine.resume();
 		}
 		status = engine.getStatus();
+		console.log('[ReplayControls] Status after start/resume:', status);
 
 		// Set flag to continue playing
 		shouldContinuePlaying = true;
 
 		// Auto-play games with breaks for browser updates
+		// Add a safety counter to prevent infinite loops
+		let iterations = 0;
+		const maxIterations = 100; // Safety limit
+
 		while (shouldContinuePlaying && engine.getStatus() === 'playing') {
+			if (iterations >= maxIterations) {
+				console.error('[ReplayControls] Safety limit reached, stopping replay');
+				shouldContinuePlaying = false;
+				break;
+			}
+
+			console.log(`[ReplayControls] Playing game ${iterations + 1}...`);
 			await playNextGame();
+			iterations++;
+
 			// Small delay to allow browser to update UI
 			await new Promise(resolve => setTimeout(resolve, 10));
 		}
+
+		console.log('[ReplayControls] Replay loop finished. Total games played:', iterations);
 	}
 
 	async function pause() {
@@ -134,16 +154,22 @@
 		error = null;
 
 		try {
+			console.log('[ReplayControls] Calling engine.playNextGame()...');
 			const result = await engine.playNextGame();
+			console.log('[ReplayControls] Game result:', result);
 			progress = engine.getProgress();
 			status = engine.getStatus();
 
 			// Trigger standings update
 			if (result) {
+				console.log('[ReplayControls] Updating standings...');
 				await onStandingsUpdate();
 			}
 		} catch (e) {
+			console.error('[ReplayControls] Error in playNextGame:', e);
 			error = e instanceof Error ? e.message : 'Failed to play game';
+			// Stop the loop on error
+			shouldContinuePlaying = false;
 		} finally {
 			loading = false;
 		}
