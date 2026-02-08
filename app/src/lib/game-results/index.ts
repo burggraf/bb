@@ -73,6 +73,22 @@ export type { Outcome } from '../game/types.js';
 export { UsageTracker } from './usage-tracker.js';
 
 // ====================================================================
+// Usage Reporting
+// ====================================================================
+export {
+  getUsageSummary,
+  getPlayerUsageRows,
+  getTeamUsageBreakdown
+} from './usage-reporter.js';
+export type {
+  UsageSummary,
+  UsageViolationSummary,
+  PlayerUsageRow,
+  PlayerUsageOptions,
+  TeamUsageBreakdown
+} from './usage-reporter.js';
+
+// ====================================================================
 // Series Management
 // ====================================================================
 export {
