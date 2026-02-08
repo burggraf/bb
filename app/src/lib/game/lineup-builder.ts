@@ -410,19 +410,25 @@ function buildLineupImpl(
 			}
 		}
 
-		// If we don't have enough available players, we'll need to use some overused ones
-		// But we should prefer the least overused players
+		// CRITICAL: Always ensure we can build a lineup. Game simulation takes
+		// priority over usage tracking. If we don't have enough available players,
+		// use ALL overused players to ensure we can field a team.
 		if (availablePlayers.length < 8) {
-			const shortage = 8 - availablePlayers.length;
 			// Sort overused players by usage (ascending) - use the least overused first
 			const sortedOverused = overusedPlayers
 				.map(p => ({ player: p, usage: usageContext.playerUsage.get(p.id) ?? 2 }))
 				.sort((a, b) => a.usage - b.usage);
 
-			// Add the least overused players to fill the roster
-			for (let i = 0; i < Math.min(shortage, sortedOverused.length); i++) {
-				availablePlayers.push(sortedOverused[i].player);
-				warnings.push(`WARNING: Using overused player ${sortedOverused[i].player.name} (${(sortedOverused[i].usage * 100).toFixed(0)}% of actual) due to roster shortage`);
+			// Add ALL overused players - we must be able to build a lineup
+			for (const overused of sortedOverused) {
+				availablePlayers.push(overused.player);
+				warnings.push(`WARNING: Using overused player ${overused.player.name} (${(overused.usage * 100).toFixed(0)}% of actual) - game simulation takes priority over usage limits`);
+			}
+
+			// After adding all overused players, if we still don't have enough,
+			// that's a real roster data problem (not a usage tracking issue)
+			if (availablePlayers.length < 8) {
+				throw new Error(`Team ${teamId} has only ${availablePlayers.length} position players available (including overused). Cannot build lineup - incomplete roster data.`);
 			}
 		}
 
