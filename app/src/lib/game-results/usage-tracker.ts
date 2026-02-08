@@ -106,46 +106,106 @@ export class UsageTracker {
   /**
    * Update usage stats after a game
    *
-   * Increments replay totals and games played, recalculates percentage,
-   * and updates status based on threshold violations.
+   * Increments replay totals and games played, recalculates percentage
+   * based on prorated targets (using team games played), and updates status
+   * based on threshold violations.
    *
    * @param gameStats - Usage stats from the game (PA per batter, outs per pitcher)
    */
   async updateGameUsage(gameStats: GameUsageStats): Promise<void> {
     const db = await getGameDatabase();
 
+    // Get all player IDs that need updates
+    const allPlayerIds = [
+      ...Array.from(gameStats.batterPa.keys()),
+      ...Array.from(gameStats.pitcherIp.keys())
+    ];
+
+    if (allPlayerIds.length === 0) {
+      return; // Nothing to update
+    }
+
+    // Build a map of team_id -> games played by querying the games table
+    const teamGamesStmt = db.prepare(`
+      SELECT
+        st.team_id,
+        COUNT(*) as games_played
+      FROM series_teams st
+      JOIN games g ON g.series_id = st.series_id
+        AND ((g.away_team_id = st.team_id AND g.away_season_year = st.season_year)
+             OR (g.home_team_id = st.team_id AND g.home_season_year = st.season_year))
+      WHERE st.series_id = ?
+      GROUP BY st.team_id
+    `);
+    teamGamesStmt.bind([this.seriesId]);
+
+    const teamGamesMap = new Map<string, number>();
+    while (teamGamesStmt.step()) {
+      const row = teamGamesStmt.getAsObject() as Record<string, any>;
+      teamGamesMap.set(row.team_id, row.games_played);
+    }
+    teamGamesStmt.free();
+
+    // Build a map of player_id -> team_id for all affected players in one query
+    const playerTeamMap = new Map<string, string>();
+    const placeholders = allPlayerIds.map(() => '?').join(',');
+    const playerTeamsStmt = db.prepare(`
+      SELECT player_id, team_id
+      FROM player_usage
+      WHERE series_id = ? AND player_id IN (${placeholders})
+    `);
+    playerTeamsStmt.bind([this.seriesId, ...allPlayerIds]);
+
+    while (playerTeamsStmt.step()) {
+      const row = playerTeamsStmt.getAsObject() as Record<string, any>;
+      playerTeamMap.set(row.player_id, row.team_id);
+    }
+    playerTeamsStmt.free();
+
+    // Helper to get team games played for a player
+    const getTeamGamesPlayed = (playerId: string): number => {
+      const teamId = playerTeamMap.get(playerId);
+      return teamId ? (teamGamesMap.get(teamId) || 0) : 0;
+    };
+
     const updateBatter = db.prepare(`
       UPDATE player_usage
       SET replay_current_total = replay_current_total + ?,
           replay_games_played = replay_games_played + 1,
-          percentage_of_actual = CAST(replay_current_total + ? AS REAL) / actual_season_total,
+          percentage_of_actual =
+            CAST(replay_current_total + ? AS REAL) /
+            NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / actual_season_total < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / actual_season_total > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
     `);
 
     for (const [playerId, pa] of gameStats.batterPa) {
-      updateBatter.run([pa, pa, pa, pa, this.seriesId, playerId]);
+      const teamGamesPlayed = getTeamGamesPlayed(playerId);
+      updateBatter.run([pa, pa, teamGamesPlayed, pa, teamGamesPlayed, pa, teamGamesPlayed, this.seriesId, playerId]);
     }
 
     const updatePitcher = db.prepare(`
       UPDATE player_usage
       SET replay_current_total = replay_current_total + ?,
           replay_games_played = replay_games_played + 1,
-          percentage_of_actual = CAST(replay_current_total + ? AS REAL) / actual_season_total,
+          percentage_of_actual =
+            CAST(replay_current_total + ? AS REAL) /
+            NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / actual_season_total < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / actual_season_total > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
     `);
 
     for (const [playerId, ip] of gameStats.pitcherIp) {
-      updatePitcher.run([ip, ip, ip, ip, this.seriesId, playerId]);
+      const teamGamesPlayed = getTeamGamesPlayed(playerId);
+      updatePitcher.run([ip, ip, teamGamesPlayed, ip, teamGamesPlayed, ip, teamGamesPlayed, this.seriesId, playerId]);
     }
 
     updateBatter.free();

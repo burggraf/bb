@@ -243,13 +243,16 @@ describe('UsageTracker', () => {
       expect(mockUpdateCalls.length).toBe(2);
     });
 
-    it('should calculate percentage of actual correctly', async () => {
+    it('should calculate percentage of actual correctly with proration', async () => {
       const { UsageTracker } = await import('./usage-tracker.js');
 
       const mockDb = {
         prepare: vi.fn(() => ({
           run: vi.fn(),
-          free: vi.fn()
+          free: vi.fn(),
+          bind: vi.fn(),
+          step: vi.fn(() => false),
+          getAsObject: vi.fn()
         }))
       } as unknown as Database;
 
@@ -267,10 +270,10 @@ describe('UsageTracker', () => {
       await tracker.updateGameUsage(gameStats);
 
       const prepare = mockDb.prepare as any;
-      const updateSql = prepare.mock.calls[0][0];
+      const updateSql = prepare.mock.calls[1][0];  // Index 1 is the team games query, 0 is the batter update
 
-      // Check that SQL calculates percentage correctly
-      expect(updateSql).toContain('CAST(replay_current_total + ? AS REAL) / actual_season_total');
+      // Check that SQL calculates percentage with proration based on team games played
+      expect(updateSql).toContain('actual_season_total * CAST(? AS REAL) / games_played_actual');
     });
 
     it('should update status based on thresholds', async () => {
