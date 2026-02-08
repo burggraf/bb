@@ -133,7 +133,8 @@ export class UsageTracker {
    * based on threshold violations.
    *
    * Expected = actual * (teamGamesReplay / seasonLength)
-   * This ensures that when the team has played a full season, expected = actual
+   * At 50% of season (81/162 games), expected = 50% of actual
+   * When team has played full season, expected = actual
    *
    * @param gameStats - Usage stats from the game (PA per batter, outs per pitcher)
    */
@@ -194,26 +195,27 @@ export class UsageTracker {
       return teamId ? (teamGamesMap.get(teamId) || 0) : 0;
     };
 
-    // For batters, expected = actual * (replay_games_played + 1) / games_played_actual
-    // This accounts for how many games the player has actually played in the replay
-    // The percentage tracks whether the player is on pace to reach their actual totals
+    // For batters, expected = actual * (teamGamesReplay / seasonLength)
+    // This tracks whether players are on pace based on team's progress through the season
+    // When team has played 50% of season, expected = 50% of actual
     const updateBatter = db.prepare(`
       UPDATE player_usage
       SET replay_current_total = replay_current_total + ?,
           replay_games_played = replay_games_played + 1,
           percentage_of_actual =
             CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0),
+            NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
     `);
 
     for (const [playerId, pa] of gameStats.batterPa) {
-      updateBatter.run([pa, pa, pa, pa, this.seriesId, playerId]);
+      const teamGamesPlayed = getTeamGamesPlayed(playerId);
+      updateBatter.run([pa, pa, teamGamesPlayed, seasonLength, pa, teamGamesPlayed, seasonLength, pa, teamGamesPlayed, seasonLength, this.seriesId, playerId]);
     }
 
     const updatePitcher = db.prepare(`
@@ -222,17 +224,18 @@ export class UsageTracker {
           replay_games_played = replay_games_played + 1,
           percentage_of_actual =
             CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0),
+            NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(replay_games_played + 1 AS REAL) / games_played_actual, 0) > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
     `);
 
     for (const [playerId, ip] of gameStats.pitcherIp) {
-      updatePitcher.run([ip, ip, ip, ip, this.seriesId, playerId]);
+      const teamGamesPlayed = getTeamGamesPlayed(playerId);
+      updatePitcher.run([ip, ip, teamGamesPlayed, seasonLength, ip, teamGamesPlayed, seasonLength, ip, teamGamesPlayed, seasonLength, this.seriesId, playerId]);
     }
 
     updateBatter.free();
