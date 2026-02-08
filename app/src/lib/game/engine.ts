@@ -1293,6 +1293,8 @@ export class GameEngine {
 							playerId: benchPlayer.id,
 							position: 1
 						};
+						// Track this bench player as assigned so they won't be selected for another vacated slot
+						assignedBenchPlayerIds.add(benchPlayer.id);
 
 						const battingOrder = vacatedSlot.index + 1;
 						maybeAddPlay({
@@ -1335,6 +1337,8 @@ export class GameEngine {
 							playerId: benchPlayer.id,
 							position: vacatedSlot.position
 						};
+						// Track this bench player as assigned so they won't be selected for another vacated slot
+						assignedBenchPlayerIds.add(benchPlayer.id);
 
 						const battingOrder = vacatedSlot.index + 1;
 						const positionName = POSITION_NAMES[vacatedSlot.position] ?? `Pos${vacatedSlot.position}`;
