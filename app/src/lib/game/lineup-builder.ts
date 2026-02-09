@@ -425,13 +425,54 @@ function getPositionScarcityOrder(
 }
 
 /**
- * Assign fielding positions using innings-weighted random selection
+ * Try to assign players to remaining positions using backtracking
+ * Returns true if successful, false otherwise
+ */
+function tryAssignRemaining(
+	positionIndex: number,
+	positions: number[],
+	pools: Map<number, Array<WeightedPlayer>>,
+	assigned: Map<string, number>,
+	assignedPlayers: Set<string>
+): boolean {
+	// Base case: all positions filled
+	if (positionIndex >= positions.length) {
+		return true;
+	}
+
+	const position = positions[positionIndex];
+	const pool = pools.get(position) || [];
+
+	// Filter out already-assigned players
+	const availablePool = pool.filter(wp => !assignedPlayers.has(wp.player.id));
+
+	// Try each available player
+	for (const wp of availablePool) {
+		// Assign this player
+		assigned.set(wp.player.id, position);
+		assignedPlayers.add(wp.player.id);
+
+		// Recurse to next position
+		if (tryAssignRemaining(positionIndex + 1, positions, pools, assigned, assignedPlayers)) {
+			return true;
+		}
+
+		// Backtrack: remove assignment
+		assigned.delete(wp.player.id);
+		assignedPlayers.delete(wp.player.id);
+	}
+
+	// No valid assignment found
+	return false;
+}
+
+/**
+ * Assign fielding positions using innings-weighted random selection with backtracking
  *
  * NEW APPROACH:
  * 1. Build position pools with innings-based weights
- * 2. Fill positions by scarcity (fewest eligible players first)
+ * 2. Use backtracking to ensure all 8 positions can be filled
  * 3. For each position, randomly select from pool based on innings weight
- * 4. Remove selected player from all remaining pools (can't play two positions at once)
  *
  * This naturally distributes playing time based on actual season usage patterns.
  * A player with 50% of innings at 1B gets selected ~50% of the time for 1B.
@@ -442,68 +483,117 @@ function assignPositions(
 ): Map<string, number> {
 	console.log(`[assignPositions] Assigning positions for ${players.length} players using innings-weighted selection`);
 
+	// Quick check: if we have fewer than 8 players, we can't fill all positions
+	if (players.length < 8) {
+		console.error(`[assignPositions] FAIL: Only ${players.length} players available, need at least 8`);
+		throw new Error(`Only ${players.length} players available for position assignment, need at least 8. Check roster data or resting logic.`);
+	}
+
 	// Build position pools
 	const pools = buildPositionPools(players);
 
 	// Get positions ordered by scarcity (fewest players first)
 	const scarcityOrder = getPositionScarcityOrder(pools);
 
+	// Try to assign using backtracking (shuffle for randomness)
+	const maxAttempts = 10;
+	let bestAssignment: Map<string, number> | null = null;
+
+	for (let attempt = 0; attempt < maxAttempts; attempt++) {
+		const assigned = new Map<string, number>();
+		const assignedPlayers = new Set<string>();
+
+		// Shuffle the positions slightly for randomness (but keep scarcity order)
+		const positions = [...scarcityOrder];
+		if (attempt > 0) {
+			// Small random swap to introduce variety
+			const idx1 = Math.floor(Math.random() * Math.min(4, positions.length));
+			const idx2 = Math.floor(Math.random() * positions.length);
+			[positions[idx1], positions[idx2]] = [positions[idx2], positions[idx1]];
+		}
+
+		if (tryAssignRemaining(0, positions, pools, assigned, assignedPlayers)) {
+			// Success! Use this assignment
+			console.log(`[assignPositions] SUCCESS: Assigned all 8 positions (attempt ${attempt + 1})`);
+
+			// Log the assignment
+			for (const [playerId, position] of assigned) {
+				const player = players.find(p => p.id === playerId);
+				if (player) {
+					console.log(`[assignPositions] ${getPositionName(position)}: ${player.name}`);
+				}
+			}
+
+			return assigned;
+		}
+
+		// Keep track of best partial assignment
+		if (assigned.size > (bestAssignment?.size || 0)) {
+			bestAssignment = assigned;
+		}
+	}
+
+	// If backtracking failed, try a simpler fallback approach
+	console.warn(`[assignPositions] Backtracking failed after ${maxAttempts} attempts, trying fallback...`);
+
+	// Fallback: Use a simpler greedy approach
 	const assigned = new Map<string, number>();
 	const assignedPlayers = new Set<string>();
 
-	// Fill positions in scarcity order
-	for (const position of scarcityOrder) {
-		const pool = pools.get(position) || [];
-		const positionName = getPositionName(position);
+	// First, assign players to their primary positions
+	for (const position of POSITION_PRIORITY) {
+		const primaryPlayers = players.filter(p =>
+			p.primaryPosition === position && !assignedPlayers.has(p.id)
+		);
 
-		if (pool.length === 0) {
-			console.log(`[assignPositions] ${positionName}: NO ELIGIBLE PLAYERS`);
+		if (primaryPlayers.length > 0) {
+			// Sort by PA (prefer higher-quality players)
+			primaryPlayers.sort((a, b) => b.pa - a.pa);
+			const selected = primaryPlayers[0];
+			assigned.set(selected.id, position);
+			assignedPlayers.add(selected.id);
+			console.log(`[assignPositions] Fallback: ${getPositionName(position)}: ${selected.name} (primary)`);
 			continue;
 		}
 
-		// Filter out already-assigned players from the pool
-		const availablePool = pool.filter(wp => !assignedPlayers.has(wp.player.id));
+		// No primary player, look for secondary eligibility
+		const secondaryPlayers: Array<{ player: BatterStats; innings: number }> = [];
+		for (const player of players) {
+			if (assignedPlayers.has(player.id)) continue;
 
-		if (availablePool.length === 0) {
-			console.log(`[assignPositions] ${positionName}: All eligible players already assigned`);
-			continue;
-		}
-
-		// Recalculate weights for available players only
-		const totalWeight = availablePool.reduce((sum, wp) => sum + wp.weight, 0);
-
-		// Select player based on weight
-		let selectedPlayer: WeightedPlayer | null = null;
-		let cumulativeWeight = 0;
-		const random = Math.random() * totalWeight;
-
-		for (const wp of availablePool) {
-			cumulativeWeight += wp.weight;
-			if (random <= cumulativeWeight) {
-				selectedPlayer = wp;
-				break;
+			const inningsAtPosition = (player.positionEligibility[position] || 0) / 3;
+			if (inningsAtPosition > 0) {
+				secondaryPlayers.push({ player, innings: inningsAtPosition });
 			}
 		}
 
-		// Fallback: select first available if selection failed (shouldn't happen)
-		if (!selectedPlayer) {
-			selectedPlayer = availablePool[0];
+		if (secondaryPlayers.length > 0) {
+			// Sort by innings (most experienced first)
+			secondaryPlayers.sort((a, b) => b.innings - a.innings);
+			const selected = secondaryPlayers[0];
+			assigned.set(selected.player.id, position);
+			assignedPlayers.add(selected.player.id);
+			console.log(`[assignPositions] Fallback: ${getPositionName(position)}: ${selected.player.name} (secondary, ${selected.innings.toFixed(0)} innings)`);
+			continue;
 		}
 
-		// Assign the player to this position
-		assigned.set(selectedPlayer.player.id, position);
-		assignedPlayers.add(selectedPlayer.player.id);
-
-		console.log(`[assignPositions] ${positionName}: ${selectedPlayer.player.name} (${(selectedPlayer.weight * 100).toFixed(1)}% weight, ${selectedPlayer.innings.toFixed(0)} innings)`);
+		// Last resort: any remaining player (even without eligibility)
+		const remainingPlayer = players.find(p => !assignedPlayers.has(p.id));
+		if (remainingPlayer) {
+			assigned.set(remainingPlayer.id, position);
+			assignedPlayers.add(remainingPlayer.id);
+			console.log(`[assignPositions] Fallback: ${getPositionName(position)}: ${remainingPlayer.name} (EMERGENCY - no eligibility)`);
+		}
 	}
 
 	// Validate we filled all 8 positions
 	if (assigned.size < 8) {
-		console.error(`[assignPositions] FAIL: Only assigned ${assigned.size}/8 positions`);
+		console.error(`[assignPositions] FAIL: Even fallback only assigned ${assigned.size}/8 positions`);
+		console.error(`[assignPositions] Player count: ${players.length}`);
 		throw new Error(`Only able to assign ${assigned.size} positions, need 8. Team may have incomplete roster data or missing position eligibility data.`);
 	}
 
-	console.log(`[assignPositions] SUCCESS: Assigned all 8 positions`);
+	console.log(`[assignPositions] SUCCESS: Fallback assigned all 8 positions`);
 	return assigned;
 }
 
