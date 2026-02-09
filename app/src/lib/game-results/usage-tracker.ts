@@ -458,9 +458,15 @@ export class UsageTracker {
       const percentage = actualTotal > 0 ? replayTotal / actualTotal : 0;
 
       usageMap.set(row.player_id, percentage);
+
+      // Debug: log overused players (>125%)
+      if (percentage > 1.25) {
+        console.log(`[getTeamUsageForContext] ${teamId}: player ${row.player_id.slice(0, 12)}... has ${(percentage * 100).toFixed(0)}% usage (replay=${replayTotal}, actual=${actualTotal})`);
+      }
     }
     stmt.free();
 
+    console.log(`[getTeamUsageForContext] ${teamId}: returning ${usageMap.size} players`);
     return usageMap;
   }
 

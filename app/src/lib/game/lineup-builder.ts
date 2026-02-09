@@ -208,8 +208,16 @@ function selectPlayersToRest(
 	const restedPlayers = new Set<string>();
 
 	if (!usageContext) {
+		console.log('[selectPlayersToRest] No usageContext provided, skipping resting logic');
 		return restedPlayers; // No usage context, no resting
 	}
+
+	console.log(`[selectPlayersToRest] Threshold: ${(restThreshold * 100).toFixed(0)}%, playerUsage map size: ${usageContext.playerUsage.size}`);
+
+	// Debug: log all players' usage to understand what's happening
+	console.log('[selectPlayersToRest] All position players usage:', positionPlayers.map(
+		p => `${p.name} (${p.id.slice(0, 12)}...): usage=${((usageContext.playerUsage.get(p.id) ?? 0) * 100).toFixed(0)}%`
+	));
 
 	// Find all players over the threshold and order by usage % (highest first)
 	const overusedPlayers = positionPlayers
@@ -218,6 +226,7 @@ function selectPlayersToRest(
 		.sort((a, b) => b.usage - a.usage); // Highest usage first
 
 	if (overusedPlayers.length === 0) {
+		console.log(`[selectPlayersToRest] No players over threshold (${(restThreshold * 100).toFixed(0)}%)`);
 		return restedPlayers;
 	}
 
