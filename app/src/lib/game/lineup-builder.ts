@@ -761,23 +761,35 @@ function buildLineupImpl(
 	// If in transition era, generate secondary lineup and blend
 	if (era.secondary && era.blendFactor < 1) {
 		const secondaryBattingOrder = buildEraAwareBattingOrder(assignedPlayers, era.secondary, dhGame);
-		// Blend based on blendFactor
-		const blended: Array<{ player: BatterStats; battingOrder: number; position: number }> = [];
 
-		for (let i = 0; i < 9; i++) {
-			const primarySlot = battingOrder[i];
-			const secondarySlot = secondaryBattingOrder[i];
-			if (!primarySlot || !secondarySlot) continue;
+		// Convert to model package LineupSlot format for blending
+		const primarySlots: import('@bb/model').LineupSlot[] = battingOrder.map((slot, i) => ({
+			playerId: slot.player.id,
+			battingOrder: i + 1,
+			fieldingPosition: slot.position
+		}));
+		const secondarySlots: import('@bb/model').LineupSlot[] = secondaryBattingOrder.map((slot, i) => ({
+			playerId: slot.player.id,
+			battingOrder: i + 1,
+			fieldingPosition: slot.position
+		}));
 
-			// Use primary strategy with probability = blendFactor
-			if (Math.random() < era.blendFactor) {
-				blended.push(primarySlot);
-			} else {
-				blended.push(secondarySlot);
+		// Use imported blendLineups function from model package
+		const blendedSlots = blendLineups(primarySlots, secondarySlots, era.blendFactor);
+
+		// Convert back to app's batting order format
+		battingOrder = blendedSlots.map((slot) => {
+			const player = assignedPlayers.find(ap => ap.player.id === slot.playerId);
+			if (!player) {
+				throw new Error(`Player ${slot.playerId} not found in assigned players after blending`);
 			}
-		}
+			return {
+				player: player.player,
+				battingOrder: slot.battingOrder,
+				position: slot.fieldingPosition
+			};
+		});
 
-		battingOrder = blended;
 		console.log('[buildLineup] Blended strategies:', {
 			primary: era.primary,
 			secondary: era.secondary,
