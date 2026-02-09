@@ -2029,7 +2029,7 @@ export class GameEngine {
 
 		// Filter bullpen to exclude removed pitchers (they cannot re-enter the game)
 		// and overused pitchers (exceeding their usage threshold)
-		const restThreshold = this.managerialOptions.restThreshold ?? 1.25;
+		const restThreshold = this.managerialOptions.restThreshold ?? 0.90; // Use 90% as fallback
 		const pitcherUsage = this.managerialOptions.pitcherUsage;
 
 		// Helper to check if a pitcher is available (not removed and not overused)

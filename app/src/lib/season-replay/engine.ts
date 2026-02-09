@@ -163,7 +163,8 @@ export class SeasonReplayEngine {
 
   /**
    * Select the next starting pitcher for a team based on rotation
-   * Skips overused pitchers (>125% usage) and advances rotation index
+   * Skips overused pitchers and advances rotation index
+   * Uses the configured restThreshold instead of hardcoded 125%
    */
   private async selectNextStarter(teamId: string, allPitchers: Record<string, any>): Promise<string> {
     // Initialize rotation if not already done
@@ -181,6 +182,10 @@ export class SeasonReplayEngine {
       ? await this.usageTracker.getTeamUsageForContext(teamId)
       : new Map<string, number>();
 
+    // Use the configured restThreshold (from managerialOptions, default 1.0)
+    // This was set to 1.0 (100%) in the season replay engine for tighter control
+    const restThreshold = this.managerialOptions?.restThreshold ?? 1.0;
+
     // Find the next available starter in rotation
     // Start from current index and loop until we find someone not overused
     let attempts = 0;
@@ -191,13 +196,15 @@ export class SeasonReplayEngine {
       const pitcherId = rotation.starterRotation[rotation.rotationIndex];
       const usage = teamUsage.get(pitcherId) ?? 0;
 
-      // Skip if overused (>125% of actual), unless we've tried everyone
-      if (usage <= 1.25 || attempts === maxAttempts - 1) {
+      // Skip if overused (exceeds restThreshold), unless we've tried everyone
+      if (usage <= restThreshold || attempts === maxAttempts - 1) {
         selectedPitcherId = pitcherId;
         break;
       }
 
-      console.log(`[SeasonReplay] Skipping overused starter ${pitcherId} (${(usage * 100).toFixed(0)}% of actual)`);
+      if (usage > restThreshold) {
+        console.log(`[SeasonReplay] Skipping overused starter ${pitcherId} (${(usage * 100).toFixed(0)}% of actual, threshold: ${(restThreshold * 100).toFixed(0)}%)`);
+      }
       rotation.rotationIndex = (rotation.rotationIndex + 1) % rotation.starterRotation.length;
       attempts++;
     }
@@ -414,7 +421,7 @@ export class SeasonReplayEngine {
         enabled: true,
         randomness: 0.1,
         pitcherUsage: allPlayerUsage, // Using combined map for all players
-        restThreshold: 1.00 // Stricter threshold for pitchers (100% instead of 125%) to prevent overuse
+        restThreshold: 0.90 // Stricter threshold for pitchers (90% instead of 100%) to prevent overuse
       };
       this.gameEngine = GameEngine.create(
         season,
