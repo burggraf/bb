@@ -211,6 +211,26 @@ function assignPositions(
 		return 4;
 	}
 
+	// Helper to calculate "need score" - how badly does this player need to play?
+	// Higher score = more need to play. Balances being underused with being a quality player.
+	function getNeedScore(playerId: string): number {
+		const usage = usageContext?.playerUsage.get(playerId) ?? 0;
+		const player = playerPool.get(playerId);
+		if (!player) return 0;
+
+		// Base need: (1 - usage) * 100
+		// At 0% usage: need = 100
+		// At 50% usage: need = 50
+		// At 100% usage: need = 0
+		let need = (1 - usage) * 100;
+
+		// Quality boost: players with higher actual PA were better players, give them a boost
+		// But cap the boost so we don't always pick stars
+		const qualityBoost = Math.min(20, Math.log(player.pa + 1) * 2);
+
+		return need + qualityBoost;
+	}
+
 	// Fill positions in priority order
 	for (const position of POSITION_PRIORITY) {
 		// First priority: Find someone whose PRIMARY position is this position
@@ -228,22 +248,17 @@ function assignPositions(
 				})
 				: primaryCandidates;
 
-			// Sort by usage bucket (ascending), then by usage within bucket, then by PA for tiebreaker
+			// Sort by need score (higher need = should play), with usage bucket as tiebreaker
 			availableCandidates.sort((a, b) => {
 				const bucketA = getUsageBucket(a.id);
 				const bucketB = getUsageBucket(b.id);
 				if (bucketA !== bucketB) {
-					return bucketA - bucketB; // Lower bucket first
+					return bucketA - bucketB; // Lower bucket first (underused > overused)
 				}
-				// Within same bucket, prefer lower usage
-				const usageA = usageContext?.playerUsage.get(a.id) ?? 0;
-				const usageB = usageContext?.playerUsage.get(b.id) ?? 0;
-				if (bucketA < 2 && Math.abs(usageA - usageB) > 0.05) {
-					// For underused/in-range players, usage difference matters
-					return usageA - usageB;
-				}
-				// Tiebreaker: higher actual PA means they were the primary starter
-				return b.pa - a.pa;
+				// Within same bucket, prefer higher need score
+				const needA = getNeedScore(a.id);
+				const needB = getNeedScore(b.id);
+				return needB - needA; // Higher need first
 			});
 
 			primaryPlayer = availableCandidates[0];
@@ -294,25 +309,21 @@ function assignPositions(
 				})
 				: secondaryPlayers;
 
-			// Sort by usage bucket, then by experience at this position, then by OBP
+			// Sort by need score (higher need = should play), then by experience at this position
 			availableCandidates.sort((a, b) => {
 				const bucketA = getUsageBucket(a.player.id);
 				const bucketB = getUsageBucket(b.player.id);
 				if (bucketA !== bucketB) {
 					return bucketA - bucketB;
 				}
-				// Within same bucket, prefer lower usage
-				const usageA = usageContext?.playerUsage.get(a.player.id) ?? 0;
-				const usageB = usageContext?.playerUsage.get(b.player.id) ?? 0;
-				if (bucketA < 2 && Math.abs(usageA - usageB) > 0.05) {
-					return usageA - usageB;
+				// Within same bucket, prefer higher need score
+				const needA = getNeedScore(a.player.id);
+				const needB = getNeedScore(b.player.id);
+				if (Math.abs(needA - needB) > 1) {
+					return needB - needA;
 				}
 				// Second preference: more experienced at this position
-				if (a.outs !== b.outs) {
-					return b.outs - a.outs;
-				}
-				// Tiebreaker: higher OBP
-				return b.score - a.score;
+				return b.outs - a.outs;
 			});
 
 			let best = availableCandidates[0];
