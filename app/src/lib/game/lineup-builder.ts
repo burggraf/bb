@@ -227,17 +227,21 @@ function selectPlayersToRest(
 
 	// Helper to check if a valid lineup can be formed with remaining players
 	// This simulates the actual position assignment logic to ensure we can fill all 8 positions
+	// Uses the SAME position order as assignPositions() to ensure consistency
 	function canFormValidLineup(availablePlayers: BatterStats[]): boolean {
 		// Need at least 8 unique position players for non-DH
-		if (availablePlayers.length < 8) return false;
+		if (availablePlayers.length < 8) {
+			console.log(`[canFormValidLineup] FAIL: Only ${availablePlayers.length} players available, need 8`);
+			return false;
+		}
 
-		// Simulate position assignment to verify we can fill all positions
+		// Use the SAME position priority order as assignPositions()
 		const usedPlayers = new Set<string>();
-		const requiredPositions = [POSITIONS.CATCHER, POSITIONS.FIRST_BASE, POSITIONS.SECOND_BASE,
-			POSITIONS.THIRD_BASE, POSITIONS.SHORTSTOP, POSITIONS.LEFT_FIELD,
-			POSITIONS.CENTER_FIELD, POSITIONS.RIGHT_FIELD];
 
-		for (const position of requiredPositions) {
+		console.log(`[canFormValidLineup] Checking with ${availablePlayers.length} players:`, availablePlayers.map(p => `${p.name} (${p.primaryPosition})`));
+
+		for (const position of POSITION_PRIORITY) {
+			const positionName = getPositionName(position);
 			// Try to find an unused player whose primary position matches
 			const primaryMatch = availablePlayers.find(p =>
 				!usedPlayers.has(p.id) && p.primaryPosition === position
@@ -245,6 +249,7 @@ function selectPlayersToRest(
 
 			if (primaryMatch) {
 				usedPlayers.add(primaryMatch.id);
+				console.log(`[canFormValidLineup] ${positionName}: ${primaryMatch.name} (primary)`);
 				continue;
 			}
 
@@ -255,13 +260,16 @@ function selectPlayersToRest(
 
 			if (secondaryMatch) {
 				usedPlayers.add(secondaryMatch.id);
+				console.log(`[canFormValidLineup] ${positionName}: ${secondaryMatch.name} (secondary)`);
 				continue;
 			}
 
 			// Can't fill this position
+			console.log(`[canFormValidLineup] FAIL: Cannot fill ${positionName}`);
 			return false;
 		}
 
+		console.log(`[canFormValidLineup] SUCCESS: Can fill all 8 positions`);
 		return true;
 	}
 
@@ -306,8 +314,11 @@ function assignPositions(
 	const assigned = new Map<string, number>();
 	const usedPlayers = new Set<string>();
 
+	console.log(`[assignPositions] Assigning positions for ${players.length} players:`, players.map(p => `${p.name} (${p.primaryPosition})`));
+
 	// Fill positions in priority order
 	for (const position of POSITION_PRIORITY) {
+		const positionName = getPositionName(position);
 		// First priority: Find someone whose PRIMARY position is this position
 		let primaryCandidates = players.filter(p =>
 			!usedPlayers.has(p.id) && p.primaryPosition === position
@@ -320,6 +331,7 @@ function assignPositions(
 
 			assigned.set(primaryPlayer.id, position);
 			usedPlayers.add(primaryPlayer.id);
+			console.log(`[assignPositions] ${positionName}: ${primaryPlayer.name} (primary)`);
 			continue;
 		}
 
@@ -352,11 +364,15 @@ function assignPositions(
 			const best = secondaryPlayers[0];
 			assigned.set(best.player.id, position);
 			usedPlayers.add(best.player.id);
+			console.log(`[assignPositions] ${positionName}: ${best.player.name} (secondary)`);
+		} else {
+			console.log(`[assignPositions] ${positionName}: NO CANDIDATE AVAILABLE`);
 		}
 	}
 
 	// Validate we filled all 8 positions
 	if (assigned.size < 8) {
+		console.error(`[assignPositions] FAIL: Only assigned ${assigned.size}/8 positions`);
 		throw new Error(`Only able to assign ${assigned.size} positions, need 8. Team may have incomplete roster data or missing position eligibility data.`);
 	}
 
