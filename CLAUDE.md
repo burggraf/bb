@@ -155,6 +155,44 @@ The app uses Svelte 5 runes (`$state`, `$derived`, etc.). Key patterns:
 - 1990-2000: 2.0-4.0 pitchers per team (modern specialization)
 - 2010-2024: 3.0-4.5 pitchers per team (analytics era)
 
+### Era-Aware Lineup Selection
+
+The lineup builder generates historically accurate batting orders using strategy detection based on era:
+
+**Era Detection (`packages/model/src/managerial/lineup-strategies.ts`):**
+- Pre-1980: Traditional (archetype-based - speed/contact/power)
+- 1980-1990: Transition (traditional → composite)
+- 1990-2000: Transition (composite → early-analytics)
+- 2000-2010: Transition (early-analytics → modern)
+- Post-2010: Modern (sabermetric)
+
+**Strategy Types:**
+- `traditional`: Emphasizes speed at top, power in middle (e.g., leadoff hitter, #3 cleanup)
+- `composite`: Blend of traditional metrics (AVG, HR, RBI, SB)
+- `early-analytics`: OBP-focused with power considerations
+- `modern`: Optimizes run expectancy with wOBA-based scoring
+
+**Usage:**
+```typescript
+import { buildLineup } from '@bb/model/managerial';
+
+const result = await buildLineup(batters, pitchers, teamId, league, year);
+console.log(result.era); // { primary, secondary, blendFactor }
+console.log(result.lineup); // Array of 9 LineupSlot with playerId, battingOrder, fieldingPosition
+```
+
+**Player Classification:**
+- **Leadoff:** High OBP, speed (SB), low strikeouts
+- **#2/#3:** Best hitters, high AVG/OBP, contact skills
+- **Cleanup:** Best power (HR, SLG), run producers
+- **Middle (5-6):** Secondary power, gap hitters
+- **Bottom (7-9):** Weakest hitters, pitcher batting in NL era
+
+**Fielding Position Assignment:**
+- Based on player's primary fielding position from stats
+- Falls back to historical position preferences if missing
+- Ensures valid 9-player lineup with proper position coverage
+
 ### Common Issues
 
 - **Model package not found:** Run `pnpm install` from root to link workspace packages

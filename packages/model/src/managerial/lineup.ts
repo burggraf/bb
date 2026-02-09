@@ -1,4 +1,6 @@
 /**
+ * @deprecated Use lineup-strategies.ts instead. This file is kept for backward compatibility.
+ *
  * Lineup Engine - Generate optimal batting lineups with randomness
  */
 
