@@ -429,19 +429,25 @@ export class UsageTracker {
    * Get usage data for a team in the format needed by UsageContext
    * Returns a Map of player ID to usage percentage (0.0-1.0)
    *
-   * IMPORTANT: Returns percentage as replay PA / actual PA.
-   * This is needed by the lineup builder to correctly filter overused players.
-   * Calculation: replay / actual (direct ratio, not season-adjusted)
+   * IMPORTANT: Returns season-adjusted percentage from the database.
+   * The percentage_of_actual column is calculated as: replay / (actual * teamGames / seasonLength)
+   * This correctly identifies overuse early in the season.
+   *
+   * Example: At game 14, player with 60 PA replay / 51 PA actual:
+   * - Old calculation: 60/51 = 118% (below threshold, not rested)
+   * - New calculation: 60/(51*14/162) = 1363% (correctly identified as overused)
    *
    * @param teamId - Team ID to get usage data for
-   * @returns Map of player ID to usage percentage (1.0 = exactly actual usage)
+   * @returns Map of player ID to usage percentage (1.0 = exactly on pace, >1.0 = overused)
    */
   async getTeamUsageForContext(teamId: string): Promise<Map<string, number>> {
     const db = await getGameDatabase();
 
-    // Get player usage data
+    // Get player usage data - CRITICAL: use percentage_of_actual which is season-adjusted
+    // This percentage accounts for team progress through the season
+    // Expected = actual * (teamGames / seasonLength), then percentage = replay / Expected
     const stmt = db.prepare(`
-      SELECT player_id, actual_season_total, replay_current_total
+      SELECT player_id, actual_season_total, replay_current_total, percentage_of_actual
       FROM player_usage
       WHERE series_id = ? AND team_id = ?
     `);
@@ -452,16 +458,16 @@ export class UsageTracker {
       const row = stmt.getAsObject() as Record<string, any>;
       const actualTotal = row.actual_season_total;
       const replayTotal = row.replay_current_total;
+      const percentageOfActual = row.percentage_of_actual || 0;
 
-      // Calculate percentage as replay PA / actual PA
-      // This allows the 105% threshold to work correctly
-      const percentage = actualTotal > 0 ? replayTotal / actualTotal : 0;
-
-      usageMap.set(row.player_id, percentage);
+      // Use the pre-calculated percentage_of_actual which is season-adjusted
+      // This correctly identifies overuse early in the season
+      // Example: At game 14, 60 PA / 51 actual should show as 1363% (overused), not 118%
+      usageMap.set(row.player_id, percentageOfActual);
 
       // Debug: log overused players (>125%)
-      if (percentage > 1.25) {
-        console.log(`[getTeamUsageForContext] ${teamId}: player ${row.player_id.slice(0, 12)}... has ${(percentage * 100).toFixed(0)}% usage (replay=${replayTotal}, actual=${actualTotal})`);
+      if (percentageOfActual > 1.25) {
+        console.log(`[getTeamUsageForContext] ${teamId}: player ${row.player_id.slice(0, 12)}... has ${(percentageOfActual * 100).toFixed(0)}% usage (replay=${replayTotal}, actual=${actualTotal})`);
       }
     }
     stmt.free();
@@ -474,18 +480,17 @@ export class UsageTracker {
    * Get usage data for all teams in a series
    * Useful for season replay engine to build usage contexts
    *
-   * IMPORTANT: Returns percentage as replay PA / actual PA.
-   * This is needed by the lineup builder to correctly filter overused players.
-   * Calculation: replay / actual (direct ratio, not season-adjusted)
+   * IMPORTANT: Returns season-adjusted percentage from the database.
+   * The percentage_of_actual column accounts for team progress through the season.
    *
-   * @returns Map of team ID to player usage map (1.0 = exactly actual usage)
+   * @returns Map of team ID to player usage map (1.0 = exactly on pace, >1.0 = overused)
    */
   async getAllTeamsUsageForContext(): Promise<Map<string, Map<string, number>>> {
     const db = await getGameDatabase();
 
-    // Get all player usage data and calculate percentages
+    // Get all player usage data - CRITICAL: use percentage_of_actual which is season-adjusted
     const stmt = db.prepare(`
-      SELECT team_id, player_id, actual_season_total, replay_current_total
+      SELECT team_id, player_id, actual_season_total, replay_current_total, percentage_of_actual
       FROM player_usage
       WHERE series_id = ?
     `);
@@ -496,20 +501,14 @@ export class UsageTracker {
     while (stmt.step()) {
       const row = stmt.getAsObject() as Record<string, any>;
       const teamId = row.team_id;
-      const actualTotal = row.actual_season_total;
-      const replayTotal = row.replay_current_total;
+      const percentageOfActual = row.percentage_of_actual || 0;
 
       if (!teamUsageMap.has(teamId)) {
         teamUsageMap.set(teamId, new Map<string, number>());
       }
 
       const playerMap = teamUsageMap.get(teamId)!;
-
-      // Calculate percentage as replay PA / actual PA
-      // This allows the 105% threshold to work correctly
-      const percentage = actualTotal > 0 ? replayTotal / actualTotal : 0;
-
-      playerMap.set(row.player_id, percentage);
+      playerMap.set(row.player_id, percentageOfActual);
     }
     stmt.free();
 
