@@ -50,7 +50,10 @@ export {
 	calculateLeverageIndex,
 	reduceStamina,
 	calculateLeagueNorms,
-	classifyPitchers
+	classifyPitchers,
+	getEraStrategy,
+	isTransitionYear,
+	getPureEraStrategy
 } from './managerial/index.js';
 export {
 	shouldPinchHit,

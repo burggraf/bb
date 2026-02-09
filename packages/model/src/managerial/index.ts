@@ -74,3 +74,10 @@ export {
 	type UsageRecord,
 	type TeamInfo
 } from './roster-manager.js';
+
+// Era Detection
+export {
+	getEraStrategy,
+	isTransitionYear,
+	getPureEraStrategy
+} from './era-detection.js';
