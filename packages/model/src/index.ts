@@ -53,7 +53,9 @@ export {
 	classifyPitchers,
 	getEraStrategy,
 	isTransitionYear,
-	getPureEraStrategy
+	getPureEraStrategy,
+	getStrategyFunction,
+	blendLineups
 } from './managerial/index.js';
 export {
 	shouldPinchHit,

@@ -187,9 +187,102 @@ function calculateOBP(batter: BatterStats): number {
 }
 
 /**
+ * Select players to rest based on prorated usage threshold
+ *
+ * Logic:
+ * 1. Find all players over 105% prorated usage
+ * 2. Order them by usage % (highest first)
+ * 3. Try to rest each one, but only if a valid lineup can still be formed
+ * 4. Never rest more than 3 players
+ *
+ * @param positionPlayers - All available position players
+ * @param usageContext - Current usage tracking data
+ * @param restThreshold - Usage threshold for resting (default 1.05 = 105%)
+ * @returns Set of player IDs to rest
+ */
+function selectPlayersToRest(
+	positionPlayers: BatterStats[],
+	usageContext?: UsageContext,
+	restThreshold: number = 1.05
+): Set<string> {
+	const restedPlayers = new Set<string>();
+
+	if (!usageContext) {
+		return restedPlayers; // No usage context, no resting
+	}
+
+	// Find all players over the threshold and order by usage % (highest first)
+	const overusedPlayers = positionPlayers
+		.map(p => ({ player: p, usage: usageContext.playerUsage.get(p.id) ?? 0 }))
+		.filter(({ usage }) => usage > restThreshold)
+		.sort((a, b) => b.usage - a.usage); // Highest usage first
+
+	if (overusedPlayers.length === 0) {
+		return restedPlayers;
+	}
+
+	console.log('[selectPlayersToRest] Found overused players:', overusedPlayers.map(
+		({ player, usage }) => `${player.name}: ${(usage * 100).toFixed(0)}%`
+	));
+
+	// Helper to check if a valid lineup can be formed with remaining players
+	function canFormValidLineup(availablePlayers: BatterStats[]): boolean {
+		// Need at least 8 unique position players for non-DH, 9 for DH
+		// We'll be flexible and check for 8 minimum (worst case: non-DH game)
+		if (availablePlayers.length < 8) return false;
+
+		// Check if we can fill all required positions (8 for non-DH, 9 for DH)
+		// We need C, 1B, 2B, 3B, SS, LF, CF, RF minimum
+		const requiredPositions = [POSITIONS.CATCHER, POSITIONS.FIRST_BASE, POSITIONS.SECOND_BASE,
+			POSITIONS.THIRD_BASE, POSITIONS.SHORTSTOP, POSITIONS.LEFT_FIELD,
+			POSITIONS.CENTER_FIELD, POSITIONS.RIGHT_FIELD];
+
+		const available = new Set(availablePlayers.map(p => p.id));
+
+		for (const position of requiredPositions) {
+			// Check if any available player can play this position
+			const canPlay = availablePlayers.some(p =>
+				(p.primaryPosition === position || (p.positionEligibility[position] ?? 0) > 0)
+			);
+			if (!canPlay) return false;
+		}
+
+		return true;
+	}
+
+	// Try to rest each overused player (up to max 3 total)
+	// Continue through ALL players over 105%, resting as many as possible
+	for (const { player, usage } of overusedPlayers) {
+		// Stop if we've already rested 3 players
+		if (restedPlayers.size >= 3) {
+			console.log(`[selectPlayersToRest] Reached max of 3 rested players`);
+			break;
+		}
+
+		// Check if we can form a valid lineup without this player (and without already-rested players)
+		const availableWithoutThis = positionPlayers.filter(p =>
+			p.id !== player.id && !restedPlayers.has(p.id)
+		);
+
+		if (canFormValidLineup(availableWithoutThis)) {
+			restedPlayers.add(player.id);
+			console.log(`[selectPlayersToRest] Resting ${player.name} at ${(usage * 100).toFixed(0)}% usage (${restedPlayers.size}/3 rested)`);
+		} else {
+			console.log(`[selectPlayersToRest] Cannot rest ${player.name} at ${(usage * 100).toFixed(0)}% usage - would leave invalid lineup, continuing to next player`);
+			// Continue to next player instead of breaking
+		}
+	}
+
+	return restedPlayers;
+}
+
+/**
  * Assign fielding positions to position players
  * Prioritizes primary positions, then uses secondary eligibility only when needed
  * When multiple players have the same primary position, selects based on quality (PA, then OBP)
+ *
+ * Note: Player resting based on usage is handled BEFORE this function is called.
+ * This function simply assigns positions to the available (non-rested) players.
  */
 function assignPositions(
 	players: BatterStats[],
@@ -197,56 +290,6 @@ function assignPositions(
 ): Map<string, number> {
 	const assigned = new Map<string, number>();
 	const usedPlayers = new Set<string>();
-	const warnings: string[] = [];
-
-	// Usage thresholds for tiered selection
-	const SEVERELY_OVERUSED = 1.0; // 100% - filter out from initial consideration (at or above expected)
-	const OVERUSED = 0.90; // 90% - use only as fallback (approaching expected)
-	const UNDERUSED = 0.75; // 75% - prefer these players
-
-	// Track which players are eligible at which positions
-	const playerPool = new Map<string, BatterStats>(
-		players.map(p => [p.id, p])
-	);
-
-	// Helper to get usage bucket for sorting
-	function getUsageBucket(playerId: string): number {
-		const usage = usageContext?.playerUsage.get(playerId) ?? 0;
-		// Bucket 0: Underused (< 75%) - highest priority
-		// Bucket 1: In range (75-90%) - second priority
-		// Bucket 2: Approaching (90-100%) - third priority
-		// Bucket 3: Severely overused (>= 100%) - filtered from consideration
-		if (usage < UNDERUSED) return 0;
-		if (usage < OVERUSED) return 1;
-		if (usage < SEVERELY_OVERUSED) return 2;
-		return 3;
-	}
-
-	// Helper to calculate "need score" - how badly does this player need to play?
-	// Higher score = more need to play. Balances being underused with being a quality player.
-	function getNeedScore(playerId: string): number {
-		const usage = usageContext?.playerUsage.get(playerId) ?? 0;
-		const player = playerPool.get(playerId);
-		if (!player) return 0;
-
-		// Base need: (1 - usage) * 100
-		// At 0% usage: need = 100
-		// At 50% usage: need = 50
-		// At 100% usage: need = 0
-		let need = (1 - usage) * 100;
-
-		// Only apply backup boost when we have usage context
-		// Without usage context, we want to prefer star players (higher PA)
-		if (usageContext && usage < 1.0) {
-			// Backup boost: players with LOWER actual PA need more playing time
-			// This ensures backups get priority when they're underused
-			// Invert the PA scale: lower PA = higher boost
-			const backupBoost = Math.max(0, 20 - Math.min(20, Math.log(player.pa + 1) * 2));
-			need += backupBoost;
-		}
-
-		return need;
-	}
 
 	// Fill positions in priority order
 	for (const position of POSITION_PRIORITY) {
@@ -255,53 +298,13 @@ function assignPositions(
 			!usedPlayers.has(p.id) && p.primaryPosition === position
 		);
 
-		let primaryPlayer: BatterStats | undefined;
 		if (primaryCandidates.length > 0) {
-			// Filter out severely overused players from initial consideration
-			const availableCandidates = usageContext
-				? primaryCandidates.filter(p => {
-					const usage = usageContext.playerUsage.get(p.id) ?? 0;
-					return usage < SEVERELY_OVERUSED;
-				})
-				: primaryCandidates;
+			// Sort by PA (prefer higher-quality players when no usage context)
+			primaryCandidates.sort((a, b) => b.pa - a.pa);
+			const primaryPlayer = primaryCandidates[0];
 
-			// Sort by need score (higher need = should play), with usage bucket as tiebreaker
-			availableCandidates.sort((a, b) => {
-				const bucketA = getUsageBucket(a.id);
-				const bucketB = getUsageBucket(b.id);
-				if (bucketA !== bucketB) {
-					return bucketA - bucketB; // Lower bucket first (underused > overused)
-				}
-				// Within same bucket, prefer higher need score
-				const needA = getNeedScore(a.id);
-				const needB = getNeedScore(b.id);
-				if (Math.abs(needA - needB) > 1) {
-					return needB - needA; // Higher need first
-				}
-				// When need scores are similar (e.g., no usage context), prefer higher PA
-				// This ensures star players start over backups
-				return b.pa - a.pa;
-			});
-
-			primaryPlayer = availableCandidates[0];
-
-			// Fallback: if no non-severely-overused players available, use the least overused
-			if (!primaryPlayer && primaryCandidates.length > 0 && usageContext) {
-				primaryCandidates.sort((a, b) => {
-					const usageA = usageContext.playerUsage.get(a.id) ?? 0;
-					const usageB = usageContext.playerUsage.get(b.id) ?? 0;
-					return usageA - usageB; // Use the least overused
-				});
-				primaryPlayer = primaryCandidates[0];
-				const usage = usageContext.playerUsage.get(primaryPlayer.id) ?? 0;
-				warnings.push(`Forced to use overused player ${primaryPlayer.name} at ${getPositionName(position)} (${(usage * 100).toFixed(0)}% usage)`);
-			}
-		}
-
-		if (primaryPlayer) {
 			assigned.set(primaryPlayer.id, position);
 			usedPlayers.add(primaryPlayer.id);
-			playerPool.delete(primaryPlayer.id);
 			continue;
 		}
 
@@ -323,59 +326,17 @@ function assignPositions(
 		}
 
 		if (secondaryPlayers.length > 0) {
-			// Filter out severely overused players from initial consideration
-			const availableCandidates = usageContext
-				? secondaryPlayers.filter(s => {
-					const usage = usageContext.playerUsage.get(s.player.id) ?? 0;
-					return usage < SEVERELY_OVERUSED;
-				})
-				: secondaryPlayers;
-
-			// Sort by need score (higher need = should play), then by experience at this position
-			availableCandidates.sort((a, b) => {
-				const bucketA = getUsageBucket(a.player.id);
-				const bucketB = getUsageBucket(b.player.id);
-				if (bucketA !== bucketB) {
-					return bucketA - bucketB;
-				}
-				// Within same bucket, prefer higher need score
-				const needA = getNeedScore(a.player.id);
-				const needB = getNeedScore(b.player.id);
-				if (Math.abs(needA - needB) > 1) {
-					return needB - needA;
-				}
-				// Second preference: more experienced at this position
+			// Sort by experience at this position (outs), then by OBP
+			secondaryPlayers.sort((a, b) => {
 				if (Math.abs(b.outs - a.outs) > 100) {
-					return b.outs - a.outs;
+					return b.outs - a.outs; // More experienced first
 				}
-				// When experience is similar, prefer higher PA (star players)
-				return b.player.pa - a.player.pa;
+				return b.score - a.score; // Higher OBP first
 			});
 
-			let best = availableCandidates[0];
-
-			// Fallback: if no available candidates, use the least overused
-			if (!best && secondaryPlayers.length > 0 && usageContext) {
-				secondaryPlayers.sort((a, b) => {
-					const usageA = usageContext.playerUsage.get(a.player.id) ?? 0;
-					const usageB = usageContext.playerUsage.get(b.player.id) ?? 0;
-					return usageA - usageB;
-				});
-				best = secondaryPlayers[0];
-				const usage = usageContext.playerUsage.get(best.player.id) ?? 0;
-				warnings.push(`Forced to use overused player ${best.player.name} at ${getPositionName(position)} (${(usage * 100).toFixed(0)}% usage)`);
-			}
-
-			if (best) {
-				assigned.set(best.player.id, position);
-				usedPlayers.add(best.player.id);
-				playerPool.delete(best.player.id);
-			}
-		}
-
-		// If we still couldn't fill this position, add a warning
-		if (!assigned.has(Array.from(assigned.keys()).find(id => assigned.get(id) === position) ?? '')) {
-			warnings.push(`WARNING: Unable to fill ${getPositionName(position)} position - no eligible players found`);
+			const best = secondaryPlayers[0];
+			assigned.set(best.player.id, position);
+			usedPlayers.add(best.player.id);
 		}
 	}
 
@@ -701,7 +662,7 @@ function buildLineupImpl(
 	// Usage-aware lineup building: prefer players with lower current usage
 	// This distributes playing time across the roster and prevents overuse
 	if (usageContext) {
-		const restThreshold = usageContext.restThreshold ?? 1.25;
+		const restThreshold = usageContext.restThreshold ?? 1.05; // Default 105%
 		let overusedCount = 0;
 		let underusedCount = 0;
 		for (const player of positionPlayers) {
@@ -718,6 +679,7 @@ function buildLineupImpl(
 			totalPositionPlayers: positionPlayers.length,
 			underusedCount,
 			overusedCount,
+			restThreshold: (restThreshold * 100).toFixed(0) + '%',
 			note: 'Prefer selecting underused players to distribute playing time'
 		});
 	}
@@ -741,8 +703,15 @@ function buildLineupImpl(
 		blendFactor: era.blendFactor
 	});
 
-	// Assign fielding positions with usage awareness
-	const positionAssignments = assignPositions(positionPlayers, usageContext);
+	// Select players to rest based on usage (before position assignment)
+	const restThreshold = usageContext?.restThreshold ?? 1.05; // Default 105%
+	const restedPlayerIds = selectPlayersToRest(positionPlayers, usageContext, restThreshold);
+
+	// Filter out rested players from position assignment pool
+	const availablePlayers = positionPlayers.filter(p => !restedPlayerIds.has(p.id));
+
+	// Assign fielding positions to available (non-rested) players
+	const positionAssignments = assignPositions(availablePlayers, usageContext);
 
 	// Build list of assigned players
 	const assignedPlayers: Array<{ player: BatterStats; position: number }> = [];
@@ -811,65 +780,6 @@ function buildLineupImpl(
 				battingOrder[idx1]!.battingOrder = battingOrder[idx2]!.battingOrder;
 				battingOrder[idx2]!.battingOrder = temp;
 			}
-		}
-	}
-
-	// Apply rest checks if usage context is provided
-	if (usageContext) {
-		const restThreshold = usageContext.restThreshold ?? 1.25; // Default 125%
-		const usedIds = new Set(battingOrder.map(b => b.player.id));
-
-		// Build bench from team batters not in current lineup
-		const bench = positionPlayers.filter(p => !usedIds.has(p.id));
-
-		// Debug: Log usage context
-		console.log('[buildLineup] Usage context provided:', {
-			teamId,
-			restThreshold,
-			playerCount: usageContext.playerUsage.size,
-			overusedPlayers: Array.from(usageContext.playerUsage.entries())
-				.filter(([_, usage]) => usage > restThreshold)
-				.map(([id, usage]) => ({ id, usage: (usage * 100).toFixed(0) + '%' }))
-		});
-
-		// Check each batter in the lineup for overuse
-		let restCount = 0;
-		for (let i = 0; i < battingOrder.length; i++) {
-			const slot = battingOrder[i]!;
-			const usage = usageContext.playerUsage.get(slot.player.id);
-
-			// If player is over the threshold, find a replacement
-			if (usage !== undefined && usage > restThreshold) {
-				console.log(`[buildLineup] Player ${slot.player.name} is overused: ${(usage * 100).toFixed(0)}% > ${restThreshold * 100}%`);
-				// Find first available bench player who can play this position
-				const replacement = bench.find(b =>
-					b.id !== slot.player.id &&
-					(b.primaryPosition === slot.position ||
-						(b.positionEligibility[slot.position] ?? 0) > 0)
-				);
-
-				if (replacement) {
-					restCount++;
-					warnings.push(`Resting ${slot.player.name} (${(usage * 100).toFixed(0)}% of actual), replacing with ${replacement.name}`);
-					// Replace in batting order
-					battingOrder = [
-						...battingOrder.slice(0, i),
-						{ ...slot, player: replacement },
-						...battingOrder.slice(i + 1)
-					];
-					// Remove replacement from bench
-					const benchIndex = bench.indexOf(replacement);
-					if (benchIndex > -1) {
-						bench.splice(benchIndex, 1);
-					}
-				} else {
-					warnings.push(`WARNING: ${slot.player.name} is overused at ${(usage * 100).toFixed(0)}% of actual but no replacement available`);
-				}
-			}
-		}
-
-		if (restCount > 0) {
-			console.log(`[buildLineup] Rested ${restCount} overused players for ${teamId}`);
 		}
 	}
 
