@@ -1324,7 +1324,10 @@ export class GameEngine {
 						console.warn(`No bench pitcher available to fill vacated pitcher slot at batting order ${vacatedSlot.index + 1} - trying emergency fallback`);
 
 						// Find ANY pitcher on the team (primaryPosition === 1) - even if they're already in the lineup
-						const allTeamPitchers = allTeamBatters.filter(b => b.primaryPosition === 1);
+						// Filter out pitchers who have already been assigned to other vacated slots
+						const allTeamPitchers = Object.values(this.season.batters)
+							.filter(b => b.teamId === teamId && b.primaryPosition === 1)
+							.filter(p => !assignedBenchPlayerIds.has(p.id));
 
 						if (allTeamPitchers.length > 0) {
 							// Use the first available pitcher - may require shuffling if they're already in the lineup
@@ -1348,8 +1351,8 @@ export class GameEngine {
 									pitcherId: '',
 									pitcherName: '',
 									description: `Lineup adjustment: ${this.formatName(emergencyPitcher.name)} (P) moves to fill pitcher slot at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
-								runsScored: 0,
-									eventType: 'lineupAdjustment',
+									runsScored: 0,
+										eventType: 'lineupAdjustment',
 									substitutedPlayer: emergencyPitcher.id,
 									isSummary: true
 								});
@@ -1374,10 +1377,15 @@ export class GameEngine {
 									isSummary: true
 								});
 							}
+
+							// CRITICAL: Mark this emergency pitcher as assigned so they won't be used again
+							assignedBenchPlayerIds.add(emergencyPitcher.id);
 						} else {
 							// ULTIMATE EMERGENCY: No pitchers at all - this should be extremely rare
 							// As a last resort, find any player on the team to put at pitcher
-							const anyPlayer = allTeamBatters[0];
+							// Filter out players who have already been assigned
+							const availablePlayers = allTeamBatters.filter(p => !assignedBenchPlayerIds.has(p.id));
+							const anyPlayer = availablePlayers[0];
 							if (anyPlayer) {
 								lineup.players[vacatedSlot.index] = { playerId: anyPlayer.id, position: 1 };
 								const battingOrder = vacatedSlot.index + 1;
@@ -1395,6 +1403,9 @@ export class GameEngine {
 									substitutedPlayer: anyPlayer.id,
 									isSummary: true
 								});
+
+								// Mark as assigned to prevent duplicates
+								assignedBenchPlayerIds.add(anyPlayer.id);
 							} else {
 								// This should be impossible - team must have players
 								console.error(`CRITICAL: No players available for team ${teamId} to fill pitcher slot`);
