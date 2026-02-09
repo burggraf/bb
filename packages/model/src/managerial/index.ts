@@ -81,3 +81,12 @@ export {
 	isTransitionYear,
 	getPureEraStrategy
 } from './era-detection.js';
+
+// Lineup Strategies
+export {
+	traditionalStrategy,
+	compositeStrategy,
+	earlyAnalyticsStrategy,
+	getStrategyFunction,
+	type StrategyFunction
+} from './lineup-strategies.js';
