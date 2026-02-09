@@ -1720,33 +1720,68 @@ export class GameEngine {
 
 							if (positionOccupied) {
 								// The replaced position is already occupied by another player
-								// Find the actual open position by checking which positions are filled
-								const filledPositions = new Set(
-									lineup.players
-										.filter(p => p !== null && p.position >= 1 && p.position <= 9)
-										.map(p => p.position)
+								// Instead of creating a duplicate, we'll REPLACE that player with the PH
+								// This is necessary when bench is exhausted (all players over 150% usage)
+
+								// Find the player currently occupying the position
+								const occupyingIndex = lineup.players.findIndex((p, idx) =>
+									idx !== ph.index && p !== null && p.position === replacedPosition
 								);
 
-								// Find the missing position (1-9)
-								for (let pos = 1; pos <= 9; pos++) {
-									if (!filledPositions.has(pos)) {
-										finalPosition = pos;
-										emergencyMessage = `(emergency mode - position ${POSITION_NAMES[replacedPosition] ?? replacedPosition} occupied, using ${POSITION_NAMES[pos] ?? pos})`;
-										break;
-									}
-								}
+								if (occupyingIndex !== -1) {
+									// Replace the occupying player with the PH
+									const removedPlayerId = lineup.players[occupyingIndex].playerId;
+									console.log(`[PH Resolution] All positions filled - replacing ${removedPlayerId} at position ${replacedPosition} with PH ${ph.playerId}`);
 
-								// If all positions 1-9 are filled (shouldn't happen), default to replaced position
-								if (finalPosition === replacedPosition) {
-									console.error(`All positions 1-9 are filled but PH still needs assignment - this should not happen!`);
+									// Mark the removed player as removed
+									this.removedPlayers.add(removedPlayerId);
+
+									// Assign PH to this position
+									lineup.players[occupyingIndex] = {
+										playerId: ph.playerId,
+										position: replacedPosition
+									};
+
+									// Clear the PH's original batting slot (they're now at the defensive position)
+									lineup.players[ph.index] = {
+										playerId: null,
+										position: 0 // Empty slot
+									};
+
+									const positionName = POSITION_NAMES[replacedPosition] ?? `Pos${replacedPosition}`;
+									maybeAddPlay({
+										inning: this.state.inning,
+										isTopInning: this.state.isTopInning,
+										outcome: 'out' as Outcome,
+										batterId: '',
+										batterName: '',
+										pitcherId: '',
+										pitcherName: '',
+										description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) replaces ${removedPlayerId} (bench exhausted), batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
+										runsScored: 0,
+										eventType: 'lineupAdjustment',
+										substitutedPlayer: removedPlayerId,
+										isSummary: true
+									});
+
+									// Skip the rest of the emergency assignment logic
+									continue;
+								} else {
+									// Shouldn't happen - positionOccupied was true but we couldn't find the occupier
+									console.error(`[PH Resolution] Position ${replacedPosition} marked occupied but no occupier found - falling back to emergency mode`);
 								}
 							}
 
-							console.warn(`Pinch hitter ${phPlayer.name} cannot play position ${POSITION_NAMES[replacedPosition] ?? replacedPosition} defensively, no bench available, and shuffle failed - using emergency mode to assign to ${POSITION_NAMES[finalPosition] ?? finalPosition}${finalPosition !== replacedPosition ? ' (filled position workaround)' : ''}`);
-							lineup.players[ph.index] = {
-								playerId: ph.playerId,
-								position: finalPosition
-							};
+							let finalPosition = replacedPosition;
+							let emergencyMessage = `(emergency mode)`;
+
+							if (positionOccupied === false) {
+								// Original emergency mode logic for when position is available
+								console.warn(`Pinch hitter ${phPlayer.name} cannot play position ${POSITION_NAMES[replacedPosition] ?? replacedPosition} defensively, no bench available, and shuffle failed - using emergency mode to assign to ${POSITION_NAMES[finalPosition] ?? finalPosition}`);
+								lineup.players[ph.index] = {
+									playerId: ph.playerId,
+									position: finalPosition
+								};
 							const positionName = POSITION_NAMES[finalPosition] ?? `Pos${finalPosition}`;
 							maybeAddPlay({
 								inning: this.state.inning,
