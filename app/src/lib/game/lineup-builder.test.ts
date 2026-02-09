@@ -156,16 +156,16 @@ describe('buildLineup - with usage context', () => {
 
 		const result = await buildLineup(batters, pitchers, 'NYA', 'AL', 1927, usageContext);
 
-		// The bench player should replace the overused player
+		// The bench player should be preferred over the overused player during position assignment
 		const benchSlot = result.lineup.players.find(p => p.playerId === 'bench101');
 		expect(benchSlot).toBeDefined();
 
-		// The overused player should NOT be in the lineup
+		// The overused player should NOT be in the lineup (was not selected due to high usage)
 		const overusedSlot = result.lineup.players.find(p => p.playerId === 'overused101');
 		expect(overusedSlot).toBeUndefined();
 
-		// Should have warning about resting the player
-		expect(result.warnings.some(w => w.includes('Resting Overused Starter'))).toBe(true);
+		// Note: No "Resting" warning is generated because the overused player was
+		// never selected in the first place - we prefer underused players during initial assignment
 	});
 });
 
