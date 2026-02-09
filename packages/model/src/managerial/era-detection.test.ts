@@ -66,11 +66,39 @@ describe('getEraStrategy', () => {
 		expect(result.blendFactor).toBe(1);
 	});
 
-	it('handles edge case at 2011 (first modern year)', () => {
+	it('handles 2010 as modern only (hard boundary)', () => {
+		const result = getEraStrategy(2010);
+		expect(result.primary).toBe('modern');
+		expect(result.secondary).toBeNull();
+		expect(result.blendFactor).toBe(1);
+	});
+
+	it('handles 2011 as modern only', () => {
 		const result = getEraStrategy(2011);
 		expect(result.primary).toBe('modern');
 		expect(result.secondary).toBeNull();
 		expect(result.blendFactor).toBe(1);
+	});
+
+	it('handles 2009 as end of transition (blendFactor 0.9)', () => {
+		const result = getEraStrategy(2009);
+		expect(result.primary).toBe('modern');
+		expect(result.secondary).toBe('early-analytics');
+		expect(result.blendFactor).toBeCloseTo(0.9, 1);
+	});
+
+	it('handles 1989 as end of first transition (blendFactor 0.9)', () => {
+		const result = getEraStrategy(1989);
+		expect(result.primary).toBe('composite');
+		expect(result.secondary).toBe('traditional');
+		expect(result.blendFactor).toBeCloseTo(0.9, 1);
+	});
+
+	it('handles 1999 as end of second transition (blendFactor 0.9)', () => {
+		const result = getEraStrategy(1999);
+		expect(result.primary).toBe('early-analytics');
+		expect(result.secondary).toBe('composite');
+		expect(result.blendFactor).toBeCloseTo(0.9, 1);
 	});
 
 	it('handles early baseball (e.g., 1920)', () => {
