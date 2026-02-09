@@ -2,6 +2,9 @@
  * Types for the baseball game engine
  */
 
+// Re-export era types from model package
+export type { EraStrategy, EraDetection, PlayerAvailability, LineupBuildResult, EraLineupOptions } from '@bb/model';
+
 /**
  * The 17 detailed plate appearance outcomes.
  */
