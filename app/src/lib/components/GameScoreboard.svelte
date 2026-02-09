@@ -559,10 +559,6 @@
 		.matchup-name {
 			font-size: 1rem;
 		}
-
-		.runner {
-			font-size: 0.875rem;
-		}
 	}
 
 	@media (min-width: 1024px) {

@@ -307,15 +307,10 @@ function selectPlayersToRest(
 		return true;
 	}
 
-	// Try to rest each overused player (up to max 3 total)
-	// Continue through ALL players over 105%, resting as many as possible
+	// Try to rest each overused player
+	// Rest ALL overused players that can be rested while still forming a valid lineup
+	// No hard limit - if a team has 10 overused players and enough depth, rest all 10
 	for (const { player, usage } of overusedPlayers) {
-		// Stop if we've already rested 3 players
-		if (restedPlayers.size >= 3) {
-			console.log(`[selectPlayersToRest] Reached max of 3 rested players`);
-			break;
-		}
-
 		// Check if we can form a valid lineup without this player (and without already-rested players)
 		const availableWithoutThis = positionPlayers.filter(p =>
 			p.id !== player.id && !restedPlayers.has(p.id)
@@ -323,7 +318,7 @@ function selectPlayersToRest(
 
 		if (canFormValidLineup(availableWithoutThis)) {
 			restedPlayers.add(player.id);
-			console.log(`[selectPlayersToRest] Resting ${player.name} at ${(usage * 100).toFixed(0)}% usage (${restedPlayers.size}/3 rested)`);
+			console.log(`[selectPlayersToRest] Resting ${player.name} at ${(usage * 100).toFixed(0)}% usage (${restedPlayers.size} rested)`);
 		} else {
 			console.log(`[selectPlayersToRest] Cannot rest ${player.name} at ${(usage * 100).toFixed(0)}% usage - would leave invalid lineup, continuing to next player`);
 			// Continue to next player instead of breaking
