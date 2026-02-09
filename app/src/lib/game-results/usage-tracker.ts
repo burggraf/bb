@@ -248,10 +248,10 @@ export class UsageTracker {
           replay_games_played = replay_games_played + 1,
           percentage_of_actual =
             CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0),
+            NULLIF(?, 0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) > 1.25 THEN 'over'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(?, 0) < 0.75 THEN 'under'
+            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(?, 0) > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
@@ -259,8 +259,36 @@ export class UsageTracker {
 
     gameStats.pitcherIp.forEach((ip, playerId) => {
       const teamGames = getTeamGamesPlayed(playerId);
-      // Parameters: ip, ip, teamGames, seasonLength (for formula: actual * teamGames / seasonLength)
-      updatePitcher.run([ip, ip, teamGames, seasonLength, ip, teamGames, seasonLength, ip, teamGames, seasonLength, this.seriesId, playerId]);
+
+      // CRITICAL FIX: For pitchers, expected is capped at actual season total
+      // A pitcher with 47 IP actual appeared in ~5 games, not all 162 games
+      // We should NOT extrapolate their usage over the full season
+      const stmt = db.prepare('SELECT actual_season_total FROM player_usage WHERE series_id = ? AND player_id = ?');
+      stmt.bind([this.seriesId, playerId]);
+      let actualTotal = 0;
+      if (stmt.step()) {
+        const row = stmt.getAsObject() as Record<string, any>;
+        actualTotal = row.actual_season_total;
+      }
+      stmt.free();
+
+      // Expected is the MINIMUM of:
+      // 1. actual * (teamGames / seasonLength) - extrapolated value
+      // 2. actualTotal - the actual season total (hard cap)
+      const expectedExtrapolated = actualTotal * teamGames / seasonLength;
+      const expected = Math.min(expectedExtrapolated, actualTotal);
+
+      const replay = gameStats.pitcherIp.get(playerId) || 0;
+      const newReplay = replay + ip;
+      const pct = expected > 0 ? newReplay / expected : 0;
+
+      // Debug log for extreme cases
+      if (pct > 2.0 || pct < 0.1) {
+        console.log(`[UsageTracker] ${playerId.slice(0, 15)}: IP=${ip}, actual=${actualTotal}, newReplay=${newReplay}, teamGames=${teamGames}, expected=${expected.toFixed(1)}, pct=${(pct * 100).toFixed(0)}%`);
+      }
+
+      // Parameters: ip (SET), ip (percentage num), expected (percentage den), ip (status1 num), expected (status1 den), ip (status2 num), expected (status2 den), seriesId, playerId
+      updatePitcher.run([ip, ip, expected, ip, expected, ip, expected, this.seriesId, playerId]);
     });
 
     updateBatter.free();

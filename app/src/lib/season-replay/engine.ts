@@ -186,6 +186,10 @@ export class SeasonReplayEngine {
     // This was set to 1.0 (100%) in the season replay engine for tighter control
     const restThreshold = this.managerialOptions?.restThreshold ?? 1.0;
 
+    // Hard cap: never use a pitcher beyond 150% of their actual IP
+    // This prevents extreme outliers like 1000%+ usage
+    const HARD_USAGE_CAP = 1.50;
+
     // Find the next available starter in rotation
     // Start from current index and loop until we find someone not overused
     let attempts = 0;
@@ -197,7 +201,8 @@ export class SeasonReplayEngine {
       const usage = teamUsage.get(pitcherId) ?? 0;
 
       // Skip if overused (exceeds restThreshold), unless we've tried everyone
-      if (usage <= restThreshold || attempts === maxAttempts - 1) {
+      // Hard cap: never allow usage above 150%, even as a last resort
+      if ((usage <= restThreshold || attempts === maxAttempts - 1) && usage < HARD_USAGE_CAP) {
         selectedPitcherId = pitcherId;
         break;
       }
