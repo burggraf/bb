@@ -741,6 +741,9 @@ function buildLineupImpl(
 	// Filter out rested players from position assignment pool
 	const availablePlayers = positionPlayers.filter(p => !restedPlayerIds.has(p.id));
 
+	console.log(`[buildLineupImpl] After resting: ${availablePlayers.length} players available from ${positionPlayers.length} total (rested: ${restedPlayerIds.size})`);
+	console.log(`[buildLineupImpl] Available players:`, availablePlayers.map(p => `${p.name} (${p.primaryPosition})`));
+
 	// Assign fielding positions to available (non-rested) players
 	const positionAssignments = assignPositions(availablePlayers, usageContext);
 
