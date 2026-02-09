@@ -18,6 +18,7 @@ export interface SeriesMetadata {
     totalGames: number;
     playbackSpeed: 'instant' | 'animated';
     gamesPerBatch: number;
+    saveInterval: number; // Save database every N games (1-9999)
     status: 'idle' | 'playing' | 'paused' | 'completed';
     lastPlayedDate?: string;
   };

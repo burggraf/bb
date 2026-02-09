@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { SeasonReplayEngine } from '$lib/season-replay/index.js';
 	import type { ReplayProgress, ReplayStatus } from '$lib/season-replay/index.js';
+	import { getSeriesMetadata, updateSeriesMetadata } from '$lib/game-results/index.js';
 
 	interface Props {
 		seriesId: string;
@@ -41,9 +42,21 @@
 	let gameComplete = $state(false);
 	let previousGameIndex = $state(0);
 
+	// Save interval state
+	let saveInterval = $state(20);
+	let isEditingSaveInterval = $state(false);
+	let saveIntervalInput = $state(20);
+
 	// Initialize engine on mount
 	onMount(async () => {
 		try {
+			// Load metadata to get save interval
+			const metadata = await getSeriesMetadata(seriesId);
+			if (metadata?.seasonReplay?.saveInterval) {
+				saveInterval = metadata.seasonReplay.saveInterval;
+				saveIntervalInput = saveInterval;
+			}
+
 			engine = new SeasonReplayEngine(seriesId, seasonYear, { animated: false, simSpeed: 500 });
 			await engine.initialize();
 
@@ -274,6 +287,43 @@
 		}
 	}
 
+	// Save interval functions
+	function startEditingSaveInterval() {
+		saveIntervalInput = saveInterval;
+		isEditingSaveInterval = true;
+	}
+
+	function cancelEditingSaveInterval() {
+		isEditingSaveInterval = false;
+		saveIntervalInput = saveInterval;
+	}
+
+	async function saveSaveInterval() {
+		// Validate and clamp the value
+		const validated = Math.max(1, Math.min(9999, saveIntervalInput));
+		saveInterval = validated;
+		saveIntervalInput = validated;
+		isEditingSaveInterval = false;
+
+		// Update engine if it exists
+		if (engine) {
+			engine.setSaveInterval(validated);
+		}
+
+		// Update metadata
+		const metadata = await getSeriesMetadata(seriesId);
+		if (metadata?.seasonReplay) {
+			await updateSeriesMetadata(seriesId, {
+				seasonReplay: {
+					...metadata.seasonReplay,
+					saveInterval: validated
+				}
+			});
+		}
+
+		console.log('[ReplayControls] Save interval updated to:', validated);
+	}
+
 	// Status badge helper
 	function getStatusBadgeColor(status: ReplayStatus): string {
 		switch (status) {
@@ -424,6 +474,49 @@
 			</div>
 		</div>
 	{/if}
+
+	<!-- Save Interval Control -->
+	<div class="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+		<div class="flex items-center justify-between mb-2">
+			<span class="text-xs text-zinc-400">Save Database Every N Games</span>
+			<span class="text-xs text-zinc-500">{saveInterval} games</span>
+		</div>
+		{#if isEditingSaveInterval}
+			<div class="flex gap-2">
+				<input
+					type="number"
+					min="1"
+					max="9999"
+					bind:value={saveIntervalInput}
+					class="flex-1 bg-zinc-700 border border-zinc-600 rounded px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+					placeholder="20"
+				/>
+				<button
+					onclick={saveSaveInterval}
+					class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded font-medium transition-colors"
+				>
+					Save
+				</button>
+				<button
+					onclick={cancelEditingSaveInterval}
+					class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded font-medium transition-colors"
+				>
+					Cancel
+				</button>
+			</div>
+			<p class="text-xs text-zinc-500 mt-2">
+				Higher values = faster replay (saves less frequently to IndexedDB). Range: 1-9999
+			</p>
+		{:else}
+			<button
+				onclick={startEditingSaveInterval}
+				disabled={status === 'playing' || status === 'completed'}
+				class="w-full px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm rounded font-medium transition-colors"
+			>
+				Edit Save Interval
+			</button>
+		{/if}
+	</div>
 
 	<!-- Progress bar -->
 	<div class="space-y-2">

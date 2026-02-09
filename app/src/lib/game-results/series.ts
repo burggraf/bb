@@ -348,6 +348,7 @@ export async function createSeasonReplay(data: {
   seasonYear: number;
   totalGames: number;
   gamesPerBatch?: number;
+  saveInterval?: number; // Save database every N games (1-9999, default 20)
 }): Promise<Series> {
   try {
     const db = await getGameDatabase();
@@ -363,6 +364,7 @@ export async function createSeasonReplay(data: {
         totalGames: data.totalGames,
         playbackSpeed: 'instant',
         gamesPerBatch: data.gamesPerBatch ?? 1,
+        saveInterval: data.saveInterval ?? 20,
         status: 'idle',
         lastPlayedDate: undefined
       }

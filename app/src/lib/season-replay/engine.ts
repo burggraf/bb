@@ -31,6 +31,8 @@ export class SeasonReplayEngine {
   private usageTracker: UsageTracker | null = null;
   /** Track pitcher rotation state for each team */
   private rotationStates = new Map<string, RotationState>();
+  /** Save database every N games (from metadata, default 20) */
+  private saveInterval = 20;
 
   constructor(seriesId: string, seasonYear: number, options: ReplayOptions = { animated: false, simSpeed: 500 }) {
     this.seriesId = seriesId;
@@ -84,7 +86,15 @@ export class SeasonReplayEngine {
       if (metadata?.seasonReplay) {
         this.currentGameIndex = metadata.seasonReplay.currentGameIndex;
         this.status = metadata.seasonReplay.status;
+        this.saveInterval = metadata.seasonReplay.saveInterval ?? 20;
+        console.log('[SeasonReplayEngine] Save interval:', this.saveInterval);
       }
+    }
+
+    // For new replays, also read saveInterval from metadata if available
+    if (metadata?.seasonReplay?.saveInterval) {
+      this.saveInterval = metadata.seasonReplay.saveInterval;
+      console.log('[SeasonReplayEngine] Save interval:', this.saveInterval);
     }
 
     console.log('[SeasonReplayEngine] initialize() complete, status:', this.status);
@@ -211,6 +221,9 @@ export class SeasonReplayEngine {
 
     this.status = 'paused';
     this.emit('statusChange', { status: this.status });
+
+    // Save database to persist all progress when paused
+    await saveGameDatabase();
 
     // Save status to metadata
     const metadata = await getSeriesMetadata(this.seriesId);
@@ -341,6 +354,7 @@ export class SeasonReplayEngine {
   }
 
   private async simulateGame(game: ScheduledGame): Promise<GameResult | null> {
+    const gameStart = performance.now();
     try {
       console.log('[SeasonReplay] simulateGame() starting for', game.awayTeam, 'vs', game.homeTeam);
       // Get series metadata
@@ -357,7 +371,7 @@ export class SeasonReplayEngine {
       let allPlayerUsage = new Map<string, number>(); // Combined usage for ALL players (batters + pitchers)
 
       if (this.usageTracker) {
-        console.log('[SeasonReplay] Getting usage context for batter rest and pitcher usage...');
+        const usageContextStart = performance.now();
         try {
           const awayUsage = await this.usageTracker.getTeamUsageForContext(game.awayTeam);
           const homeUsage = await this.usageTracker.getTeamUsageForContext(game.homeTeam);
@@ -378,13 +392,15 @@ export class SeasonReplayEngine {
 
           const awayPitcherCount = Array.from(awayUsage.keys()).filter(id => season.pitchers[id]).length;
           const homePitcherCount = Array.from(homeUsage.keys()).filter(id => season.pitchers[id]).length;
+          const usageContextMs = performance.now() - usageContextStart;
 
           console.log('[SeasonReplay] Usage context loaded:', {
             awayPlayers: awayUsage.size,
             homePlayers: homeUsage.size,
             awayPitchers: awayPitcherCount,
             homePitchers: homePitcherCount,
-            total: allPlayerUsage.size
+            total: allPlayerUsage.size,
+            loadTimeMs: usageContextMs.toFixed(1)
           });
         } catch (error) {
           console.warn('[SeasonReplay] Could not load usage context:', error);
@@ -495,26 +511,29 @@ export class SeasonReplayEngine {
 
       // Update usage tracking
       if (this.usageTracker) {
+        const usageStart = performance.now();
         const gameStats = this.extractGameStats(finalState);
         await this.usageTracker.updateGameUsage(gameStats);
+        const usageUpdateMs = performance.now() - usageStart;
 
         // Save database to persist usage data across page refreshes
-        await saveGameDatabase();
-
-        // Check for threshold violations (log but don't fail)
-        try {
-          const violations = await this.usageTracker.checkThresholds();
-          if (violations.length > 0) {
-            console.log(`[SeasonReplay] Found ${violations.length} usage violations after game ${this.currentGameIndex + 1}`);
-          }
-        } catch (error) {
-          console.error('[SeasonReplay] Error checking usage thresholds:', error);
-          // Continue anyway - don't let threshold checking break the replay
+        // Batch saves: only save every saveInterval games to reduce I/O overhead
+        const shouldSave = (this.currentGameIndex + 1) % this.saveInterval === 0 || (this.currentGameIndex + 1) === this.schedule.length;
+        if (shouldSave) {
+          const saveStart = performance.now();
+          await saveGameDatabase();
+          const saveMs = performance.now() - saveStart;
+          console.log(`[SeasonReplay] Usage timings: update=${usageUpdateMs.toFixed(1)}ms, save=${saveMs.toFixed(1)}ms`);
+        } else {
+          console.log(`[SeasonReplay] Usage update: ${usageUpdateMs.toFixed(1)}ms (skipping save)`);
         }
       }
 
       // Update series metadata
       await this.updateMetadataStatus(this.seriesId, finalState, metadata);
+
+      const gameTotalMs = performance.now() - gameStart;
+      console.log(`[SeasonReplay] Game ${this.currentGameIndex + 1} completed in ${gameTotalMs.toFixed(1)}ms (${(1000/gameTotalMs).toFixed(1)} games/sec)`);
 
       return {
         gameId,
@@ -563,6 +582,11 @@ export class SeasonReplayEngine {
 
   getOptions(): ReplayOptions {
     return this.options;
+  }
+
+  setSaveInterval(interval: number): void {
+    this.saveInterval = Math.max(1, Math.min(9999, interval));
+    console.log('[SeasonReplayEngine] Save interval updated to:', this.saveInterval);
   }
 
   on(event: string, callback: EventCallback): void {
