@@ -1,9 +1,13 @@
 /**
  * MLB Lineup Builder Algorithm
  *
- * Creates valid baseball lineups following traditional MLB patterns:
+ * Creates valid baseball lineups following era-appropriate patterns:
+ * - Pre-1980: Traditional archetype-based lineups
+ * - 1980-1989: Transition from traditional to composite
+ * - 1990-1999: Transition from composite to early analytics
+ * - 2000-2009: Transition from early analytics to modern
+ * - 2010+: Modern analytics-based lineups
  * - Position assignment prioritizes "up the middle" positions (C → SS → 2B → CF → 3B → 1B → LF/RF)
- * - Traditional batting order construction (leadoff high OBP, cleanup power, etc.)
  * - Historical DH rules (AL 1973+, NL 2022+)
  * - Starting pitcher selection by quality score (ERA, WHIP, CG rate)
  */
@@ -14,7 +18,14 @@ import type {
 	LineupState,
 	LineupSlot
 } from './types.js';
-import { getEraStrategy } from '@bb/model';
+import {
+	getEraStrategy,
+	getStrategyFunction,
+	blendLineups,
+	type EraStrategy,
+	type EraDetection,
+	type EraLineupOptions
+} from '@bb/model';
 
 /**
  * Context for player usage tracking during lineup building
@@ -33,6 +44,7 @@ export interface LineupBuildResult {
 	lineup: LineupState;
 	startingPitcher: PitcherStats;
 	warnings: string[];
+	era?: EraDetection;
 }
 
 // Position numbers (standard MLB scoring)
@@ -225,12 +237,17 @@ function assignPositions(
 		// At 100% usage: need = 0
 		let need = (1 - usage) * 100;
 
-		// Backup boost: players with LOWER actual PA need more playing time
-		// This ensures backups get priority when they're underused
-		// Invert the PA scale: lower PA = higher boost
-		const backupBoost = Math.max(0, 20 - Math.min(20, Math.log(player.pa + 1) * 2));
+		// Only apply backup boost when we have usage context
+		// Without usage context, we want to prefer star players (higher PA)
+		if (usageContext && usage < 1.0) {
+			// Backup boost: players with LOWER actual PA need more playing time
+			// This ensures backups get priority when they're underused
+			// Invert the PA scale: lower PA = higher boost
+			const backupBoost = Math.max(0, 20 - Math.min(20, Math.log(player.pa + 1) * 2));
+			need += backupBoost;
+		}
 
-		return need + backupBoost;
+		return need;
 	}
 
 	// Fill positions in priority order
@@ -260,7 +277,12 @@ function assignPositions(
 				// Within same bucket, prefer higher need score
 				const needA = getNeedScore(a.id);
 				const needB = getNeedScore(b.id);
-				return needB - needA; // Higher need first
+				if (Math.abs(needA - needB) > 1) {
+					return needB - needA; // Higher need first
+				}
+				// When need scores are similar (e.g., no usage context), prefer higher PA
+				// This ensures star players start over backups
+				return b.pa - a.pa;
 			});
 
 			primaryPlayer = availableCandidates[0];
@@ -325,7 +347,11 @@ function assignPositions(
 					return needB - needA;
 				}
 				// Second preference: more experienced at this position
-				return b.outs - a.outs;
+				if (Math.abs(b.outs - a.outs) > 100) {
+					return b.outs - a.outs;
+				}
+				// When experience is similar, prefer higher PA (star players)
+				return b.player.pa - a.player.pa;
 			});
 
 			let best = availableCandidates[0];
@@ -471,7 +497,178 @@ function buildBattingOrder(
 }
 
 /**
- * Internal implementation of lineup building
+ * Filter available players based on usage context
+ * @param batters - All batters to filter
+ * @param usageContext - Optional usage tracking context
+ * @returns Available players (below threshold) and rested players (above threshold)
+ */
+function filterAvailablePlayers(
+	batters: BatterStats[],
+	usageContext?: UsageContext
+): { available: BatterStats[]; rested: BatterStats[]; warnings: string[] } {
+	const warnings: string[] = [];
+	const restThreshold = usageContext?.restThreshold ?? 1.25;
+
+	const available: BatterStats[] = [];
+	const rested: BatterStats[] = [];
+
+	for (const batter of batters) {
+		const usage = usageContext?.playerUsage.get(batter.id) ?? 0;
+		if (usage > restThreshold) {
+			rested.push(batter);
+			warnings.push(`Resting ${batter.name} (${(usage * 100).toFixed(0)}% of actual usage)`);
+		} else {
+			available.push(batter);
+		}
+	}
+
+	return { available, rested, warnings };
+}
+
+/**
+ * Apply randomness to a lineup by swapping adjacent players
+ * @param lineup - The lineup slots to randomize
+ * @param randomness - Randomness factor (0-1)
+ * @returns Lineup with random swaps applied
+ */
+function applyRandomness(lineup: LineupSlot[], randomness: number): LineupSlot[] {
+	if (randomness <= 0) return lineup;
+
+	const result = [...lineup];
+	const numSwaps = Math.floor(randomness * 3) + 1; // 1-3 swaps based on randomness
+
+	for (let i = 0; i < numSwaps; i++) {
+		if (Math.random() < randomness) {
+			const idx = Math.floor(Math.random() * (result.length - 1)); // 0 to length-2
+			const temp = result[idx];
+			result[idx] = result[idx + 1]!;
+			result[idx + 1] = temp!;
+		}
+	}
+
+	return result;
+}
+
+/**
+ * Insert pitcher into batting order
+ * @param lineup - Current lineup slots
+ * @param pitcherId - Starting pitcher ID
+ * @param usesDH - Whether this game uses DH
+ * @returns Lineup with pitcher added
+ */
+function insertPitcher(lineup: LineupSlot[], pitcherId: string, usesDH: boolean): LineupSlot[] {
+	if (usesDH) {
+		// With DH, pitcher is not in batting order
+		return lineup;
+	}
+	// Without DH, pitcher bats 9th
+	return [...lineup, { playerId: pitcherId, position: POSITIONS.PITCHER }];
+}
+
+/**
+ * Handle position scarcity by using rested players or emergency assignments
+ * @param lineup - Current lineup
+ * @param rested - Players who were rested (can be used in emergency)
+ * @param allBatters - All available batters
+ * @param allowEmergency - Whether to allow emergency starts from rested players
+ * @param warnings - Array to collect warnings
+ * @returns Lineup with positions filled
+ */
+function handlePositionScarcity(
+	lineup: LineupSlot[],
+	rested: BatterStats[],
+	allBatters: BatterStats[],
+	allowEmergency: boolean,
+	warnings: string[]
+): LineupSlot[] {
+	const positionCounts = new Map<number, number>();
+	for (const slot of lineup) {
+		positionCounts.set(slot.position, (positionCounts.get(slot.position) ?? 0) + 1);
+	}
+
+	// Check if all positions are filled (8 positions for non-DH, 9 for DH)
+	const positionsNeeded = new Set(POSITION_PRIORITY);
+	const filledPositions = new Set(lineup.map(s => s.position).filter(p => positionsNeeded.has(p)));
+
+	if (filledPositions.size >= 8) {
+		return lineup; // All positions filled
+	}
+
+	// Try to fill missing positions with rested players
+	if (allowEmergency && rested.length > 0) {
+		for (const position of POSITION_PRIORITY) {
+			if (filledPositions.has(position)) continue;
+
+			// Find rested player who can play this position
+			const emergency = rested.find(b =>
+				b.primaryPosition === position ||
+				(b.positionEligibility[position] ?? 0) > 0
+			);
+
+			if (emergency) {
+				lineup.push({ playerId: emergency.id, position });
+				filledPositions.add(position);
+				warnings.push(`Emergency start: ${emergency.name} at ${getPositionName(position)} (was rested)`);
+			}
+		}
+	}
+
+	return lineup;
+}
+
+/**
+ * Convert strategy output slots to app LineupSlot format
+ * The model package uses battingOrder/fieldingPosition, app uses position
+ */
+function convertToAppLineupSlot(strategySlot: import('@bb/model').LineupSlot): LineupSlot {
+	return {
+		playerId: strategySlot.playerId,
+		position: strategySlot.fieldingPosition
+	};
+}
+
+/**
+ * Build batting order using era-specific strategy
+ * @param assignedPlayers - Players with assigned positions
+ * @param strategy - Era strategy to use
+ * @param usesDH - Whether DH is used
+ * @returns Batting order with positions
+ */
+function buildEraAwareBattingOrder(
+	assignedPlayers: Array<{ player: BatterStats; position: number }>,
+	strategy: EraStrategy,
+	usesDH: boolean
+): Array<{ player: BatterStats; battingOrder: number; position: number }> {
+	// Convert to model package format for strategy function
+	const batters = assignedPlayers.map(ap => ({
+		...ap.player,
+		// Convert vsLHP/vsRHP to vsLeft/vsRight for model package
+		rates: {
+			vsLeft: ap.player.rates.vsLHP,
+			vsRight: ap.player.rates.vsRHP
+		}
+	}));
+
+	// Get strategy function and generate lineup
+	const strategyFn = getStrategyFunction(strategy);
+	const strategyLineup = strategyFn(batters);
+
+	// Map strategy output back to our format
+	return strategyLineup.map((slot, i) => {
+		const player = assignedPlayers.find(ap => ap.player.id === slot.playerId);
+		if (!player) {
+			throw new Error(`Player ${slot.playerId} not found in assigned players`);
+		}
+		return {
+			player: player.player,
+			battingOrder: i + 1,
+			position: player.position // Use the assigned position, not the strategy's position
+		};
+	});
+}
+
+/**
+ * Internal implementation of lineup building with era awareness
  */
 function buildLineupImpl(
 	batters: Record<string, BatterStats>,
@@ -479,7 +676,8 @@ function buildLineupImpl(
 	teamId: string,
 	league: string,
 	year: number,
-	usageContext?: UsageContext
+	usageContext?: UsageContext,
+	options?: EraLineupOptions
 ): LineupBuildResult {
 	const warnings: string[] = [];
 
@@ -530,7 +728,20 @@ function buildLineupImpl(
 	const startingPitcher = selectStartingPitcher(teamPitchers);
 
 	// Check if this game uses DH
-	const dhGame = usesDH(league, year);
+	const dhGame = options?.useDH ?? usesDH(league, year);
+
+	// Detect era strategy
+	const era: EraDetection = options?.strategy
+		? { primary: options.strategy, secondary: null, blendFactor: 1 }
+		: getEraStrategy(year);
+
+	console.log('[buildLineup] Era detection:', {
+		year,
+		teamId,
+		primary: era.primary,
+		secondary: era.secondary,
+		blendFactor: era.blendFactor
+	});
 
 	// Assign fielding positions with usage awareness
 	const positionAssignments = assignPositions(positionPlayers, usageContext);
@@ -544,8 +755,54 @@ function buildLineupImpl(
 		}
 	}
 
-	// Build batting order for position players
-	let battingOrder = buildBattingOrder(assignedPlayers, dhGame);
+	// Build batting order using era-specific strategy
+	let battingOrder = buildEraAwareBattingOrder(assignedPlayers, era.primary, dhGame);
+
+	// If in transition era, generate secondary lineup and blend
+	if (era.secondary && era.blendFactor < 1) {
+		const secondaryBattingOrder = buildEraAwareBattingOrder(assignedPlayers, era.secondary, dhGame);
+		// Blend based on blendFactor
+		const blended: Array<{ player: BatterStats; battingOrder: number; position: number }> = [];
+
+		for (let i = 0; i < 9; i++) {
+			const primarySlot = battingOrder[i];
+			const secondarySlot = secondaryBattingOrder[i];
+			if (!primarySlot || !secondarySlot) continue;
+
+			// Use primary strategy with probability = blendFactor
+			if (Math.random() < era.blendFactor) {
+				blended.push(primarySlot);
+			} else {
+				blended.push(secondarySlot);
+			}
+		}
+
+		battingOrder = blended;
+		console.log('[buildLineup] Blended strategies:', {
+			primary: era.primary,
+			secondary: era.secondary,
+			blendFactor: era.blendFactor
+		});
+	}
+
+	// Apply randomness if specified
+	if (options?.randomness && options.randomness > 0) {
+		battingOrder = battingOrder.map((slot, i) => ({
+			...slot,
+			battingOrder: i + 1
+		}));
+		// Apply randomness by shuffling
+		const numSwaps = Math.floor(options.randomness * 3);
+		for (let i = 0; i < numSwaps; i++) {
+			const idx1 = Math.floor(Math.random() * battingOrder.length);
+			const idx2 = Math.floor(Math.random() * battingOrder.length);
+			if (idx1 !== idx2) {
+				const temp = battingOrder[idx1]!.battingOrder;
+				battingOrder[idx1]!.battingOrder = battingOrder[idx2]!.battingOrder;
+				battingOrder[idx2]!.battingOrder = temp;
+			}
+		}
+	}
 
 	// Apply rest checks if usage context is provided
 	if (usageContext) {
@@ -665,20 +922,22 @@ function buildLineupImpl(
 	return {
 		lineup,
 		startingPitcher,
-		warnings
+		warnings,
+		era
 	};
 }
 
 /**
- * Build a complete valid lineup for a team
+ * Build a complete valid lineup for a team with era-aware strategy
  *
  * @param batters - All batters in the season
  * @param pitchers - All pitchers in the season
  * @param teamId - ID of the team to build lineup for
  * @param league - 'AL' or 'NL'
- * @param year - Season year (for DH rules)
+ * @param year - Season year (for DH rules and era detection)
  * @param usageContext - Optional context for player usage tracking
- * @returns LineupBuildResult with lineup, starting pitcher, and any warnings
+ * @param options - Optional era lineup options (strategy override, randomness, etc.)
+ * @returns LineupBuildResult with lineup, starting pitcher, warnings, and era info
  */
 export function buildLineup(
 	batters: Record<string, BatterStats>,
@@ -686,9 +945,10 @@ export function buildLineup(
 	teamId: string,
 	league: string,
 	year: number,
-	usageContext?: UsageContext
+	usageContext?: UsageContext,
+	options?: EraLineupOptions
 ): LineupBuildResult {
-	return buildLineupImpl(batters, pitchers, teamId, league, year, usageContext);
+	return buildLineupImpl(batters, pitchers, teamId, league, year, usageContext, options);
 }
 
 /**
@@ -696,5 +956,11 @@ export function buildLineup(
  */
 export { buildLineupImpl };
 
-// Re-export era detection from model package for convenience
-export { getEraStrategy };
+// Re-export era detection and strategy functions from model package for convenience
+export {
+	getEraStrategy,
+	isTransitionYear,
+	getPureEraStrategy,
+	getStrategyFunction,
+	blendLineups
+} from '@bb/model';

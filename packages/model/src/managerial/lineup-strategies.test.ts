@@ -69,14 +69,26 @@ describe('traditionalStrategy', () => {
 		expect(result).toHaveLength(9);
 	});
 
-	it('throws with fewer than 9 batters', () => {
-		const batters = Array.from({ length: 8 }, (_, i) =>
+	it('throws with fewer than 8 batters', () => {
+		const batters = Array.from({ length: 7 }, (_, i) =>
 			createMockBatter(`p${i}`, 0.3, 0.4)
 		);
 
 		expect(() => traditionalStrategy(batters)).toThrow(
-			'Need at least 9 batters, got 8'
+			'Need at least 8 batters, got 7'
 		);
+	});
+
+	it('supports 8 batters (non-DH games)', () => {
+		const batters = Array.from({ length: 8 }, (_, i) =>
+			createMockBatter(`p${i}`, 0.3 + i * 0.01, 0.4 + i * 0.01)
+		);
+
+		const result = traditionalStrategy(batters);
+
+		expect(result).toHaveLength(8);
+		const battingOrders = result.map((slot) => slot.battingOrder).sort((a, b) => a - b);
+		expect(battingOrders).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 	});
 
 	it('assigns batting orders 1-9', () => {
@@ -126,14 +138,26 @@ describe('compositeStrategy', () => {
 		expect(result).toHaveLength(9);
 	});
 
-	it('throws with fewer than 9 batters', () => {
-		const batters = Array.from({ length: 8 }, (_, i) =>
+	it('throws with fewer than 8 batters', () => {
+		const batters = Array.from({ length: 7 }, (_, i) =>
 			createMockBatter(`p${i}`, 0.3, 0.4)
 		);
 
 		expect(() => compositeStrategy(batters)).toThrow(
-			'Need at least 9 batters, got 8'
+			'Need at least 8 batters, got 7'
 		);
+	});
+
+	it('supports 8 batters (non-DH games)', () => {
+		const batters = Array.from({ length: 8 }, (_, i) =>
+			createMockBatter(`p${i}`, 0.3 + i * 0.01, 0.4 + i * 0.01)
+		);
+
+		const result = compositeStrategy(batters);
+
+		expect(result).toHaveLength(8);
+		const battingOrders = result.map((slot) => slot.battingOrder).sort((a, b) => a - b);
+		expect(battingOrders).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 	});
 
 	it('places top 3 OPS in slots 3, 4, 5', () => {
@@ -193,14 +217,26 @@ describe('earlyAnalyticsStrategy', () => {
 		expect(result).toHaveLength(9);
 	});
 
-	it('throws with fewer than 9 batters', () => {
-		const batters = Array.from({ length: 8 }, (_, i) =>
+	it('throws with fewer than 8 batters', () => {
+		const batters = Array.from({ length: 7 }, (_, i) =>
 			createMockBatter(`p${i}`, 0.3, 0.4)
 		);
 
 		expect(() => earlyAnalyticsStrategy(batters)).toThrow(
-			'Need at least 9 batters, got 8'
+			'Need at least 8 batters, got 7'
 		);
+	});
+
+	it('supports 8 batters (non-DH games)', () => {
+		const batters = Array.from({ length: 8 }, (_, i) =>
+			createMockBatter(`p${i}`, 0.3 + i * 0.01, 0.4 + i * 0.01)
+		);
+
+		const result = earlyAnalyticsStrategy(batters);
+
+		expect(result).toHaveLength(8);
+		const battingOrders = result.map((slot) => slot.battingOrder).sort((a, b) => a - b);
+		expect(battingOrders).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 	});
 
 	it('assigns batting orders 1-9', () => {

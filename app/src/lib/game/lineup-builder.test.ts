@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectStartingPitcher, buildLineup, usesDH } from './lineup-builder.js';
+import { selectStartingPitcher, buildLineup, usesDH, getEraStrategy } from './lineup-builder.js';
 import type { PitcherStats, BatterStats } from './types.js';
 
 describe('selectStartingPitcher', () => {
@@ -341,5 +341,161 @@ describe('usesDH', () => {
 	it('returns false for NL before 2022', () => {
 		expect(usesDH('NL', 2021)).toBe(false);
 		expect(usesDH('NL', 1950)).toBe(false);
+	});
+});
+
+describe('buildLineup - era integration', () => {
+	// Helper to create a minimal roster
+	function createMinimalRoster(teamId: string = 'TEST'): Record<string, BatterStats> {
+		return {
+			// C
+			'c1': { id: 'c1', name: 'Catcher', bats: 'R', teamId, primaryPosition: 2, positionEligibility: { 2: 5000 }, pa: 400, avg: 0.250, obp: 0.320, slg: 0.380, ops: 0.700, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			// SS
+			'ss1': { id: 'ss1', name: 'Shortstop', bats: 'R', teamId, primaryPosition: 6, positionEligibility: { 6: 5000 }, pa: 450, avg: 0.260, obp: 0.330, slg: 0.370, ops: 0.700, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			// 2B
+			'2b1': { id: '2b1', name: 'SecondBase', bats: 'R', teamId, primaryPosition: 4, positionEligibility: { 4: 5000 }, pa: 420, avg: 0.255, obp: 0.325, slg: 0.375, ops: 0.700, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			// CF
+			'cf1': { id: 'cf1', name: 'CenterField', bats: 'R', teamId, primaryPosition: 8, positionEligibility: { 8: 5000 }, pa: 480, avg: 0.270, obp: 0.340, slg: 0.400, ops: 0.740, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			// 3B
+			'3b1': { id: '3b1', name: 'ThirdBase', bats: 'R', teamId, primaryPosition: 5, positionEligibility: { 5: 5000 }, pa: 410, avg: 0.265, obp: 0.335, slg: 0.420, ops: 0.755, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			// 1B
+			'1b1': { id: '1b1', name: 'FirstBase', bats: 'R', teamId, primaryPosition: 3, positionEligibility: { 3: 5000 }, pa: 460, avg: 0.275, obp: 0.350, slg: 0.450, ops: 0.800, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			// LF
+			'lf1': { id: 'lf1', name: 'LeftField', bats: 'R', teamId, primaryPosition: 7, positionEligibility: { 7: 5000 }, pa: 440, avg: 0.268, obp: 0.338, slg: 0.410, ops: 0.748, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			// RF
+			'rf1': { id: 'rf1', name: 'RightField', bats: 'R', teamId, primaryPosition: 9, positionEligibility: { 9: 5000 }, pa: 445, avg: 0.272, obp: 0.342, slg: 0.420, ops: 0.762, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			// Extra DH/backup
+			'dh1': { id: 'dh1', name: 'DH', bats: 'R', teamId, primaryPosition: 10, positionEligibility: { 10: 3000, 7: 1000 }, pa: 300, avg: 0.280, obp: 0.360, slg: 0.480, ops: 0.840, rates: { vsLHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHP: { single: 0.15, double: 0.04, triple: 0.01, homeRun: 0.02, walk: 0.08, hitByPitch: 0.01, strikeout: 0.15, groundOut: 0.18, flyOut: 0.14, lineOut: 0.04, popOut: 0.03, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } }
+		};
+	}
+
+	// Helper to create a minimal pitching staff
+	function createMinimalPitchers(teamId: string = 'TEST'): Record<string, PitcherStats> {
+		return {
+			'sp1': { id: 'sp1', name: 'Starter1', throws: 'R', teamId, games: 30, gamesStarted: 30, completeGames: 5, saves: 0, inningsPitched: 200, whip: 1.2, era: 3.5, avgBfpAsStarter: null, avgBfpAsReliever: null, rates: { vsLHB: { single: 0.2, double: 0.05, triple: 0.01, homeRun: 0.03, walk: 0.08, hitByPitch: 0.01, strikeout: 0.2, groundOut: 0.2, flyOut: 0.15, lineOut: 0.04, popOut: 0.02, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHB: { single: 0.2, double: 0.05, triple: 0.01, homeRun: 0.03, walk: 0.08, hitByPitch: 0.01, strikeout: 0.2, groundOut: 0.2, flyOut: 0.15, lineOut: 0.04, popOut: 0.02, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } },
+			'sp2': { id: 'sp2', name: 'Starter2', throws: 'R', teamId, games: 25, gamesStarted: 25, completeGames: 2, saves: 0, inningsPitched: 150, whip: 1.3, era: 4.0, avgBfpAsStarter: null, avgBfpAsReliever: null, rates: { vsLHB: { single: 0.2, double: 0.05, triple: 0.01, homeRun: 0.03, walk: 0.08, hitByPitch: 0.01, strikeout: 0.2, groundOut: 0.2, flyOut: 0.15, lineOut: 0.04, popOut: 0.02, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 }, vsRHB: { single: 0.2, double: 0.05, triple: 0.01, homeRun: 0.03, walk: 0.08, hitByPitch: 0.01, strikeout: 0.2, groundOut: 0.2, flyOut: 0.15, lineOut: 0.04, popOut: 0.02, sacrificeFly: 0, sacrificeBunt: 0, fieldersChoice: 0, reachedOnError: 0, catcherInterference: 0 } } }
+		};
+	}
+
+	it('uses traditional strategy for 1950', () => {
+		const batters = createMinimalRoster();
+		const pitchers = createMinimalPitchers();
+
+		const result = buildLineup(batters, pitchers, 'TEST', 'NL', 1950);
+
+		// Verify era detection
+		expect(result.era).toBeDefined();
+		expect(result.era?.primary).toBe('traditional');
+		expect(result.era?.secondary).toBeNull();
+		expect(result.era?.blendFactor).toBe(1);
+
+		// Verify lineup is built
+		expect(result.lineup.players).toHaveLength(9);
+		expect(result.lineup.players[result.lineup.players.length - 1]!.position).toBe(1); // Pitcher bats 9th
+	});
+
+	it('uses modern strategy for 2020', () => {
+		const batters = createMinimalRoster();
+		const pitchers = createMinimalPitchers();
+
+		const result = buildLineup(batters, pitchers, 'TEST', 'AL', 2020);
+
+		// Verify era detection
+		expect(result.era).toBeDefined();
+		expect(result.era?.primary).toBe('modern');
+		expect(result.era?.secondary).toBeNull();
+		expect(result.era?.blendFactor).toBe(1);
+
+		// Verify lineup is built
+		expect(result.lineup.players).toHaveLength(9);
+		// DH is used in AL 2020
+		expect(result.lineup.players.some(p => p.position === 10)).toBe(true);
+	});
+
+	it('blends strategies for 1985 (transition era)', () => {
+		const batters = createMinimalRoster();
+		const pitchers = createMinimalPitchers();
+
+		const result = buildLineup(batters, pitchers, 'TEST', 'NL', 1985);
+
+		// Verify era detection - 1985 is in transition
+		expect(result.era).toBeDefined();
+		expect(result.era?.primary).toBe('composite');
+		expect(result.era?.secondary).toBe('traditional');
+		expect(result.era?.blendFactor).toBeGreaterThan(0);
+		expect(result.era?.blendFactor).toBeLessThan(1);
+
+		// Verify lineup is built
+		expect(result.lineup.players).toHaveLength(9);
+	});
+
+	it('respects strategy override option', () => {
+		const batters = createMinimalRoster();
+		const pitchers = createMinimalPitchers();
+
+		// Force modern strategy even though 1950 is traditional era
+		const result = buildLineup(batters, pitchers, 'TEST', 'NL', 1950, undefined, {
+			strategy: 'modern'
+		});
+
+		// Verify strategy override
+		expect(result.era?.primary).toBe('modern');
+		expect(result.era?.secondary).toBeNull();
+		expect(result.era?.blendFactor).toBe(1);
+	});
+
+	it('uses DH from option when specified', () => {
+		const batters = createMinimalRoster();
+		const pitchers = createMinimalPitchers();
+
+		// 1950 NL normally doesn't use DH, but override it
+		const result = buildLineup(batters, pitchers, 'TEST', 'NL', 1950, undefined, {
+			useDH: true
+		});
+
+		// Verify DH is used
+		expect(result.lineup.players.some(p => p.position === 10)).toBe(true);
+	});
+
+	it('applies randomness when specified', () => {
+		const batters = createMinimalRoster();
+		const pitchers = createMinimalPitchers();
+
+		// Build with high randomness
+		const result1 = buildLineup(batters, pitchers, 'TEST', 'NL', 2020, undefined, {
+			randomness: 0.5
+		});
+
+		const result2 = buildLineup(batters, pitchers, 'TEST', 'NL', 2020, undefined, {
+			randomness: 0.5
+		});
+
+		// With randomness, lineups may differ (not guaranteed, but possible)
+		// Just verify both are valid
+		expect(result1.lineup.players).toHaveLength(9);
+		expect(result2.lineup.players).toHaveLength(9);
+	});
+
+	it('detects all eras correctly', () => {
+		const testCases = [
+			{ year: 1950, expected: 'traditional' },
+			{ year: 1975, expected: 'traditional' },
+			{ year: 1980, expected: 'composite' },
+			{ year: 1985, expected: 'composite' },
+			{ year: 1990, expected: 'early-analytics' },
+			{ year: 1995, expected: 'early-analytics' },
+			{ year: 2000, expected: 'modern' },
+			{ year: 2005, expected: 'modern' },
+			{ year: 2010, expected: 'modern' },
+			{ year: 2024, expected: 'modern' }
+		];
+
+		const batters = createMinimalRoster();
+		const pitchers = createMinimalPitchers();
+
+		for (const testCase of testCases) {
+			const result = buildLineup(batters, pitchers, 'TEST', 'NL', testCase.year);
+			expect(result.era?.primary).toBe(testCase.expected);
+		}
 	});
 });

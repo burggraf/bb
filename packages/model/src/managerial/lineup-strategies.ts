@@ -75,15 +75,17 @@ function calculateBatterScore(batter: BatterStats): number {
  * - Power in cleanup (#4)
  */
 export function traditionalStrategy(batters: BatterStats[]): LineupSlot[] {
-	if (batters.length < 9) {
-		throw new Error(`Need at least 9 batters, got ${batters.length}`);
+	const minBatters = 8; // Support both 8 (no DH) and 9 (DH) batters
+	if (batters.length < minBatters) {
+		throw new Error(`Need at least ${minBatters} batters, got ${batters.length}`);
 	}
 
 	const scored = batters.map((b) => ({ batter: b, score: calculateBatterScore(b) }));
 	scored.sort((a, b) => b.score - a.score);
-	const top9 = scored.slice(0, 9);
+	const battingOrderSize = Math.min(scored.length, 9);
+	const topBatters = scored.slice(0, battingOrderSize);
 
-	return top9.map((item, i) => ({
+	return topBatters.map((item, i) => ({
 		playerId: item.batter.id,
 		battingOrder: i + 1,
 		fieldingPosition: 1 // Placeholder - will be assigned based on defensive needs
@@ -102,73 +104,98 @@ export function traditionalStrategy(batters: BatterStats[]): LineupSlot[] {
  * traditional lineup structures.
  */
 export function compositeStrategy(batters: BatterStats[]): LineupSlot[] {
-	if (batters.length < 9) {
-		throw new Error(`Need at least 9 batters, got ${batters.length}`);
+	const minBatters = 8; // Support both 8 (no DH) and 9 (DH) batters
+	if (batters.length < minBatters) {
+		throw new Error(`Need at least ${minBatters} batters, got ${batters.length}`);
 	}
 
 	const scored = batters.map((b) => ({ batter: b, score: calculateBatterScore(b) }));
 	scored.sort((a, b) => b.score - a.score);
-	const top9 = scored.slice(0, 9);
+	const battingOrderSize = Math.min(scored.length, 9);
+	const topBatters = scored.slice(0, battingOrderSize);
 
-	// Create array to hold all 9 slots
-	const slots: (LineupSlot | null)[] = new Array(9).fill(null);
+	// Create array to hold slots
+	const slots: (LineupSlot | null)[] = new Array(battingOrderSize).fill(null);
 
-	// Place top 3 in heart of order (slots 3, 4, 5)
-	slots[2] = {
-		playerId: top9[0].batter.id,
-		battingOrder: 3,
-		fieldingPosition: 1
-	};
-	slots[3] = {
-		playerId: top9[1].batter.id,
-		battingOrder: 4,
-		fieldingPosition: 1
-	};
-	slots[4] = {
-		playerId: top9[2].batter.id,
-		battingOrder: 5,
-		fieldingPosition: 1
-	};
+	// Place top 3 in heart of order (slots 3, 4, 5) - adjust if we only have 8 batters
+	if (battingOrderSize >= 5) {
+		slots[2] = {
+			playerId: topBatters[0].batter.id,
+			battingOrder: 3,
+			fieldingPosition: 1
+		};
+		slots[3] = {
+			playerId: topBatters[1].batter.id,
+			battingOrder: 4,
+			fieldingPosition: 1
+		};
+		slots[4] = {
+			playerId: topBatters[2].batter.id,
+			battingOrder: 5,
+			fieldingPosition: 1
+		};
 
-	// Remaining batters for other slots
-	const remaining = top9.slice(3);
+		// Remaining batters for other slots
+		const remaining = topBatters.slice(3);
 
-	// Slots 1 and 2: Next two best (table setters)
-	slots[0] = {
-		playerId: remaining[0].batter.id,
-		battingOrder: 1,
-		fieldingPosition: 1
-	};
-	slots[1] = {
-		playerId: remaining[1].batter.id,
-		battingOrder: 2,
-		fieldingPosition: 1
-	};
+		// Slots 1 and 2: Next two best (table setters)
+		if (remaining[0]) {
+			slots[0] = {
+				playerId: remaining[0].batter.id,
+				battingOrder: 1,
+				fieldingPosition: 1
+			};
+		}
+		if (remaining[1]) {
+			slots[1] = {
+				playerId: remaining[1].batter.id,
+				battingOrder: 2,
+				fieldingPosition: 1
+			};
+		}
 
-	// Slots 6-9: Rest of the lineup
-	slots[5] = {
-		playerId: remaining[2].batter.id,
-		battingOrder: 6,
-		fieldingPosition: 1
-	};
-	slots[6] = {
-		playerId: remaining[3].batter.id,
-		battingOrder: 7,
-		fieldingPosition: 1
-	};
-	slots[7] = {
-		playerId: remaining[4].batter.id,
-		battingOrder: 8,
-		fieldingPosition: 1
-	};
-	slots[8] = {
-		playerId: remaining[5].batter.id,
-		battingOrder: 9,
-		fieldingPosition: 1
-	};
+		// Slots 6-9: Rest of the lineup
+		if (remaining[2]) {
+			slots[5] = {
+				playerId: remaining[2].batter.id,
+				battingOrder: 6,
+				fieldingPosition: 1
+			};
+		}
+		if (remaining[3]) {
+			slots[6] = {
+				playerId: remaining[3].batter.id,
+				battingOrder: 7,
+				fieldingPosition: 1
+			};
+		}
+		if (remaining[4]) {
+			slots[7] = {
+				playerId: remaining[4].batter.id,
+				battingOrder: 8,
+				fieldingPosition: 1
+			};
+		}
+		if (remaining[5]) {
+			slots[8] = {
+				playerId: remaining[5].batter.id,
+				battingOrder: 9,
+				fieldingPosition: 1
+			};
+		}
+	} else {
+		// Fallback for fewer than 5 batters - just order by score
+		for (let i = 0; i < topBatters.length; i++) {
+			slots[i] = {
+				playerId: topBatters[i]!.batter.id,
+				battingOrder: i + 1,
+				fieldingPosition: 1
+			};
+		}
+	}
 
-	// Type assertion - we've filled all slots
-	return slots as LineupSlot[];
+	// Filter out null slots and return
+	return slots.filter((slot): slot is LineupSlot => slot !== null);
 }
 
 /**
@@ -191,15 +218,17 @@ export function compositeStrategy(batters: BatterStats[]): LineupSlot[] {
  * - Bullpen specialization shifts offense strategy
  */
 export function earlyAnalyticsStrategy(batters: BatterStats[]): LineupSlot[] {
-	if (batters.length < 9) {
-		throw new Error(`Need at least 9 batters, got ${batters.length}`);
+	const minBatters = 8; // Support both 8 (no DH) and 9 (DH) batters
+	if (batters.length < minBatters) {
+		throw new Error(`Need at least ${minBatters} batters, got ${batters.length}`);
 	}
 
 	const scored = batters.map((b) => ({ batter: b, score: calculateBatterScore(b) }));
 	scored.sort((a, b) => b.score - a.score);
-	const top9 = scored.slice(0, 9);
+	const battingOrderSize = Math.min(scored.length, 9);
+	const topBatters = scored.slice(0, battingOrderSize);
 
-	return top9.map((item, i) => ({
+	return topBatters.map((item, i) => ({
 		playerId: item.batter.id,
 		battingOrder: i + 1,
 		fieldingPosition: 1 // Placeholder - will be assigned based on defensive needs
