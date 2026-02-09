@@ -14,6 +14,7 @@ import type {
 	LineupState,
 	LineupSlot
 } from './types.js';
+import { getEraStrategy } from '@bb/model';
 
 /**
  * Context for player usage tracking during lineup building
@@ -694,3 +695,6 @@ export function buildLineup(
  * Internal implementation of lineup building
  */
 export { buildLineupImpl };
+
+// Re-export era detection from model package for convenience
+export { getEraStrategy };

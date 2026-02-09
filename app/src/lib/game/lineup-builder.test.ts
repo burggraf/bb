@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectStartingPitcher, buildLineup } from './lineup-builder.js';
+import { selectStartingPitcher, buildLineup, usesDH } from './lineup-builder.js';
 import type { PitcherStats, BatterStats } from './types.js';
 
 describe('selectStartingPitcher', () => {
@@ -322,5 +322,24 @@ describe('buildLineup - position assignment quality', () => {
 		// Durst should NOT be in the starting lineup (he's a backup with same primary position)
 		const durstSlot = result.lineup.players.find(p => p.playerId === 'dursc101');
 		expect(durstSlot).toBeUndefined();
+	});
+});
+
+describe('usesDH', () => {
+	it('returns true for AL after 1973', () => {
+		expect(usesDH('AL', 1973)).toBe(true);
+		expect(usesDH('AL', 2020)).toBe(true);
+	});
+	it('returns false for AL before 1973', () => {
+		expect(usesDH('AL', 1972)).toBe(false);
+		expect(usesDH('AL', 1950)).toBe(false);
+	});
+	it('returns true for NL after 2022', () => {
+		expect(usesDH('NL', 2022)).toBe(true);
+		expect(usesDH('NL', 2024)).toBe(true);
+	});
+	it('returns false for NL before 2022', () => {
+		expect(usesDH('NL', 2021)).toBe(false);
+		expect(usesDH('NL', 1950)).toBe(false);
 	});
 });
