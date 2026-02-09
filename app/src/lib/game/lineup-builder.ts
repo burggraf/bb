@@ -224,11 +224,12 @@ function assignPositions(
 		// At 100% usage: need = 0
 		let need = (1 - usage) * 100;
 
-		// Quality boost: players with higher actual PA were better players, give them a boost
-		// But cap the boost so we don't always pick stars
-		const qualityBoost = Math.min(20, Math.log(player.pa + 1) * 2);
+		// Backup boost: players with LOWER actual PA need more playing time
+		// This ensures backups get priority when they're underused
+		// Invert the PA scale: lower PA = higher boost
+		const backupBoost = Math.max(0, 20 - Math.min(20, Math.log(player.pa + 1) * 2));
 
-		return need + qualityBoost;
+		return need + backupBoost;
 	}
 
 	// Fill positions in priority order

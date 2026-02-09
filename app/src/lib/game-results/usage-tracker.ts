@@ -225,6 +225,21 @@ export class UsageTracker {
       const teamGames = getTeamGamesPlayed(playerId);
       // Parameters: pa, pa, teamGames, seasonLength (for formula: actual * teamGames / seasonLength)
       updateBatter.run([pa, pa, teamGames, seasonLength, pa, teamGames, seasonLength, pa, teamGames, seasonLength, this.seriesId, playerId]);
+
+      // Debug: log first few players to verify calculation
+      const stmt = db.prepare('SELECT actual_season_total, replay_current_total FROM player_usage WHERE series_id = ? AND player_id = ?');
+      stmt.bind([this.seriesId, playerId]);
+      if (stmt.step()) {
+        const row = stmt.getAsObject() as Record<string, any>;
+        const actual = row.actual_season_total;
+        const replay = row.replay_current_total;
+        const expected = actual * teamGames / seasonLength;
+        const pct = expected > 0 ? replay / expected : 0;
+
+        // Log all for now to debug
+        console.log(`[UsageTracker] ${playerId.slice(0, 15)}: PA=${pa}, actual=${actual}, replay=${replay}, teamGames=${teamGames}, expected=${expected.toFixed(1)}, pct=${(pct * 100).toFixed(0)}%`);
+      }
+      stmt.free();
     });
 
     const updatePitcher = db.prepare(`
