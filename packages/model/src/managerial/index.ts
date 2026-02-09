@@ -24,11 +24,12 @@ export type {
 	EraDetection,
 	PlayerAvailability,
 	LineupBuildResult,
-	EraLineupOptions
+	EraLineupOptions,
+	LineupSlot
 } from './types.js';
 
 // Lineup (legacy - will be deprecated)
-export { generateLineup, type LineupOptions, type LineupSlot } from './lineup.js';
+export { generateLineup, type LineupOptions } from './lineup.js';
 
 // Platoon
 export {

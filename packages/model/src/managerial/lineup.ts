@@ -3,18 +3,13 @@
  */
 
 import type { BatterStats } from '../types.js';
+import type { LineupSlot } from './types.js';
 
 export interface LineupOptions {
 	/** Method for calculating batter value */
 	method?: 'obp' | 'sabermetric' | 'traditional';
 	/** Randomness factor 0-1, default 0.1 (10% randomness) */
 	randomness?: number;
-}
-
-export interface LineupSlot {
-	playerId: string;
-	battingOrder: number; // 1-9
-	fieldingPosition: number; // 1-9
 }
 
 interface ScoredBatter {
