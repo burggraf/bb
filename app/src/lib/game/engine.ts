@@ -2372,6 +2372,16 @@ export class GameEngine {
 				}
 
 				if (phDecision.shouldPinchHit && phDecision.pinchHitterId) {
+					// CRITICAL: Check if the selected PH is already in the lineup
+					// This prevents players from appearing multiple times (e.g., when a pitcher
+					// is already playing a defensive position via emergency mode)
+					const currentLineupPlayerIds = battingTeam.players.map(p => p.playerId).filter((id): id is string => id !== null);
+					if (currentLineupPlayerIds.includes(phDecision.pinchHitterId)) {
+						// PH is already in the lineup - skip this PH
+						console.warn(`[PH] Skipping PH for ${phDecision.pinchHitterId}: already in current lineup`);
+						return false;
+					}
+
 					// Find the batter's position in the lineup
 					const batterIndex = battingTeam.players.findIndex(p => p.playerId === currentBatterId);
 					if (batterIndex !== -1) {
