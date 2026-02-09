@@ -6,6 +6,8 @@
  * for managerial decisions.
  */
 
+import type { BatterStats, PitcherStats } from '../types.js';
+
 /**
  * Simplified game state for managerial decisions
  */
@@ -111,4 +113,67 @@ export interface PitchingDecision {
 	shouldChange: boolean;
 	newPitcher?: string;
 	reason?: string;
+}
+
+/**
+ * Era-specific lineup construction strategy
+ */
+export type EraStrategy =
+	| 'traditional'      // Pre-1980s archetype-based
+	| 'composite'        // 1986-1995 hybrid
+	| 'early-analytics'  // 1996-2010 sabermetric
+	| 'modern';          // 2011+ full analytics
+
+/**
+ * Era detection result with blending info
+ */
+export interface EraDetection {
+	primary: EraStrategy;
+	secondary: EraStrategy | null;
+	blendFactor: number; // 0-1, weight for primary strategy
+}
+
+/**
+ * Player availability for lineup construction
+ */
+export interface PlayerAvailability {
+	/** Players available to start (below usage threshold) */
+	available: BatterStats[];
+	/** Players being rested (above usage threshold) */
+	rested: BatterStats[];
+	/** Warnings about usage status */
+	warnings: string[];
+}
+
+/**
+ * Lineup construction result with era info
+ */
+export interface LineupBuildResult {
+	lineup: LineupSlot[];
+	startingPitcher: PitcherStats;
+	warnings: string[];
+	era: EraDetection;
+}
+
+/**
+ * Options for lineup building
+ */
+export interface LineupOptions {
+	/** Force a specific strategy (skip era detection) */
+	strategy?: EraStrategy;
+	/** Randomness factor (0-1) for variety */
+	randomness?: number;
+	/** Override DH rule */
+	useDH?: boolean;
+	/** Allow emergency starts from rested players on position scarcity */
+	allowEmergencyStarts?: boolean;
+}
+
+/**
+ * Lineup slot with batting order and position
+ */
+export interface LineupSlot {
+	playerId: string;
+	battingOrder: number; // 1-9
+	fieldingPosition: number; // 1-9 (10=DH, 11=PH, 12=PR)
 }
