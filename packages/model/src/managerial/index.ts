@@ -10,28 +10,18 @@
  * - Roster management and rotation building
  */
 
-// Types
-export type {
-	GameState,
-	PitcherRole,
-	BullpenState,
-	PitchingDecision,
-	EnhancedBullpenState,
-	PitcherQuality,
-	LeaguePitchingNorms,
-	RelieverSelectionOptions,
-	EraStrategy,
-	EraDetection,
-	PlayerAvailability,
-	LineupBuildResult,
-	EraLineupOptions,
-	LineupSlot
-} from './types.js';
+// Core modules (export all)
+export * from './era-detection.js';
+export * from './lineup-strategies.js';
+export * from './pitcher-classifier.js';
+export * from './pitching.js';
+export * from './roster-manager.js';
+export * from './substitutions.js';
+export * from './types.js';
 
-// Lineup (legacy - will be deprecated)
+// Supporting modules (selective exports for backward compatibility)
 export { generateLineup, type LineupOptions } from './lineup.js';
 
-// Platoon
 export {
 	applyPlatoonAdvantage,
 	addNoise,
@@ -39,55 +29,5 @@ export {
 	getPlatoonRates
 } from './platoon.js';
 
-// Pitching
-export {
-	shouldPullPitcher,
-	selectReliever,
-	calculateLeverageIndex,
-	reduceStamina,
-	type PitchCountOptions
-} from './pitching.js';
-
-// Substitutions
-export {
-	shouldPinchHit,
-	isAvailableOnBench,
-	getAvailableBench,
-	type PinchHitDecision
-} from './substitutions.js';
-
-// League Norms
 export { calculateLeagueNorms } from './norms-calculator.js';
-
-// Pitcher Quality
 export { calculatePitcherQuality } from './pitcher-quality.js';
-
-// Pitcher Classifier
-export { classifyPitchers } from './pitcher-classifier.js';
-
-// Roster Manager
-export {
-	RosterManager,
-	type RotationSlot,
-	type RestDecision,
-	type UsageContext,
-	type UsageRecord,
-	type TeamInfo
-} from './roster-manager.js';
-
-// Era Detection
-export {
-	getEraStrategy,
-	isTransitionYear,
-	getPureEraStrategy
-} from './era-detection.js';
-
-// Lineup Strategies
-export {
-	traditionalStrategy,
-	compositeStrategy,
-	earlyAnalyticsStrategy,
-	getStrategyFunction,
-	blendLineups,
-	type StrategyFunction
-} from './lineup-strategies.js';
