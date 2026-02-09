@@ -227,7 +227,7 @@ function selectPlayersToRest(
 
 	// Helper to check if a valid lineup can be formed with remaining players
 	// This simulates the actual position assignment logic to ensure we can fill all 8 positions
-	// Uses the SAME position order as assignPositions() to ensure consistency
+	// Uses the SAME logic as assignPositions() to ensure consistency
 	function canFormValidLineup(availablePlayers: BatterStats[]): boolean {
 		// Need at least 8 unique position players for non-DH
 		if (availablePlayers.length < 8) {
@@ -235,32 +235,57 @@ function selectPlayersToRest(
 			return false;
 		}
 
-		// Use the SAME position priority order as assignPositions()
+		// Use the SAME position priority order and logic as assignPositions()
 		const usedPlayers = new Set<string>();
 
 		console.log(`[canFormValidLineup] Checking with ${availablePlayers.length} players:`, availablePlayers.map(p => `${p.name} (${p.primaryPosition})`));
 
 		for (const position of POSITION_PRIORITY) {
 			const positionName = getPositionName(position);
-			// Try to find an unused player whose primary position matches
-			const primaryMatch = availablePlayers.find(p =>
+
+			// First priority: Find ALL players whose PRIMARY position is this position
+			// This matches assignPositions() which gets all primary candidates and sorts by PA
+			const primaryCandidates = availablePlayers.filter(p =>
 				!usedPlayers.has(p.id) && p.primaryPosition === position
 			);
 
-			if (primaryMatch) {
-				usedPlayers.add(primaryMatch.id);
-				console.log(`[canFormValidLineup] ${positionName}: ${primaryMatch.name} (primary)`);
+			if (primaryCandidates.length > 0) {
+				// Pick the one with most PA (same as assignPositions())
+				const selected = primaryCandidates.sort((a, b) => b.pa - a.pa)[0]!;
+				usedPlayers.add(selected.id);
+				console.log(`[canFormValidLineup] ${positionName}: ${selected.name} (primary, PA: ${selected.pa})`);
 				continue;
 			}
 
-			// No primary match, try to find someone with secondary eligibility
-			const secondaryMatch = availablePlayers.find(p =>
-				!usedPlayers.has(p.id) && (p.positionEligibility[position] ?? 0) > 0
-			);
+			// Second priority: Find ALL players with secondary eligibility
+			// This matches assignPositions() which collects all secondary candidates and sorts by experience
+			const secondaryCandidates: Array<{ player: BatterStats; outs: number; score: number }> = [];
 
-			if (secondaryMatch) {
-				usedPlayers.add(secondaryMatch.id);
-				console.log(`[canFormValidLineup] ${positionName}: ${secondaryMatch.name} (secondary)`);
+			for (const player of availablePlayers) {
+				if (usedPlayers.has(player.id)) continue;
+
+				const outsAtPosition = player.positionEligibility[position];
+				if (outsAtPosition && outsAtPosition > 0) {
+					secondaryCandidates.push({
+						player,
+						outs: outsAtPosition,
+						score: calculateOBP(player)
+					});
+				}
+			}
+
+			if (secondaryCandidates.length > 0) {
+				// Sort by experience (outs), then by OBP (same as assignPositions())
+				secondaryCandidates.sort((a, b) => {
+					if (Math.abs(b.outs - a.outs) > 100) {
+						return b.outs - a.outs;
+					}
+					return b.score - a.score;
+				});
+
+				const selected = secondaryCandidates[0]!;
+				usedPlayers.add(selected.player.id);
+				console.log(`[canFormValidLineup] ${positionName}: ${selected.player.name} (secondary, outs: ${selected.outs})`);
 				continue;
 			}
 
