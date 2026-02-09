@@ -1,0 +1,35 @@
+- generic [ref=e3]:
+  - navigation [ref=e4]:
+    - generic [ref=e6]:
+      - link "⚾ Baseball Sim" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e8]: ⚾
+        - generic [ref=e9]: Baseball Sim
+      - generic [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Game Results" [ref=e12] [cursor=pointer]:
+          - /url: /game-results
+        - link "Data Browser" [ref=e13] [cursor=pointer]:
+          - /url: /data-browser
+  - generic [ref=e15]:
+    - generic [ref=e16]:
+      - heading "Season Replay Setup" [level=1] [ref=e17]
+      - paragraph [ref=e18]: Configure your 1976 season replay
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - img [ref=e29]
+          - generic [ref=e31]: 1976 Season Ready
+        - paragraph [ref=e32]: 1,939 games scheduled for replay
+        - paragraph [ref=e33]: 3 existing replays for this year
+      - generic [ref=e34]:
+        - generic [ref=e35]: Series Name
+        - textbox "Series Name" [ref=e36]:
+          - /placeholder: Enter series name
+          - text: "1976 Season Replay #4"
+      - generic [ref=e37]:
+        - button "Create Replay" [ref=e38] [cursor=pointer]:
+          - img [ref=e39]
+          - text: Create Replay
+        - button "Cancel" [ref=e41] [cursor=pointer]

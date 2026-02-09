@@ -376,6 +376,9 @@ export class GameEngine {
 	#relievers: Set<string> = new Set();
 	// Track emergency roster mode per team (when bench is exhausted, allow position eligibility bypass)
 	private emergencyRosterMode: Map<string, boolean> = new Map();
+	// Track games played per player (for usage-aware substitutions)
+	// Map of player_id → games played in this replay series
+	private playerGamesPlayed: Map<string, number> = new Map();
 
 	constructor(
 		season: SeasonPackage,
@@ -435,6 +438,7 @@ export class GameEngine {
 		this.removedPlayers = new Set();
 		this.phReplacedPositions = new Map();
 		this.phForPitcherBattingSlots = new Map();
+		this.playerGamesPlayed = new Map();
 		this.initializeBullpen(awayTeam, awayLineup.pitcher!);
 		this.initializeBullpen(homeTeam, homeLineup.pitcher!);
 
@@ -2190,6 +2194,39 @@ export class GameEngine {
 		}
 
 		// Check for pinch hit opportunity
+		// Helper: Calculate usage-aware weights for player selection
+		// Players who have appeared in fewer games relative to their actual season totals get higher weights
+		const calculateUsageAwareWeights = (players: ModelBatterStats[]): Map<string, number> => {
+			const weights = new Map<string, number>();
+			const playerUsage = this.managerialOptions.pitcherUsage; // Contains all player usage (batters + pitchers)
+
+			// Calculate inverse usage scores for each player
+			// Lower usage = higher weight (more likely to be selected)
+			const inverseScores = new Map<string, number>();
+			let totalInverseScore = 0;
+
+			for (const player of players) {
+				const currentUsage = playerUsage?.get(player.id) ?? 0;
+				// Use inverse of usage as the score (with minimum to avoid division by zero)
+				// Players at 100% usage get score 1.0
+				// Players at 200% usage get score 0.5 (less likely to be selected)
+				// Players at 50% usage get score 2.0 (more likely to be selected)
+				const inverseScore = currentUsage > 0 ? 1 / Math.max(currentUsage, 0.5) : 2.0;
+				inverseScores.set(player.id, inverseScore);
+				totalInverseScore += inverseScore;
+			}
+
+			// Normalize to get probabilities that sum to 1
+			for (const player of players) {
+				const score = inverseScores.get(player.id) ?? 1;
+				const weight = score / totalInverseScore;
+				weights.set(player.id, weight);
+			}
+
+			return weights;
+		};
+
+		// Check for pinch hit opportunity
 		const currentBatterId = getNextBatter(battingTeam, this.season.batters);
 		const currentBatter = this.season.batters[currentBatterId];
 		if (!currentBatter) return false;
@@ -2239,9 +2276,10 @@ export class GameEngine {
 				// When we MUST PH for a reliever (non-DH games), skip the normal decision logic
 				// and directly pick the best available batter
 				if (mustPHForReliever) {
-					// NEW APPROACH: Use weighted random selection based on actual season PA
-					// This naturally distributes playing time based on actual season patterns
-					// Model batters use vsLeft/vsRight, not vsLHP/vsRHP
+					// NEW APPROACH: Use weighted random selection based on TWO factors:
+					// 1. Actual season PA (players with more PA should be selected more often)
+					// 2. Current usage (players who have appeared less should be preferred)
+					// This prevents overuse while still following actual season patterns
 					const getOPS = (b: ModelBatterStats) => {
 						const rates = opposingPitcher.throws === 'L' ? b.rates.vsLeft : b.rates.vsRight;
 						const obp = rates.walk + rates.hitByPitch + rates.single + rates.double + rates.triple + rates.homeRun;
@@ -2249,10 +2287,13 @@ export class GameEngine {
 						return obp + slg;
 					};
 
-					// Build weighted pool based on actual season PA
-					// Players with more PA should be selected more often
+					// Get usage-aware weights (prefer players with lower current usage)
+					const usageWeights = calculateUsageAwareWeights(availableBench);
+
+					// Build weighted pool based on actual season PA AND current usage
+					// Players with more PA should be selected more often, BUT players with lower
+					// usage should get a boost to prevent overuse
 					const totalBenchPA = availableBench.reduce((sum, b) => {
-						// Get actual PA from season data (stored in ops.pa)
 						const batter = this.season.batters[b.id];
 						return sum + (batter?.pa || 0);
 					}, 0);
@@ -2272,26 +2313,37 @@ export class GameEngine {
 							phDecision = { shouldPinchHit: false };
 						}
 					} else {
-						// Build weighted pool with PA-based weights
+						// Build weighted pool with PA-based weights MODIFIED by usage
 						const weightedPool = availableBench.map(b => {
 							const batter = this.season.batters[b.id];
-							const actualPA = batter?.pa || 1; // Minimum 1 PA to avoid division by zero
-							const weight = actualPA / totalBenchPA;
+							const actualPA = batter?.pa || 1;
+							const paWeight = actualPA / totalBenchPA;
+							const usageWeight = usageWeights.get(b.id) ?? 1;
+
+							// Combine PA weight with usage weight
+							// Players with high PA but low usage get balanced selection
+							// Players with low PA but high usage get reduced selection
+							const combinedWeight = paWeight * usageWeight;
 
 							// Log for debugging (first few selections only)
 							if (Math.random() < 0.01) {
-								console.log(`[PH] Pool: ${b.name} (${actualPA} PA, ${(weight * 100).toFixed(1)}% weight)`);
+								const playerUsage = this.managerialOptions.pitcherUsage?.get(b.id) ?? 0;
+								console.log(`[PH] Pool: ${b.name} (${actualPA} PA, ${(playerUsage * 100).toFixed(0)}% usage, PA ${(paWeight * 100).toFixed(1)}% × usage ${(usageWeight * 100).toFixed(1)}% = ${(combinedWeight * 100).toFixed(1)}% weight)`);
 							}
 
-							return { batter, weight, pa: actualPA, ops: getOPS(b) };
+							return { batter, weight: combinedWeight, pa: actualPA, ops: getOPS(b), usage: usageWeight };
 						});
 
+						// Normalize weights to sum to 1
+						const totalWeight = weightedPool.reduce((sum, wp) => sum + wp.weight, 0);
+						const normalizedPool = weightedPool.map(wp => ({ ...wp, weight: wp.weight / totalWeight }));
+
 						// Select pinch hitter using weighted random selection
-						let selectedPH: typeof weightedPool[0] | null = null;
+						let selectedPH: typeof normalizedPool[0] | null = null;
 						let cumulativeWeight = 0;
 						const random = Math.random();
 
-						for (const wp of weightedPool) {
+						for (const wp of normalizedPool) {
 							cumulativeWeight += wp.weight;
 							if (random <= cumulativeWeight) {
 								selectedPH = wp;
@@ -2301,7 +2353,7 @@ export class GameEngine {
 
 						// Fallback: select first available if selection failed
 						if (!selectedPH) {
-							selectedPH = weightedPool[0];
+							selectedPH = normalizedPool[0];
 						}
 
 						if (selectedPH) {
@@ -2316,55 +2368,83 @@ export class GameEngine {
 					}
 				} else {
 					// Normal PH decision logic
+					// PRE-FILTER: Down-weight or exclude significantly overused players before model decides
+					const batterUsage = this.managerialOptions.pitcherUsage;
+					const restThreshold = this.managerialOptions.restThreshold ?? 1.25;
+
+					// Create usage-filtered bench for the model
+					// Players over 150% usage are excluded entirely
+					// Players over 125% usage are kept but will be down-weighted later
+					const filteredBench = availableBench.filter(b => {
+						const usage = batterUsage?.get(b.id) ?? 0;
+						return usage < 1.5; // Exclude players at 150%+ usage
+					});
+
+					if (filteredBench.length === 0) {
+						// All bench players are over 150% - use available bench anyway
+						console.warn('[PH] All bench players over 150% usage, using available pool');
+					} else if (filteredBench.length < availableBench.length) {
+						// Some players were filtered out
+						const excluded = availableBench.length - filteredBench.length;
+						console.log(`[PH] Excluded ${excluded} players at 150%+ usage from ${availableBench.length} total`);
+					}
+
+					// Use filtered bench (or original if all filtered out)
+					const benchForModel = filteredBench.length > 0 ? filteredBench : availableBench;
+
 					phDecision = shouldPinchHit(
 						mgrState,
 						toModelBatter(currentBatter),
-						availableBench,
+						benchForModel,
 						toModelPitcher(opposingPitcher),
 						{ randomness: this.managerialOptions.randomness ?? 0.15, useDH: gameUsesDH }
 					);
 
-					// NEW APPROACH: Apply usage-aware override using weighted selection
+					// NEW APPROACH: Apply usage-aware weighting to ALL PH selections
+					// This prevents overuse by preferring players who have appeared less
 					if (phDecision.shouldPinchHit && phDecision.pinchHitterId) {
-						const selectedPHId = phDecision.pinchHitterId;
-						const batterUsage = this.managerialOptions.pitcherUsage;
-						const restThreshold = this.managerialOptions.restThreshold ?? 1.25;
-						const selectedUsage = batterUsage?.get(selectedPHId) ?? 0;
+						// Always apply usage-aware weighting, not just for overused players
+						const usageWeights = calculateUsageAwareWeights(availableBench);
 
-						// If selected PH is significantly overused, use weighted selection instead
-						if (selectedUsage > restThreshold) {
-							console.log(`[PH] Selected PH ${selectedPHId} at ${(selectedUsage * 100).toFixed(0)}% usage, using weighted selection instead`);
+						// Build weighted pool based on actual season PA AND current usage
+						const totalBenchPA = availableBench.reduce((sum, b) => {
+							const batter = this.season.batters[b.id];
+							return sum + (batter?.pa || 0);
+						}, 0);
 
-							// Build weighted pool based on actual season PA
-							const totalBenchPA = availableBench.reduce((sum, b) => {
+						if (totalBenchPA > 0) {
+							const weightedPool = availableBench.map(b => {
 								const batter = this.season.batters[b.id];
-								return sum + (batter?.pa || 0);
-							}, 0);
+								const actualPA = batter?.pa || 1;
+								const paWeight = actualPA / totalBenchPA;
+								const usageWeight = usageWeights.get(b.id) ?? 1;
+								const combinedWeight = paWeight * usageWeight;
+								return { batter, weight: combinedWeight };
+							});
 
-							if (totalBenchPA > 0) {
-								const weightedPool = availableBench.map(b => {
-									const batter = this.season.batters[b.id];
-									const actualPA = batter?.pa || 1;
-									const weight = actualPA / totalBenchPA;
-									return { batter, weight };
-								});
+							// Normalize weights
+							const totalWeight = weightedPool.reduce((sum, wp) => sum + wp.weight, 0);
+							const normalizedPool = weightedPool.map(wp => ({ ...wp, weight: wp.weight / totalWeight }));
 
-								// Select using weighted random
-								let selectedPH: typeof weightedPool[0] | null = null;
-								let cumulativeWeight = 0;
-								const random = Math.random();
+							// Select using weighted random
+							let selectedPH: typeof normalizedPool[0] | null = null;
+							let cumulativeWeight = 0;
+							const random = Math.random();
 
-								for (const wp of weightedPool) {
-									cumulativeWeight += wp.weight;
-									if (random <= cumulativeWeight) {
-										selectedPH = wp;
-										break;
-									}
+							for (const wp of normalizedPool) {
+								cumulativeWeight += wp.weight;
+								if (random <= cumulativeWeight) {
+									selectedPH = wp;
+									break;
 								}
+							}
 
-								if (selectedPH) {
-									phDecision.pinchHitterId = selectedPH.batter.id;
-									phDecision.reason += ` (weighted selection: ${selectedUsage.toFixed(0)}% → ${(selectedPH.weight * 100).toFixed(1)}% weight)`;
+							if (selectedPH) {
+								const originalPHId = phDecision.pinchHitterId;
+								phDecision.pinchHitterId = selectedPH.batter.id;
+								phDecision.reason += ` (usage-aware selection)`;
+								if (originalPHId !== selectedPH.batter.id) {
+									phDecision.reason += ` [was: ${originalPHId}]`;
 								}
 							}
 						}
