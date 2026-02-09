@@ -200,8 +200,8 @@ function assignPositions(
 	const warnings: string[] = [];
 
 	// Usage thresholds for tiered selection
-	const SEVERELY_OVERUSED = 1.40; // 140% - filter out from initial consideration
-	const OVERUSED = 1.25; // 125% - use only as fallback
+	const SEVERELY_OVERUSED = 1.0; // 100% - filter out from initial consideration (at or above expected)
+	const OVERUSED = 0.90; // 90% - use only as fallback (approaching expected)
 	const UNDERUSED = 0.75; // 75% - prefer these players
 
 	// Track which players are eligible at which positions
@@ -213,15 +213,13 @@ function assignPositions(
 	function getUsageBucket(playerId: string): number {
 		const usage = usageContext?.playerUsage.get(playerId) ?? 0;
 		// Bucket 0: Underused (< 75%) - highest priority
-		// Bucket 1: In range (75-100%) - second priority
-		// Bucket 2: Normal (100-125%) - third priority
-		// Bucket 3: Overused (125-140%) - fourth priority
-		// Bucket 4: Severely overused (>140%) - last resort
+		// Bucket 1: In range (75-90%) - second priority
+		// Bucket 2: Approaching (90-100%) - third priority
+		// Bucket 3: Severely overused (>= 100%) - filtered from consideration
 		if (usage < UNDERUSED) return 0;
-		if (usage < 1.0) return 1;
-		if (usage < OVERUSED) return 2;
-		if (usage < SEVERELY_OVERUSED) return 3;
-		return 4;
+		if (usage < OVERUSED) return 1;
+		if (usage < SEVERELY_OVERUSED) return 2;
+		return 3;
 	}
 
 	// Helper to calculate "need score" - how badly does this player need to play?
