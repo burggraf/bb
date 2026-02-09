@@ -228,3 +228,27 @@ export function getStrategyFunction(strategy: EraStrategy): StrategyFunction {
 			return earlyAnalyticsStrategy;
 	}
 }
+
+/**
+ * Blend two lineups based on blend factor
+ * @param primary - Primary lineup (higher weight)
+ * @param secondary - Secondary lineup (lower weight, or null)
+ * @param blendFactor - 0-1, weight for primary (1 = only primary, 0 = only secondary)
+ */
+export function blendLineups(
+	primary: LineupSlot[],
+	secondary: LineupSlot[] | null,
+	blendFactor: number
+): LineupSlot[] {
+	if (!secondary || blendFactor >= 1) return primary;
+	if (blendFactor <= 0) return secondary;
+
+	// For each slot, randomly choose primary or secondary based on blendFactor
+	// This creates variety while respecting era proportions
+	return primary.map((primarySlot, i) => {
+		if (Math.random() < blendFactor) {
+			return primarySlot;
+		}
+		return secondary[i] || primarySlot;
+	});
+}

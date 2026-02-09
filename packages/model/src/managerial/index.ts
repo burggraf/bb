@@ -88,5 +88,6 @@ export {
 	compositeStrategy,
 	earlyAnalyticsStrategy,
 	getStrategyFunction,
+	blendLineups,
 	type StrategyFunction
 } from './lineup-strategies.js';

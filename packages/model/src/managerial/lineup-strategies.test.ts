@@ -5,9 +5,10 @@ import {
 	traditionalStrategy,
 	compositeStrategy,
 	earlyAnalyticsStrategy,
-	getStrategyFunction
+	getStrategyFunction,
+	blendLineups
 } from './lineup-strategies.js';
-import type { EraStrategy } from './types.js';
+import type { EraStrategy, LineupSlot } from './types.js';
 
 // Helper to create mock batter with custom rates
 function createMockBatter(
@@ -329,5 +330,117 @@ describe('Strategy behavior differences', () => {
 
 		// Currently both are simplified to OPS order, so they should match
 		expect(traditionalOrder).toEqual(earlyAnalyticsOrder);
+	});
+});
+
+describe('blendLineups', () => {
+	it('returns primary lineup when blendFactor is 1', () => {
+		const primary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `p${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+		const secondary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `s${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+
+		const result = blendLineups(primary, secondary, 1);
+		expect(result).toEqual(primary);
+	});
+
+	it('returns secondary lineup when blendFactor is 0', () => {
+		const primary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `p${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+		const secondary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `s${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+
+		const result = blendLineups(primary, secondary, 0);
+		expect(result).toEqual(secondary);
+	});
+
+	it('returns primary lineup when secondary is null', () => {
+		const primary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `p${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+
+		const result = blendLineups(primary, null, 0.5);
+		expect(result).toEqual(primary);
+	});
+
+	it('returns primary lineup when blendFactor >= 1', () => {
+		const primary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `p${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+		const secondary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `s${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+
+		const result = blendLineups(primary, secondary, 1.5);
+		expect(result).toEqual(primary);
+	});
+
+	it('blends lineups with intermediate blendFactor', () => {
+		const primary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `p${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+		const secondary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `s${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+
+		// With blendFactor 0.5, we expect approximately half from each
+		// Note: This is probabilistic, so we just check the result is valid
+		const result = blendLineups(primary, secondary, 0.5);
+
+		expect(result).toHaveLength(9);
+		result.forEach((slot, i) => {
+			expect(slot.battingOrder).toBe(i + 1);
+			// Each slot should be either from primary or secondary
+			expect(['p', 's']).toContain(slot.playerId[0]);
+		});
+	});
+
+	it('uses primary as fallback when secondary has missing slot', () => {
+		const primary: LineupSlot[] = Array.from({ length: 9 }, (_, i) => ({
+			playerId: `p${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+		const secondary: LineupSlot[] = Array.from({ length: 5 }, (_, i) => ({
+			playerId: `s${i}`,
+			battingOrder: i + 1,
+			fieldingPosition: 1
+		}));
+
+		// Use intermediate blendFactor - secondary preferred but primary used as fallback
+		const result = blendLineups(primary, secondary, 0.3);
+
+		// Result should have 9 slots (from primary length)
+		expect(result).toHaveLength(9);
+
+		// When blendFactor is low, secondary is preferred where available
+		// but primary fills in for missing slots (indices 5-8)
+		result.forEach((slot, i) => {
+			expect(slot.battingOrder).toBe(i + 1);
+			// Slot should exist
+			expect(slot).toBeDefined();
+		});
 	});
 });
