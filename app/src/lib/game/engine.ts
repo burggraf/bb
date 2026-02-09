@@ -1634,6 +1634,24 @@ export class GameEngine {
 					continue; // Already handled above
 				}
 
+				// CRITICAL FIX: Check if this PH is already playing ANY defensive position in the lineup
+				// This prevents "appears multiple times" errors when a PH was already a defensive replacement
+				const existingDefensiveSlot = lineup.players.findIndex(p =>
+					p.playerId === ph.playerId && p.position >= 1 && p.position <= 9
+				);
+
+				if (existingDefensiveSlot !== -1) {
+					// PH is already playing a defensive position - just update the batting slot position from PH to that position
+					// This is the KEY fix for "Player appears multiple times" errors
+					const existingPosition = lineup.players[existingDefensiveSlot].position;
+					console.log(`[PH Resolution] PH ${ph.playerId} already playing position ${existingPosition}, updating batting slot from PH to ${existingPosition}`);
+					lineup.players[ph.index] = {
+						playerId: ph.playerId,
+						position: existingPosition
+					};
+					continue;
+				}
+
 				const replacedPosition = this.phReplacedPositions.get(ph.playerId);
 				if (replacedPosition !== undefined && this.canPlayPosition(ph.playerId, replacedPosition)) {
 					// PH can play the position they replaced - assign them there
@@ -2250,15 +2268,29 @@ export class GameEngine {
 		if (!shouldConsiderPH) return false;
 
 		// Get available bench players
+		// CRITICAL: Check current lineup for players who are already in defensively (positions 1-9)
+		// This prevents selecting a player as PH who is already playing a defensive position
 		const currentLineupPlayerIds = battingTeam.players.map(p => p.playerId).filter((id): id is string => id !== null);
+		const currentDefensivePlayers = new Set<string>();
+		for (const p of battingTeam.players) {
+			if (p.playerId && p.position >= 1 && p.position <= 9) {
+				currentDefensivePlayers.add(p.playerId);
+			}
+		}
+
 		const allTeamBatters = Object.values(this.season.batters)
 			.filter(b => b.teamId === battingTeam.teamId)
 			.map(toModelBatter);
 		const availableBench = allTeamBatters.filter(b =>
 			!currentLineupPlayerIds.includes(b.id) &&
+			!currentDefensivePlayers.has(b.id) && // Exclude players already in defensively
 			!this.usedPinchHitters.has(b.id) &&
 			!this.removedPlayers.has(b.id)
 		);
+
+		if (currentDefensivePlayers.size > 0) {
+			console.log(`[PH] Excluding ${currentDefensivePlayers.size} players already in defensive positions from PH selection`);
+		}
 
 		// Prevent pinch hit if no bench players available
 		if (availableBench.length === 0) {
