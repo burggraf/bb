@@ -226,25 +226,40 @@ function selectPlayersToRest(
 	));
 
 	// Helper to check if a valid lineup can be formed with remaining players
+	// This simulates the actual position assignment logic to ensure we can fill all 8 positions
 	function canFormValidLineup(availablePlayers: BatterStats[]): boolean {
-		// Need at least 8 unique position players for non-DH, 9 for DH
-		// We'll be flexible and check for 8 minimum (worst case: non-DH game)
+		// Need at least 8 unique position players for non-DH
 		if (availablePlayers.length < 8) return false;
 
-		// Check if we can fill all required positions (8 for non-DH, 9 for DH)
-		// We need C, 1B, 2B, 3B, SS, LF, CF, RF minimum
+		// Simulate position assignment to verify we can fill all positions
+		const usedPlayers = new Set<string>();
 		const requiredPositions = [POSITIONS.CATCHER, POSITIONS.FIRST_BASE, POSITIONS.SECOND_BASE,
 			POSITIONS.THIRD_BASE, POSITIONS.SHORTSTOP, POSITIONS.LEFT_FIELD,
 			POSITIONS.CENTER_FIELD, POSITIONS.RIGHT_FIELD];
 
-		const available = new Set(availablePlayers.map(p => p.id));
-
 		for (const position of requiredPositions) {
-			// Check if any available player can play this position
-			const canPlay = availablePlayers.some(p =>
-				(p.primaryPosition === position || (p.positionEligibility[position] ?? 0) > 0)
+			// Try to find an unused player whose primary position matches
+			const primaryMatch = availablePlayers.find(p =>
+				!usedPlayers.has(p.id) && p.primaryPosition === position
 			);
-			if (!canPlay) return false;
+
+			if (primaryMatch) {
+				usedPlayers.add(primaryMatch.id);
+				continue;
+			}
+
+			// No primary match, try to find someone with secondary eligibility
+			const secondaryMatch = availablePlayers.find(p =>
+				!usedPlayers.has(p.id) && (p.positionEligibility[position] ?? 0) > 0
+			);
+
+			if (secondaryMatch) {
+				usedPlayers.add(secondaryMatch.id);
+				continue;
+			}
+
+			// Can't fill this position
+			return false;
 		}
 
 		return true;
