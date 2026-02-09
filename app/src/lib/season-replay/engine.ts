@@ -414,7 +414,7 @@ export class SeasonReplayEngine {
         enabled: true,
         randomness: 0.1,
         pitcherUsage: allPlayerUsage, // Using combined map for all players
-        restThreshold: 1.25
+        restThreshold: 1.00 // Stricter threshold for pitchers (100% instead of 125%) to prevent overuse
       };
       this.gameEngine = GameEngine.create(
         season,

@@ -2354,13 +2354,29 @@ export class GameEngine {
 							// Get a reliever from the bullpen (excluding the current pitcher being pinch hit for)
 							const bullpen = this.bullpenStates.get(battingTeam.teamId);
 							if (bullpen && bullpen.relievers.length > 0) {
-								// Filter bullpen to exclude removed pitchers (they cannot re-enter the game)
+								// Filter bullpen to exclude removed pitchers AND overused pitchers
+								const restThreshold = this.managerialOptions.restThreshold ?? 1.0;
+								const pitcherUsage = this.managerialOptions.pitcherUsage;
+
+								const isPitcherAvailable = (pitcherId: string): boolean => {
+									if (this.removedPlayers.has(pitcherId)) return false;
+									if (pitcherUsage) {
+										const usage = pitcherUsage.get(pitcherId) ?? 0;
+										if (usage > restThreshold) {
+											const pitcher = this.season.pitchers[pitcherId];
+											console.log(`[GameEngine] Skipping overused reliever for PH: ${pitcher?.name ?? pitcherId} (${(usage * 100).toFixed(0)}% of actual)`);
+											return false;
+										}
+									}
+									return true;
+								};
+
 								const filteredBullpen: EnhancedBullpenState = {
 									starter: bullpen.starter,
-									closer: bullpen.closer && !this.removedPlayers.has(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
-									setup: bullpen.setup?.filter(r => !this.removedPlayers.has(r.pitcherId)),
-									longRelief: bullpen.longRelief?.filter(r => !this.removedPlayers.has(r.pitcherId)),
-									relievers: bullpen.relievers.filter(r => !this.removedPlayers.has(r.pitcherId))
+									closer: bullpen.closer && isPitcherAvailable(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
+									setup: bullpen.setup?.filter(r => isPitcherAvailable(r.pitcherId)),
+									longRelief: bullpen.longRelief?.filter(r => isPitcherAvailable(r.pitcherId)),
+									relievers: bullpen.relievers.filter(r => isPitcherAvailable(r.pitcherId))
 								};
 
 								// Use selectReliever to properly choose a reliever, excluding the current pitcher
