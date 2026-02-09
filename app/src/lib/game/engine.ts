@@ -2033,6 +2033,7 @@ export class GameEngine {
 		const pitcherUsage = this.managerialOptions.pitcherUsage;
 
 		// Helper to check if a pitcher is available (not removed and not overused)
+		// For relievers, also check if they're approaching the threshold (>80%) and prefer less-used pitchers
 		const isPitcherAvailable = (pitcherId: string): boolean => {
 			if (this.removedPlayers.has(pitcherId)) return false;
 			if (pitcherUsage) {
@@ -2043,16 +2044,30 @@ export class GameEngine {
 					console.log(`[GameEngine] Skipping overused reliever ${pitcher?.name ?? pitcherId} (${(usage * 100).toFixed(0)}% of actual)`);
 					return false;
 				}
+				// For relievers (non-starters), prefer those with lower usage when above 80%
+				const pitcherRole = this.pitcherStamina.get(pitcherId);
+				if (pitcherRole && pitcherRole.role !== 'starter' && usage > 0.80) {
+					// This reliever is at 80%+ usage - they're available but should be lower priority
+					// We'll handle this in the selection logic
+				}
 			}
 			return true;
+		};
+
+		// Sort relievers by usage (lower usage = higher priority)
+		const sortByUsage = (a: PitcherRole, b: PitcherRole): number => {
+			const usageA = pitcherUsage?.get(a.pitcherId) ?? 0;
+			const usageB = pitcherUsage?.get(b.pitcherId) ?? 0;
+			return usageA - usageB; // Lower usage first
 		};
 
 		const filteredBullpen: EnhancedBullpenState = {
 			starter: bullpen.starter,
 			closer: bullpen.closer && isPitcherAvailable(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
-			setup: bullpen.setup?.filter(r => isPitcherAvailable(r.pitcherId)),
-			longRelief: bullpen.longRelief?.filter(r => isPitcherAvailable(r.pitcherId)),
-			relievers: bullpen.relievers.filter(r => isPitcherAvailable(r.pitcherId))
+			// Sort setup and relievers by usage to prefer less-used pitchers
+			setup: bullpen.setup?.filter(r => isPitcherAvailable(r.pitcherId)).sort(sortByUsage),
+			longRelief: bullpen.longRelief?.filter(r => isPitcherAvailable(r.pitcherId)).sort(sortByUsage),
+			relievers: bullpen.relievers.filter(r => isPitcherAvailable(r.pitcherId)).sort(sortByUsage)
 		};
 
 		// Check for pitching change
@@ -2371,12 +2386,20 @@ export class GameEngine {
 									return true;
 								};
 
+								// Sort relievers by usage (lower usage = higher priority)
+								const sortByUsage = (a: PitcherRole, b: PitcherRole): number => {
+									const usageA = pitcherUsage?.get(a.pitcherId) ?? 0;
+									const usageB = pitcherUsage?.get(b.pitcherId) ?? 0;
+									return usageA - usageB; // Lower usage first
+								};
+
 								const filteredBullpen: EnhancedBullpenState = {
 									starter: bullpen.starter,
 									closer: bullpen.closer && isPitcherAvailable(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
-									setup: bullpen.setup?.filter(r => isPitcherAvailable(r.pitcherId)),
-									longRelief: bullpen.longRelief?.filter(r => isPitcherAvailable(r.pitcherId)),
-									relievers: bullpen.relievers.filter(r => isPitcherAvailable(r.pitcherId))
+									// Sort setup and relievers by usage to prefer less-used pitchers
+									setup: bullpen.setup?.filter(r => isPitcherAvailable(r.pitcherId)).sort(sortByUsage),
+									longRelief: bullpen.longRelief?.filter(r => isPitcherAvailable(r.pitcherId)).sort(sortByUsage),
+									relievers: bullpen.relievers.filter(r => isPitcherAvailable(r.pitcherId)).sort(sortByUsage)
 								};
 
 								// Use selectReliever to properly choose a reliever, excluding the current pitcher
