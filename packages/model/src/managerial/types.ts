@@ -156,9 +156,9 @@ export interface LineupBuildResult {
 }
 
 /**
- * Options for lineup building
+ * Options for era-aware lineup building
  */
-export interface LineupOptions {
+export interface EraLineupOptions {
 	/** Force a specific strategy (skip era detection) */
 	strategy?: EraStrategy;
 	/** Randomness factor (0-1) for variety */
@@ -175,5 +175,5 @@ export interface LineupOptions {
 export interface LineupSlot {
 	playerId: string;
 	battingOrder: number; // 1-9
-	fieldingPosition: number; // 1-9 (10=DH, 11=PH, 12=PR)
+	fieldingPosition: number; // 1-9 (TODO: 10=DH, 11=PH, 12=PR for future work)
 }

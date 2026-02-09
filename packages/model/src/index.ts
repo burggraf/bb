@@ -58,7 +58,7 @@ export {
 	getAvailableBench
 } from './managerial/substitutions.js';
 export type {
-	LineupOptions,
+	EraLineupOptions,
 	LineupSlot,
 	PitcherRole,
 	BullpenState,
@@ -66,5 +66,9 @@ export type {
 	GameState,
 	PitchingDecision,
 	PinchHitDecision,
-	LeaguePitchingNorms
+	LeaguePitchingNorms,
+	EraStrategy,
+	EraDetection,
+	PlayerAvailability,
+	LineupBuildResult
 } from './managerial/index.js';

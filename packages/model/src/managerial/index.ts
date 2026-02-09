@@ -19,10 +19,15 @@ export type {
 	EnhancedBullpenState,
 	PitcherQuality,
 	LeaguePitchingNorms,
-	RelieverSelectionOptions
+	RelieverSelectionOptions,
+	EraStrategy,
+	EraDetection,
+	PlayerAvailability,
+	LineupBuildResult,
+	EraLineupOptions
 } from './types.js';
 
-// Lineup
+// Lineup (legacy - will be deprecated)
 export { generateLineup, type LineupOptions, type LineupSlot } from './lineup.js';
 
 // Platoon
