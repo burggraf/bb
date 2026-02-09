@@ -329,74 +329,172 @@ function selectPlayersToRest(
 }
 
 /**
- * Assign fielding positions to position players
- * Prioritizes primary positions, then uses secondary eligibility only when needed
- * When multiple players have the same primary position, selects based on quality (PA, then OBP)
+ * Player with weight for position selection
+ */
+interface WeightedPlayer {
+	player: BatterStats;
+	weight: number; // Selection probability (0-1)
+	innings: number; // Innings played at this position
+}
+
+/**
+ * Build position pools with innings-based weights
+ * For each position, calculate each player's weight based on their innings at that position
+ * Minimum 50 outs (innings * 3) to be considered eligible for a position
+ */
+function buildPositionPools(
+	players: BatterStats[]
+): Map<number, Array<WeightedPlayer>> {
+	const MIN_OUTS = 50; // Minimum outs to be considered eligible
+	const pools = new Map<number, Array<WeightedPlayer>>();
+
+	// Initialize pools for all 8 fielding positions
+	for (const position of POSITION_PRIORITY) {
+		pools.set(position, []);
+	}
+
+	// For each player, add them to each position they're eligible for
+	for (const player of players) {
+		// Check each position for eligibility
+		for (const position of POSITION_PRIORITY) {
+			const outsAtPosition = player.positionEligibility[position] || 0;
+
+			// Skip if insufficient experience (less than MIN_OUTS)
+			if (outsAtPosition < MIN_OUTS) {
+				continue;
+			}
+
+			const pool = pools.get(position);
+			if (pool) {
+				pool.push({
+					player,
+					weight: 0, // Will be calculated after all players are added
+					innings: outsAtPosition / 3 // Convert outs to innings
+				});
+			}
+		}
+	}
+
+	// Calculate weights for each position pool
+	for (const [position, pool] of pools) {
+		const totalInnings = pool.reduce((sum, wp) => sum + wp.innings, 0);
+
+		if (totalInnings === 0) {
+			// No eligible players for this position
+			pools.set(position, []);
+			continue;
+		}
+
+		// Set weight = player's innings / total innings at position
+		for (const wp of pool) {
+			wp.weight = wp.innings / totalInnings;
+		}
+
+		console.log(`[buildPositionPools] ${getPositionName(position)}: ${pool.length} players, ${totalInnings.toFixed(0)} total innings`);
+		for (const wp of pool) {
+			console.log(`  - ${wp.player.name}: ${wp.innings.toFixed(0)} innings (${(wp.weight * 100).toFixed(1)}% weight)`);
+		}
+	}
+
+	return pools;
+}
+
+/**
+ * Get positions ordered by scarcity (fewest eligible players first)
+ */
+function getPositionScarcityOrder(
+	pools: Map<number, Array<WeightedPlayer>>
+): number[] {
+	const positionCounts = POSITION_PRIORITY.map(position => ({
+		position,
+		count: (pools.get(position) || []).length
+	}));
+
+	// Sort by count (fewest players first), then by POSITION_PRIORITY as tiebreaker
+	positionCounts.sort((a, b) => {
+		if (a.count !== b.count) {
+			return a.count - b.count; // Fewest players first
+		}
+		// Tiebreaker: use original POSITION_PRIORITY order
+		return POSITION_PRIORITY.indexOf(a.position) - POSITION_PRIORITY.indexOf(b.position);
+	});
+
+	console.log(`[getPositionScarcityOrder] Scarcity order:`, positionCounts.map(pc => `${getPositionName(pc.position)} (${pc.count} players)`));
+
+	return positionCounts.map(pc => pc.position);
+}
+
+/**
+ * Assign fielding positions using innings-weighted random selection
  *
- * Note: Player resting based on usage is handled BEFORE this function is called.
- * This function simply assigns positions to the available (non-rested) players.
+ * NEW APPROACH:
+ * 1. Build position pools with innings-based weights
+ * 2. Fill positions by scarcity (fewest eligible players first)
+ * 3. For each position, randomly select from pool based on innings weight
+ * 4. Remove selected player from all remaining pools (can't play two positions at once)
+ *
+ * This naturally distributes playing time based on actual season usage patterns.
+ * A player with 50% of innings at 1B gets selected ~50% of the time for 1B.
  */
 function assignPositions(
 	players: BatterStats[],
 	usageContext?: UsageContext
 ): Map<string, number> {
+	console.log(`[assignPositions] Assigning positions for ${players.length} players using innings-weighted selection`);
+
+	// Build position pools
+	const pools = buildPositionPools(players);
+
+	// Get positions ordered by scarcity (fewest players first)
+	const scarcityOrder = getPositionScarcityOrder(pools);
+
 	const assigned = new Map<string, number>();
-	const usedPlayers = new Set<string>();
+	const assignedPlayers = new Set<string>();
 
-	console.log(`[assignPositions] Assigning positions for ${players.length} players:`, players.map(p => `${p.name} (${p.primaryPosition})`));
-
-	// Fill positions in priority order
-	for (const position of POSITION_PRIORITY) {
+	// Fill positions in scarcity order
+	for (const position of scarcityOrder) {
+		const pool = pools.get(position) || [];
 		const positionName = getPositionName(position);
-		// First priority: Find someone whose PRIMARY position is this position
-		let primaryCandidates = players.filter(p =>
-			!usedPlayers.has(p.id) && p.primaryPosition === position
-		);
 
-		if (primaryCandidates.length > 0) {
-			// Sort by PA (prefer higher-quality players when no usage context)
-			primaryCandidates.sort((a, b) => b.pa - a.pa);
-			const primaryPlayer = primaryCandidates[0];
-
-			assigned.set(primaryPlayer.id, position);
-			usedPlayers.add(primaryPlayer.id);
-			console.log(`[assignPositions] ${positionName}: ${primaryPlayer.name} (primary)`);
+		if (pool.length === 0) {
+			console.log(`[assignPositions] ${positionName}: NO ELIGIBLE PLAYERS`);
 			continue;
 		}
 
-		// Second priority: Find someone with secondary eligibility at this position
-		const secondaryPlayers: Array<{ player: BatterStats; outs: number; score: number }> = [];
+		// Filter out already-assigned players from the pool
+		const availablePool = pool.filter(wp => !assignedPlayers.has(wp.player.id));
 
-		for (const player of players) {
-			if (usedPlayers.has(player.id)) continue;
+		if (availablePool.length === 0) {
+			console.log(`[assignPositions] ${positionName}: All eligible players already assigned`);
+			continue;
+		}
 
-			// Check explicit position eligibility
-			const outsAtPosition = player.positionEligibility[position];
-			if (outsAtPosition && outsAtPosition > 0) {
-				secondaryPlayers.push({
-					player,
-					outs: outsAtPosition,
-					score: calculateOBP(player)
-				});
+		// Recalculate weights for available players only
+		const totalWeight = availablePool.reduce((sum, wp) => sum + wp.weight, 0);
+
+		// Select player based on weight
+		let selectedPlayer: WeightedPlayer | null = null;
+		let cumulativeWeight = 0;
+		const random = Math.random() * totalWeight;
+
+		for (const wp of availablePool) {
+			cumulativeWeight += wp.weight;
+			if (random <= cumulativeWeight) {
+				selectedPlayer = wp;
+				break;
 			}
 		}
 
-		if (secondaryPlayers.length > 0) {
-			// Sort by experience at this position (outs), then by OBP
-			secondaryPlayers.sort((a, b) => {
-				if (Math.abs(b.outs - a.outs) > 100) {
-					return b.outs - a.outs; // More experienced first
-				}
-				return b.score - a.score; // Higher OBP first
-			});
-
-			const best = secondaryPlayers[0];
-			assigned.set(best.player.id, position);
-			usedPlayers.add(best.player.id);
-			console.log(`[assignPositions] ${positionName}: ${best.player.name} (secondary)`);
-		} else {
-			console.log(`[assignPositions] ${positionName}: NO CANDIDATE AVAILABLE`);
+		// Fallback: select first available if selection failed (shouldn't happen)
+		if (!selectedPlayer) {
+			selectedPlayer = availablePool[0];
 		}
+
+		// Assign the player to this position
+		assigned.set(selectedPlayer.player.id, position);
+		assignedPlayers.add(selectedPlayer.player.id);
+
+		console.log(`[assignPositions] ${positionName}: ${selectedPlayer.player.name} (${(selectedPlayer.weight * 100).toFixed(1)}% weight, ${selectedPlayer.innings.toFixed(0)} innings)`);
 	}
 
 	// Validate we filled all 8 positions
@@ -405,6 +503,7 @@ function assignPositions(
 		throw new Error(`Only able to assign ${assigned.size} positions, need 8. Team may have incomplete roster data or missing position eligibility data.`);
 	}
 
+	console.log(`[assignPositions] SUCCESS: Assigned all 8 positions`);
 	return assigned;
 }
 
