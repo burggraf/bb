@@ -2316,11 +2316,15 @@ export class GameEngine {
 		const allTeamBatters = Object.values(this.season.batters)
 			.filter(b => b.teamId === battingTeam.teamId)
 			.map(toModelBatter);
+
+		// CRITICAL: Filter out pitchers from PH selection pool (except when PHing for reliever)
+		// Pitchers can't play defensive positions, so selecting them as PH creates invalid lineups
 		const availableBench = allTeamBatters.filter(b =>
 			!currentLineupPlayerIds.includes(b.id) &&
 			!currentDefensivePlayers.has(b.id) && // Exclude players already in defensively
 			!this.usedPinchHitters.has(b.id) &&
-			!this.removedPlayers.has(b.id)
+			!this.removedPlayers.has(b.id) &&
+			(mustPHForReliever || b.primaryPosition !== 1)  // Only exclude pitchers when NOT PHing for reliever
 		);
 
 		if (currentDefensivePlayers.size > 0) {
