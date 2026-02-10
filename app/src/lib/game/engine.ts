@@ -3835,6 +3835,10 @@ export class GameEngine {
 			// Only validate lineup if the game is NOT complete
 			// If the game is over (e.g., bottom of 11th, final out), we don't need to validate
 			if (!this.isComplete()) {
+				// CRITICAL FIX: Resolve any duplicate positions BEFORE validation
+				// This can happen when PHs or other substitutions create duplicate position assignments
+				this.resolveDuplicatePositions(battingTeam, false);
+
 				// CRITICAL: Validate the lineup after all substitutions
 				// This ensures: all 9 positions (1-9) are filled exactly once,
 				// no player is at position 11 (PH), and each player is eligible for their position
