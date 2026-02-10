@@ -819,7 +819,7 @@ export class GameEngine {
 		this.emergencyRosterMode.set(teamId, true);
 
 		// For each duplicate position, reassign the extra players to missing positions
-		// In emergency mode, we MUST assign ALL players to unique positions, even if they can't play them well
+		// ONLY assign if player can actually play the position - no emergency assignments
 		for (const dupPos of duplicatePositions) {
 			const indices = positionIndices.get(dupPos) || [];
 			// Keep the first player at this position, move the rest
@@ -841,22 +841,20 @@ export class GameEngine {
 					}
 				}
 
-				// If no eligible position found, use ANY missing position (emergency mode - better than having duplicates)
-				if (assignedPosition === null && missingPositions.length > 0) {
-					assignedPosition = missingPositions[0];
-					assignmentIndex = 0;
+				// If no eligible position found, skip this player (don't assign to ineligible position)
+				if (assignedPosition === null) {
 					const playerName = this.season.batters[player.playerId]?.name || player.playerId;
-					console.warn(`Emergency: ${playerName} at ${getPositionName(dupPos)} cannot play ${getPositionName(assignedPosition)}, but assigning anyway to resolve duplicate`);
+					console.warn(`Emergency mode: Cannot reassign ${playerName} from ${getPositionName(dupPos)} - no eligible positions available, keeping original assignment`);
+					continue;
 				}
 
-				if (assignedPosition !== null) {
-					// Assign the player to the position (eligibly or in emergency mode)
-					const oldPosName = getPositionName(dupPos);
-					const newPosName = getPositionName(assignedPosition);
-					lineup.players[playerIndex] = {
-						...player,
-						position: assignedPosition
-					};
+				// Assign the player to the eligible position
+				const oldPosName = getPositionName(dupPos);
+				const newPosName = getPositionName(assignedPosition);
+				lineup.players[playerIndex] = {
+					...player,
+					position: assignedPosition
+				};
 					// Remove the assigned position from missingPositions
 					missingPositions.splice(assignmentIndex, 1);
 
@@ -1995,27 +1993,16 @@ export class GameEngine {
 					}
 
 					if (!replacementFound) {
-						// No bench player can fit in any eligible position - leave PH in place as fallback
-						// In DH games, assign as DH (any player can DH)
-						console.warn(`No valid defensive position found for any bench player to replace PH ${phPlayer.name} at batting order ${phSlot.index + 1} - assigning as DH (emergency mode)`);
+						// No bench player can fit in any eligible position
+						// This is a critical error - the PH should not have been allowed in the first place
+						// Revert the PH by removing them from the lineup
+						console.error(`No valid defensive position found for any bench player to replace PH ${phPlayer.name} at batting order ${phSlot.index + 1}`);
+						console.error(`This PH should not have been allowed - removing PH from lineup (will cause validation error)`);
+						// Remove the PH from the lineup (will be caught by validation)
 						lineup.players[phSlot.index] = {
-							playerId: phPlayerId,
-							position: 10 // DH - any player can DH in emergency
+							playerId: null,
+							position: 0
 						};
-						maybeAddPlay({
-							inning: this.state.inning,
-							isTopInning: this.state.isTopInning,
-							outcome: 'out' as Outcome,
-							batterId: '',
-							batterName: '',
-							pitcherId: '',
-							pitcherName: '',
-							description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (DH) remains in game as DH (emergency mode), batting ${phSlot.index + 1}${getInningSuffix(phSlot.index + 1)}`,
-							runsScored: 0,
-							eventType: 'lineupAdjustment',
-							substitutedPlayer: phPlayerId,
-							isSummary: true
-						});
 						benchSearchFailed = true;
 					}
 				}
