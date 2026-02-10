@@ -318,9 +318,10 @@ function selectPlayersToRest(
 
 		if (canFormValidLineup(availableWithoutThis)) {
 			restedPlayers.add(player.id);
-			console.log(`[selectPlayersToRest] Resting ${player.name} at ${(usage * 100).toFixed(0)}% usage (${restedPlayers.size} rested)`);
+			console.log(`[selectPlayersToRest] ✓ Resting ${player.name} (${player.id.slice(0, 12)}...) at ${(usage * 100).toFixed(0)}% usage (${restedPlayers.size} rested total)`);
 		} else {
-			console.log(`[selectPlayersToRest] Cannot rest ${player.name} at ${(usage * 100).toFixed(0)}% usage - would leave invalid lineup, continuing to next player`);
+			console.log(`[selectPlayersToRest] ✗ CANNOT rest ${player.name} (${player.id.slice(0, 12)}...) at ${(usage * 100).toFixed(0)}% usage - would leave invalid lineup, continuing`);
+			console.log(`[selectPlayersToRest]   Available players: ${availableWithoutThis.length} (need at least 8)`);
 			// Continue to next player instead of breaking
 		}
 	}
