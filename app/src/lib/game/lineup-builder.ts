@@ -902,7 +902,11 @@ function buildLineupImpl(
 	}
 
 	// Exclude pitchers from position players
-	let positionPlayers = teamBatters.filter(b => b.primaryPosition !== POSITIONS.PITCHER);
+	// IMPORTANT: Filter by BOTH primaryPosition AND pitchers table
+	// Some players are in batters table but are actually pitchers (have pitcher data)
+	let positionPlayers = teamBatters.filter(b =>
+		b.primaryPosition !== POSITIONS.PITCHER && !pitchers[b.id]
+	);
 
 	if (positionPlayers.length < 8) {
 		throw new Error(`Team ${teamId} has only ${positionPlayers.length} position players (excluding pitchers), need at least 8`);
