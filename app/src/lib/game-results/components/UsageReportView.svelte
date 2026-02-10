@@ -5,6 +5,8 @@
 	import type { TeamInfo } from '$lib/game/teams-data';
 	import { getSeriesTeams } from '$lib/game-results';
 	import { loadTeamsData } from '$lib/game/teams-data';
+	import type { SeasonPackage } from '$lib/game/types.js';
+	import { loadSeason } from '$lib/game/sqlite-season-loader.js';
 
 	interface Props {
 		seriesId: string;
@@ -26,6 +28,8 @@
 	let usageRecords = $state<PlayerUsageRecord[]>([]);
 	let violations = $state<UsageViolation[]>([]);
 	let standings = $state<Standing[]>([]);
+	let seasonData = $state<SeasonPackage | null>(null);
+	let playerNames = $state<Record<string, string>>({}); // Cache of playerId -> name
 
 	// Filters
 	let selectedTeam = $state<string | null>(null);
@@ -48,7 +52,7 @@
 			getSeriesStandingsEnhanced = gameResults.getSeriesStandingsEnhanced;
 
 			// Create UsageTracker instance and bind methods
-			const tracker = new UsageTrackerClass(seriesId);
+			const tracker = new UsageTrackerClass(seriesId, seasonYear);
 			getTeamUsage = tracker.getTeamUsage.bind(tracker);
 			checkThresholds = tracker.checkThresholds.bind(tracker);
 
@@ -63,6 +67,9 @@
 			// Get standings (for team games played)
 			standings = await getSeriesStandingsEnhanced(seriesId);
 
+			// Load season data for player names
+			seasonData = await loadSeason(seasonYear);
+
 			// Get all usage data
 			const allRecords: PlayerUsageRecord[] = [];
 			for (const team of seriesTeams) {
@@ -73,6 +80,9 @@
 
 			// Get violations
 			violations = await checkThresholds();
+
+			// Load player names from game events
+			await loadPlayerNames();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load usage data';
 		} finally {
@@ -265,6 +275,54 @@
 		const proration = seasonLength > 0 ? teamGamesPlayed / seasonLength : 0;
 		return Math.round(record.actualSeasonTotal * proration);
 	}
+
+	// Get player name from cached data
+	function getPlayerName(playerId: string): string {
+		return playerNames[playerId] || playerId;
+	}
+
+	// Load player names from the database batting/pitching stats views
+	async function loadPlayerNames(): Promise<void> {
+		const db = await import('$lib/game-results/database.js').then(m => m.getGameDatabase());
+
+		// Load batter names - join with games table to filter by series_id
+		const batterStmt = db.prepare(`
+			SELECT DISTINCT e.batter_id as playerId, e.batter_name as name
+			FROM game_events e
+			JOIN games g ON e.game_id = g.id
+			WHERE g.series_id = ? AND e.batter_id IS NOT NULL AND e.batter_name IS NOT NULL
+		`);
+		batterStmt.bind([seriesId]);
+		while (batterStmt.step()) {
+			const row = batterStmt.getAsObject() as { playerId: string; name: string };
+			if (row.playerId && row.name) {
+				playerNames[row.playerId] = row.name;
+			}
+		}
+		batterStmt.free();
+
+		// Load pitcher names - join with games table to filter by series_id
+		const pitcherStmt = db.prepare(`
+			SELECT DISTINCT e.pitcher_id as playerId, e.pitcher_name as name
+			FROM game_events e
+			JOIN games g ON e.game_id = g.id
+			WHERE g.series_id = ? AND e.pitcher_id IS NOT NULL AND e.pitcher_name IS NOT NULL
+		`);
+		pitcherStmt.bind([seriesId]);
+		while (pitcherStmt.step()) {
+			const row = pitcherStmt.getAsObject() as { playerId: string; name: string };
+			if (row.playerId && row.name) {
+				playerNames[row.playerId] = row.name;
+			}
+		}
+		pitcherStmt.free();
+	}
+
+	// Calculate the actual percentage of expected (not capped)
+	function calculateActualPercentage(record: PlayerUsageRecord): number {
+		const expected = getExpectedTotal(record);
+		return expected > 0 ? record.replayCurrentTotal / expected : 0;
+	}
 </script>
 
 <div class="usage-report-view">
@@ -407,13 +465,13 @@
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="border-b border-zinc-800 bg-zinc-900/50">
+							<th class="text-left py-3 px-4 text-zinc-400 font-medium">ID</th>
 							<th
 								class="text-left py-3 px-4 text-zinc-400 font-medium cursor-pointer hover:text-white transition-colors"
 								onclick={() => toggleSort('name')}
 							>
 								Player{getSortIndicator('name')}
 							</th>
-							<th class="text-left py-3 px-4 text-zinc-400 font-medium">Team</th>
 							<th class="text-left py-3 px-4 text-zinc-400 font-medium">Type</th>
 							<th class="text-center py-3 px-4 text-zinc-400 font-medium">
 								Team Games<br/>(Replay/Season)
@@ -430,7 +488,7 @@
 								class="text-center py-3 px-4 text-zinc-400 font-medium cursor-pointer hover:text-white transition-colors"
 								onclick={() => toggleSort('percentage')}
 							>
-								% of Actual{getSortIndicator('percentage')}
+								% of Expected{getSortIndicator('percentage')}
 							</th>
 							<th
 								class="text-center py-3 px-4 text-zinc-400 font-medium cursor-pointer hover:text-white transition-colors"
@@ -446,10 +504,10 @@
 							{@const seasonLength = getSeasonLength()}
 							{@const prorationPct = getProrationPercentage(record)}
 							{@const expectedTotal = getExpectedTotal(record)}
-							{@const displayPercentage = Math.min(record.percentageOfActual, 2.0)}
+							{@const actualPercentage = calculateActualPercentage(record)}
 							<tr class="border-b border-zinc-800/50 hover:bg-zinc-900/30">
-								<td class="py-3 px-4 text-white font-medium">{record.playerId}</td>
-								<td class="py-3 px-4 text-zinc-400">{getTeamName(record.teamId)}</td>
+								<td class="py-3 px-4 text-zinc-400 font-mono text-xs">{record.playerId} ({record.teamId})</td>
+								<td class="py-3 px-4 text-white font-medium">{getPlayerName(record.playerId)}</td>
 								<td class="py-3 px-4 text-zinc-400">
 									{record.isPitcher ? 'P' : 'B'}
 								</td>
@@ -472,12 +530,12 @@
 								</td>
 								<td class="py-3 px-4 text-center">
 									<span
-										class="font-mono {(displayPercentage < 0.75 ||
-											displayPercentage > 1.25)
+										class="font-mono {(actualPercentage < 0.75 ||
+											actualPercentage > 1.25)
 											? 'text-yellow-400'
 											: 'text-white'}"
 									>
-										{(displayPercentage * 100).toFixed(0)}%
+										{(actualPercentage * 100).toFixed(0)}%
 									</span>
 								</td>
 								<td class="py-3 px-4 text-center">
