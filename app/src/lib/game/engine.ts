@@ -2317,9 +2317,27 @@ export class GameEngine {
 			.filter(b => b.teamId === battingTeam.teamId)
 			.map(toModelBatter);
 
+		// Get current usage for all players
+		const playerUsage = this.managerialOptions.pitcherUsage; // Contains all player usage (batters + pitchers)
+
+		// Get the usage threshold - use 1.25 (125%) as default
+		const usageThreshold = 1.25; // Consistent with season replay rest threshold
+
+		// CRITICAL: Filter out players over the usage threshold from PH selection
+		// This prevents overused players from being selected as pinch hitters
+		const filteredByUsage = allTeamBatters.filter(b =>
+			(playerUsage?.get(b.id) ?? 0) < usageThreshold
+		);
+
+		// Log how many players were filtered out due to usage
+		const playersFilteredByUsage = allTeamBatters.length - filteredByUsage.length;
+		if (playersFilteredByUsage > 0) {
+			console.log(`[PH] Excluding ${playersFilteredByUsage} players over ${usageThreshold * 100}% usage from PH selection`);
+		}
+
 		// CRITICAL: Filter out pitchers from PH selection pool (except when PHing for reliever)
 		// Pitchers can't play defensive positions, so selecting them as PH creates invalid lineups
-		const availableBench = allTeamBatters.filter(b =>
+		const availableBench = filteredByUsage.filter(b =>
 			!currentLineupPlayerIds.includes(b.id) &&
 			!currentDefensivePlayers.has(b.id) && // Exclude players already in defensively
 			!this.usedPinchHitters.has(b.id) &&
