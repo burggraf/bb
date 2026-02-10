@@ -32,9 +32,8 @@ import {
  */
 export interface UsageContext {
 	/** Map of player ID to current usage percentage (0.0-1.0) of actual season totals */
+	/** 1.0 = exactly on pace, <1.0 = underused, >1.0 = overused */
 	playerUsage: Map<string, number>;
-	/** Usage percentage threshold above which a player should be rested (default 1.25 = 125%) */
-	restThreshold?: number;
 }
 
 /**
@@ -187,164 +186,25 @@ function calculateOBP(batter: BatterStats): number {
 }
 
 /**
- * Select players to rest based on prorated usage threshold
- *
- * Logic:
- * 1. Find all players over 105% prorated usage
- * 2. Order them by usage % (highest first)
- * 3. Try to rest each one, but only if a valid lineup can still be formed
- * 4. Never rest more than 3 players
- *
- * @param positionPlayers - All available position players
- * @param usageContext - Current usage tracking data
- * @param restThreshold - Usage threshold for resting (default 1.05 = 105%)
- * @returns Set of player IDs to rest
- */
-function selectPlayersToRest(
-	positionPlayers: BatterStats[],
-	usageContext?: UsageContext,
-	restThreshold: number = 1.05
-): Set<string> {
-	const restedPlayers = new Set<string>();
-
-	if (!usageContext) {
-		console.log('[selectPlayersToRest] No usageContext provided, skipping resting logic');
-		return restedPlayers; // No usage context, no resting
-	}
-
-	console.log(`[selectPlayersToRest] Threshold: ${(restThreshold * 100).toFixed(0)}%, playerUsage map size: ${usageContext.playerUsage.size}`);
-
-	// Debug: log all players' usage to understand what's happening
-	console.log('[selectPlayersToRest] All position players usage:', positionPlayers.map(
-		p => `${p.name} (${p.id.slice(0, 12)}...): usage=${((usageContext.playerUsage.get(p.id) ?? 0) * 100).toFixed(0)}%`
-	));
-
-	// Find all players over the threshold and order by usage % (highest first)
-	const overusedPlayers = positionPlayers
-		.map(p => ({ player: p, usage: usageContext.playerUsage.get(p.id) ?? 0 }))
-		.filter(({ usage }) => usage > restThreshold)
-		.sort((a, b) => b.usage - a.usage); // Highest usage first
-
-	if (overusedPlayers.length === 0) {
-		console.log(`[selectPlayersToRest] No players over threshold (${(restThreshold * 100).toFixed(0)}%)`);
-		return restedPlayers;
-	}
-
-	console.log('[selectPlayersToRest] Found overused players:', overusedPlayers.map(
-		({ player, usage }) => `${player.name}: ${(usage * 100).toFixed(0)}%`
-	));
-
-	// Helper to check if a valid lineup can be formed with remaining players
-	// This simulates the actual position assignment logic to ensure we can fill all 8 positions
-	// Uses the SAME logic as assignPositions() to ensure consistency
-	function canFormValidLineup(availablePlayers: BatterStats[]): boolean {
-		// Need at least 8 unique position players for non-DH
-		if (availablePlayers.length < 8) {
-			console.log(`[canFormValidLineup] FAIL: Only ${availablePlayers.length} players available, need 8`);
-			return false;
-		}
-
-		// Use the SAME position priority order and logic as assignPositions()
-		const usedPlayers = new Set<string>();
-
-		console.log(`[canFormValidLineup] Checking with ${availablePlayers.length} players:`, availablePlayers.map(p => `${p.name} (${p.primaryPosition})`));
-
-		for (const position of POSITION_PRIORITY) {
-			const positionName = getPositionName(position);
-
-			// First priority: Find ALL players whose PRIMARY position is this position
-			// This matches assignPositions() which gets all primary candidates and sorts by PA
-			const primaryCandidates = availablePlayers.filter(p =>
-				!usedPlayers.has(p.id) && p.primaryPosition === position
-			);
-
-			if (primaryCandidates.length > 0) {
-				// Pick the one with most PA (same as assignPositions())
-				const selected = primaryCandidates.sort((a, b) => b.pa - a.pa)[0]!;
-				usedPlayers.add(selected.id);
-				console.log(`[canFormValidLineup] ${positionName}: ${selected.name} (primary, PA: ${selected.pa})`);
-				continue;
-			}
-
-			// Second priority: Find ALL players with secondary eligibility
-			// This matches assignPositions() which collects all secondary candidates and sorts by experience
-			const secondaryCandidates: Array<{ player: BatterStats; outs: number; score: number }> = [];
-
-			for (const player of availablePlayers) {
-				if (usedPlayers.has(player.id)) continue;
-
-				const outsAtPosition = player.positionEligibility[position];
-				if (outsAtPosition && outsAtPosition > 0) {
-					secondaryCandidates.push({
-						player,
-						outs: outsAtPosition,
-						score: calculateOBP(player)
-					});
-				}
-			}
-
-			if (secondaryCandidates.length > 0) {
-				// Sort by experience (outs), then by OBP (same as assignPositions())
-				secondaryCandidates.sort((a, b) => {
-					if (Math.abs(b.outs - a.outs) > 100) {
-						return b.outs - a.outs;
-					}
-					return b.score - a.score;
-				});
-
-				const selected = secondaryCandidates[0]!;
-				usedPlayers.add(selected.player.id);
-				console.log(`[canFormValidLineup] ${positionName}: ${selected.player.name} (secondary, outs: ${selected.outs})`);
-				continue;
-			}
-
-			// Can't fill this position
-			console.log(`[canFormValidLineup] FAIL: Cannot fill ${positionName}`);
-			return false;
-		}
-
-		console.log(`[canFormValidLineup] SUCCESS: Can fill all 8 positions`);
-		return true;
-	}
-
-	// Try to rest each overused player
-	// Rest ALL overused players that can be rested while still forming a valid lineup
-	// No hard limit - if a team has 10 overused players and enough depth, rest all 10
-	for (const { player, usage } of overusedPlayers) {
-		// Check if we can form a valid lineup without this player (and without already-rested players)
-		const availableWithoutThis = positionPlayers.filter(p =>
-			p.id !== player.id && !restedPlayers.has(p.id)
-		);
-
-		if (canFormValidLineup(availableWithoutThis)) {
-			restedPlayers.add(player.id);
-			console.log(`[selectPlayersToRest] ✓ Resting ${player.name} (${player.id.slice(0, 12)}...) at ${(usage * 100).toFixed(0)}% usage (${restedPlayers.size} rested total)`);
-		} else {
-			console.log(`[selectPlayersToRest] ✗ CANNOT rest ${player.name} (${player.id.slice(0, 12)}...) at ${(usage * 100).toFixed(0)}% usage - would leave invalid lineup, continuing`);
-			console.log(`[selectPlayersToRest]   Available players: ${availableWithoutThis.length} (need at least 8)`);
-			// Continue to next player instead of breaking
-		}
-	}
-
-	return restedPlayers;
-}
-
-/**
  * Player with weight for position selection
  */
 interface WeightedPlayer {
 	player: BatterStats;
 	weight: number; // Selection probability (0-1)
 	innings: number; // Innings played at this position
+	usage: number; // Current replay usage percentage (1.0 = on pace)
 }
 
 /**
- * Build position pools with innings-based weights
- * For each position, calculate each player's weight based on their innings at that position
+ * Build position pools with innings-based weights adjusted by replay usage
+ * For each position, calculate each player's weight based on:
+ * 1. Their innings at that position (historical eligibility)
+ * 2. Their current replay usage (inverse weighting - lower usage = higher weight)
  * Minimum 50 outs (innings * 3) to be considered eligible for a position
  */
 function buildPositionPools(
-	players: BatterStats[]
+	players: BatterStats[],
+	usageContext?: UsageContext
 ): Map<number, Array<WeightedPlayer>> {
 	const MIN_OUTS = 50; // Minimum outs to be considered eligible
 	const pools = new Map<number, Array<WeightedPlayer>>();
@@ -356,6 +216,9 @@ function buildPositionPools(
 
 	// For each player, add them to each position they're eligible for
 	for (const player of players) {
+		// Get current replay usage percentage (1.0 = on pace, <1.0 = underused, >1.0 = overused)
+		const usage = usageContext?.playerUsage.get(player.id) ?? 1.0;
+
 		// Check each position for eligibility
 		for (const position of POSITION_PRIORITY) {
 			const outsAtPosition = player.positionEligibility[position] || 0;
@@ -370,7 +233,8 @@ function buildPositionPools(
 				pool.push({
 					player,
 					weight: 0, // Will be calculated after all players are added
-					innings: outsAtPosition / 3 // Convert outs to innings
+					innings: outsAtPosition / 3, // Convert outs to innings
+					usage // Store usage for weight calculation
 				});
 			}
 		}
@@ -378,22 +242,39 @@ function buildPositionPools(
 
 	// Calculate weights for each position pool
 	for (const [position, pool] of pools) {
-		const totalInnings = pool.reduce((sum, wp) => sum + wp.innings, 0);
-
-		if (totalInnings === 0) {
-			// No eligible players for this position
-			pools.set(position, []);
+		if (pool.length === 0) {
 			continue;
 		}
 
-		// Set weight = player's innings / total innings at position
+		// Calculate base weights from innings, then adjust by usage
+		// Players with lower usage get higher weights (inverse relationship)
+		const totalInnings = pool.reduce((sum, wp) => sum + wp.innings, 0);
+
+		// First pass: base weight from innings
 		for (const wp of pool) {
-			wp.weight = wp.innings / totalInnings;
+			const baseWeight = totalInnings > 0 ? wp.innings / totalInnings : 1 / pool.length;
+			wp.weight = baseWeight;
+		}
+
+		// Second pass: adjust by usage (inverse - lower usage = higher weight)
+		// Usage modifier: at 50% usage = 2x weight, at 100% = 1x, at 200% = 0.5x, at 400% = 0.25x
+		// Cap the modifier to prevent extreme values (min 0.1x, max 5x)
+		for (const wp of pool) {
+			const usageModifier = Math.max(0.1, Math.min(5, 1 / Math.max(0.2, wp.usage)));
+			wp.weight = wp.weight * usageModifier;
+		}
+
+		// Normalize weights so they sum to 1
+		const totalWeight = pool.reduce((sum, wp) => sum + wp.weight, 0);
+		if (totalWeight > 0) {
+			for (const wp of pool) {
+				wp.weight = wp.weight / totalWeight;
+			}
 		}
 
 		console.log(`[buildPositionPools] ${getPositionName(position)}: ${pool.length} players, ${totalInnings.toFixed(0)} total innings`);
 		for (const wp of pool) {
-			console.log(`  - ${wp.player.name}: ${wp.innings.toFixed(0)} innings (${(wp.weight * 100).toFixed(1)}% weight)`);
+			console.log(`  - ${wp.player.name}: ${wp.innings.toFixed(0)} innings, ${(wp.usage * 100).toFixed(0)}% usage, ${(wp.weight * 100).toFixed(1)}% weight`);
 		}
 	}
 
@@ -471,18 +352,17 @@ function tryAssignRemaining(
  * Assign fielding positions using innings-weighted random selection with backtracking
  *
  * NEW APPROACH:
- * 1. Build position pools with innings-based weights
+ * 1. Build position pools with innings-based weights adjusted by replay usage
  * 2. Use backtracking to ensure all 8 positions can be filled
- * 3. For each position, randomly select from pool based on innings weight
+ * 3. For each position, randomly select from pool based on adjusted weight
  *
- * This naturally distributes playing time based on actual season usage patterns.
- * A player with 50% of innings at 1B gets selected ~50% of the time for 1B.
+ * Players with lower replay usage get higher weights, naturally distributing playing time.
  */
 function assignPositions(
 	players: BatterStats[],
 	usageContext?: UsageContext
 ): Map<string, number> {
-	console.log(`[assignPositions] Assigning positions for ${players.length} players using innings-weighted selection`);
+	console.log(`[assignPositions] Assigning positions for ${players.length} players using innings-weighted selection with usage adjustment`);
 
 	// Quick check: if we have fewer than 8 players, we can't fill all positions
 	if (players.length < 8) {
@@ -490,8 +370,8 @@ function assignPositions(
 		throw new Error(`Only ${players.length} players available for position assignment, need at least 8. Check roster data or resting logic.`);
 	}
 
-	// Build position pools
-	const pools = buildPositionPools(players);
+	// Build position pools with usage-based weighting
+	const pools = buildPositionPools(players, usageContext);
 
 	// Get positions ordered by scarcity (fewest players first)
 	const scarcityOrder = getPositionScarcityOrder(pools);
@@ -706,35 +586,6 @@ function buildBattingOrder(
 }
 
 /**
- * Filter available players based on usage context
- * @param batters - All batters to filter
- * @param usageContext - Optional usage tracking context
- * @returns Available players (below threshold) and rested players (above threshold)
- */
-function filterAvailablePlayers(
-	batters: BatterStats[],
-	usageContext?: UsageContext
-): { available: BatterStats[]; rested: BatterStats[]; warnings: string[] } {
-	const warnings: string[] = [];
-	const restThreshold = usageContext?.restThreshold ?? 1.25;
-
-	const available: BatterStats[] = [];
-	const rested: BatterStats[] = [];
-
-	for (const batter of batters) {
-		const usage = usageContext?.playerUsage.get(batter.id) ?? 0;
-		if (usage > restThreshold) {
-			rested.push(batter);
-			warnings.push(`Resting ${batter.name} (${(usage * 100).toFixed(0)}% of actual usage)`);
-		} else {
-			available.push(batter);
-		}
-	}
-
-	return { available, rested, warnings };
-}
-
-/**
  * Apply randomness to a lineup by swapping adjacent players
  * @param lineup - The lineup slots to randomize
  * @param randomness - Randomness factor (0-1)
@@ -923,29 +774,17 @@ function buildLineupImpl(
 		throw new Error(`Team ${teamId} has only ${positionPlayers.length} position players (excluding pitchers), need at least 8`);
 	}
 
-	// Usage-aware lineup building: prefer players with lower current usage
-	// This distributes playing time across the roster and prevents overuse
+	// Log usage distribution for debugging
 	if (usageContext) {
-		const restThreshold = usageContext.restThreshold ?? 1.05; // Default 105%
-		let overusedCount = 0;
-		let underusedCount = 0;
-		for (const player of positionPlayers) {
-			const usage = usageContext.playerUsage.get(player.id) ?? 0;
-			if (usage > restThreshold) {
-				overusedCount++;
-			} else if (usage < 0.75) {
-				underusedCount++;
-			}
-		}
+		const playerUsages = positionPlayers.map(p => ({
+			name: p.name,
+			id: p.id.slice(0, 12),
+			usage: (usageContext.playerUsage.get(p.id) ?? 0) * 100
+		})).sort((a, b) => b.usage - a.usage);
 
-		console.log('[buildLineup] Usage-aware lineup building:', {
-			teamId,
-			totalPositionPlayers: positionPlayers.length,
-			underusedCount,
-			overusedCount,
-			restThreshold: (restThreshold * 100).toFixed(0) + '%',
-			note: 'Prefer selecting underused players to distribute playing time'
-		});
+		console.log(`[buildLineup] Usage distribution for ${teamId}:`, playerUsages.map(u =>
+			`${u.name.slice(0, 12)}... ${u.usage.toFixed(0)}%`
+		));
 	}
 
 	// Select starting pitcher
@@ -967,18 +806,10 @@ function buildLineupImpl(
 		blendFactor: era.blendFactor
 	});
 
-	// Select players to rest based on usage (before position assignment)
-	const restThreshold = usageContext?.restThreshold ?? 1.05; // Default 105%
-	const restedPlayerIds = selectPlayersToRest(positionPlayers, usageContext, restThreshold);
-
-	// Filter out rested players from position assignment pool
-	const availablePlayers = positionPlayers.filter(p => !restedPlayerIds.has(p.id));
-
-	console.log(`[buildLineupImpl] After resting: ${availablePlayers.length} players available from ${positionPlayers.length} total (rested: ${restedPlayerIds.size})`);
-	console.log(`[buildLineupImpl] Available players:`, availablePlayers.map(p => `${p.name} (${p.primaryPosition})`));
-
-	// Assign fielding positions to available (non-rested) players
-	const positionAssignments = assignPositions(availablePlayers, usageContext);
+	// Assign fielding positions to all position players
+	// Usage-based weighting in assignPositions will naturally distribute playing time
+	// Players with lower usage get higher weights, overused players get lower weights
+	const positionAssignments = assignPositions(positionPlayers, usageContext);
 
 	// Build list of assigned players
 	const assignedPlayers: Array<{ player: BatterStats; position: number }> = [];

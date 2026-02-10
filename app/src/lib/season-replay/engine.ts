@@ -387,8 +387,8 @@ export class SeasonReplayEngine {
         try {
           const awayUsage = await this.usageTracker.getTeamUsageForContext(game.awayTeam);
           const homeUsage = await this.usageTracker.getTeamUsageForContext(game.homeTeam);
-          awayUsageContext = { playerUsage: awayUsage, restThreshold: 1.25 };
-          homeUsageContext = { playerUsage: homeUsage, restThreshold: 1.25 };
+          awayUsageContext = { playerUsage: awayUsage };
+          homeUsageContext = { playerUsage: homeUsage };
 
           // Combine ALL player usage (both batters and pitchers) for usage-aware decisions
           // This map will be used for:
