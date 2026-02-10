@@ -904,9 +904,17 @@ function buildLineupImpl(
 	// Exclude pitchers from position players
 	// IMPORTANT: Filter by BOTH primaryPosition AND pitchers table
 	// Some players are in batters table but are actually pitchers (have pitcher data)
-	let positionPlayers = teamBatters.filter(b =>
-		b.primaryPosition !== POSITIONS.PITCHER && !pitchers[b.id]
-	);
+	console.log(`[buildLineupImpl] Filter: teamBatters=${teamBatters.length}, pitchers=${Object.keys(pitchers).length}`);
+	let positionPlayers = teamBatters.filter(b => {
+		const isPitcherByPrimary = b.primaryPosition === POSITIONS.PITCHER;
+		const isPitcherInTable = !!pitchers[b.id];
+		const excluded = isPitcherByPrimary || isPitcherInTable;
+		if (excluded) {
+			console.log(`[buildLineupImpl] Excluding pitcher ${b.name} (${b.id}): primaryPosition=${b.primaryPosition}, inPitchersTable=${isPitcherInTable}`);
+		}
+		return !excluded;
+	});
+	console.log(`[buildLineupImpl] After filter: positionPlayers=${positionPlayers.length}`);
 
 	if (positionPlayers.length < 8) {
 		throw new Error(`Team ${teamId} has only ${positionPlayers.length} position players (excluding pitchers), need at least 8`);
