@@ -995,7 +995,8 @@ export class GameEngine {
 			b =>
 				!currentLineupPlayerIds.includes(b.id) &&
 				!this.usedPinchHitters.has(b.id) &&
-				!this.removedPlayers.has(b.id)
+				!this.removedPlayers.has(b.id) &&
+				!this.season.pitchers[b.id] // Exclude pitchers
 		);
 		return availableBench.length > 0;
 	}
@@ -1162,10 +1163,12 @@ export class GameEngine {
 			const currentLineupPlayerIds = lineup.players.map(p => p.playerId).filter((id): id is string => id !== null);
 			const allTeamBatters = Object.values(this.season.batters)
 				.filter(b => b.teamId === teamId);
+			// CRITICAL: Filter out pitchers from bench - pitchers cannot play defensive positions
 			const availableBench = allTeamBatters.filter(b =>
 				!currentLineupPlayerIds.includes(b.id) &&
 				!this.usedPinchHitters.has(b.id) &&
-				!this.removedPlayers.has(b.id)
+				!this.removedPlayers.has(b.id) &&
+				!this.season.pitchers[b.id] // Exclude pitchers!
 			);
 
 			// For each remaining open position, find a bench player who can play it
@@ -1424,6 +1427,7 @@ export class GameEngine {
 						!this.usedPinchHitters.has(b.id) &&
 						!this.removedPlayers.has(b.id) &&
 						!assignedBenchPlayerIds.has(b.id) &&  // Exclude already-assigned bench players
+						!this.season.pitchers[b.id] &&  // Exclude pitchers
 						this.canPlayPosition(b.id, vacatedSlot.position)
 					);
 
@@ -1463,6 +1467,7 @@ export class GameEngine {
 							!this.usedPinchHitters.has(b.id) &&
 							!this.removedPlayers.has(b.id) &&
 							!assignedBenchPlayerIds.has(b.id) &&
+							!this.season.pitchers[b.id] &&  // CRITICAL: Exclude pitchers from field positions
 							this.canPlayPosition(b.id, vacatedSlot.position)  // CRITICAL: Even in emergency, must check eligibility
 						);
 
@@ -2557,6 +2562,7 @@ export class GameEngine {
 								!currentLineupPlayerIds.includes(b.id) && // Not in current lineup
 								!this.usedPinchHitters.has(b.id) && // Not already used as PH
 								!this.removedPlayers.has(b.id) && // Not removed from game
+								!this.season.pitchers[b.id] && // Not a pitcher
 								this.canPlayPosition(b.id, replacedPosition) // Can play the position
 							);
 
