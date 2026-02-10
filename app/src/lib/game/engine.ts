@@ -2322,50 +2322,43 @@ export class GameEngine {
 		// Get current usage for all players
 		const playerUsage = this.managerialOptions.pitcherUsage; // Contains all player usage (batters + pitchers)
 
-		// Get the usage threshold - use 1.25 (125%) as default
-		const usageThreshold = 1.25; // Consistent with season replay rest threshold
-
-		// CRITICAL: Filter out players over the usage threshold from PH selection
-		// This prevents overused players from being selected as pinch hitters
-		const filteredByUsage = allTeamBatters.filter(b =>
-			(playerUsage?.get(b.id) ?? 0) < usageThreshold
-		);
-
-		// Log how many players were filtered out due to usage
-		const playersFilteredByUsage = allTeamBatters.length - filteredByUsage.length;
-		if (playersFilteredByUsage > 0) {
-			const filteredOut = allTeamBatters.filter(b => (playerUsage?.get(b.id) ?? 0) >= usageThreshold);
-			console.log(`[PH] Excluding ${playersFilteredByUsage} players over ${usageThreshold * 100}% usage from PH selection:`,
-				filteredOut.map(b => `${b.name.slice(0, 15)}... (${((playerUsage?.get(b.id) ?? 0) * 100).toFixed(0)}%)`));
-		}
-
-		// CRITICAL: Filter out pitchers from PH selection pool (except when PHing for reliever)
-		// Pitchers can't play defensive positions, so selecting them as PH creates invalid lineups
-		const availableBench = filteredByUsage.filter(b => {
-			const isPitcher = !!this.season.pitchers[b.id];
+		// Available bench = not in current lineup, not already used as PH, not removed from game
+		// NO position filtering - PHs can be selected regardless of position they play
+		// NO hard usage filtering - usage-based weighting will handle overuse
+		const availableBench = allTeamBatters.filter(b => {
 			const notInLineup = !currentLineupPlayerIds.includes(b.id);
 			const notDefensive = !currentDefensivePlayers.has(b.id);
 			const notUsedPH = !this.usedPinchHitters.has(b.id);
 			const notRemoved = !this.removedPlayers.has(b.id);
-			// Only exclude pitchers when NOT PHing for reliever
-			const notPitcherOrPHingForReliever = mustPHForReliever || !isPitcher;
 
-			return notInLineup && notDefensive && notUsedPH && notRemoved && notPitcherOrPHingForReliever;
+			return notInLineup && notDefensive && notUsedPH && notRemoved;
 		});
 
-		if (currentDefensivePlayers.size > 0) {
-			console.log(`[PH] Excluding ${currentDefensivePlayers.size} players already in defensive positions from PH selection`);
+		// Apply a VERY high hard cap to prevent absolute extreme cases (500% = 5x expected usage)
+		// This is just a safety valve - usage-based weighting will handle normal distribution
+		const EXTREME_USAGE_CAP = 5.0; // 500%
+		const eligibleBench = availableBench.filter(b => {
+			const usage = playerUsage?.get(b.id) ?? 0;
+			return usage < EXTREME_USAGE_CAP;
+		});
+
+		const benchForSelection = eligibleBench.length > 0 ? eligibleBench : availableBench;
+
+		// Log if anyone was excluded due to extreme usage
+		if (eligibleBench.length < availableBench.length) {
+			const excludedCount = availableBench.length - eligibleBench.length;
+			console.log(`[PH] Excluded ${excludedCount} players at ${EXTREME_USAGE_CAP * 100}%+ usage (extreme outliers)`);
 		}
 
 		// Prevent pinch hit if no bench players available
-		if (availableBench.length === 0) {
+		if (benchForSelection.length === 0) {
 			if (mustPHForReliever) {
 				console.warn(`No bench players available for ${battingTeam.teamId} - reliever ${currentBatter.name} must bat`);
 			}
 			return false;
 		}
 
-		if (availableBench.length > 0) {
+		if (benchForSelection.length > 0) {
 			const opposingPitcher = this.season.pitchers[pitchingTeam.pitcher!];
 			if (opposingPitcher) {
 				let phDecision: PinchHitDecision;
@@ -2564,6 +2557,32 @@ export class GameEngine {
 					if (batterIndex !== -1) {
 						const replacedPosition = battingTeam.players[batterIndex].position;
 						const pinchHitter = this.season.batters[phDecision.pinchHitterId];
+
+						// CRITICAL: Validate that the position can be filled at end of half-inning
+						// Rule: PH can be used if either:
+						// 1. PH CAN play the position they're replacing (they'll stay in defensively)
+						// 2. There's another bench player who CAN play that position
+						const phCanPlayPosition = pinchHitter && this.canPlayPosition(phDecision.pinchHitterId, replacedPosition);
+
+						if (!phCanPlayPosition) {
+							// PH cannot play this position - need to find a bench player who can
+							const allTeamBatters = Object.values(this.season.batters)
+								.filter(b => b.teamId === battingTeam.teamId);
+							const otherBenchPlayers = allTeamBatters.filter(b =>
+								b.id !== phDecision.pinchHitterId && // Not the PH
+								!currentLineupPlayerIds.includes(b.id) && // Not in current lineup
+								!this.usedPinchHitters.has(b.id) && // Not already used as PH
+								!this.removedPlayers.has(b.id) && // Not removed from game
+								this.canPlayPosition(b.id, replacedPosition) // Can play the position
+							);
+
+							if (otherBenchPlayers.length === 0) {
+								// No one available to play this position - cancel the PH
+								console.warn(`[PH] Canceling PH for ${phDecision.pinchHitterId}: cannot play position ${getPositionName(replacedPosition)} and no bench player available to fill it`);
+								return false;
+							}
+							// Otherwise, PH is valid - bench player will come in at end of inning
+						}
 
 						// Check if we're pinch hitting for a pitcher (position 1)
 						const isPitcherPH = replacedPosition === 1;
