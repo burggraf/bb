@@ -1000,7 +1000,46 @@ export class GameEngine {
 							}
 
 							if (!swapped) {
-								console.error(`Emergency mode: Could not swap ${playerName} - no compatible swap partners found`);
+								// ULTIMATE EMERGENCY: No compatible swap found
+								// As a last resort, swap with ANY player at a different position (ignoring eligibility)
+								// This is better than having duplicate positions
+								console.error(`Emergency mode: Could not find compatible swap for ${playerName}, using ultimate emergency swap`);
+
+								for (let swapIdx = 0; swapIdx < lineup.players.length; swapIdx++) {
+									if (swapIdx === playerIndex) continue;
+
+									const swapPlayer = lineup.players[swapIdx];
+									if (!swapPlayer || !swapPlayer.playerId) continue;
+									if (swapPlayer.position === dupPos) continue; // Skip other players at same duplicate position
+
+									// Just swap positions regardless of eligibility
+									const targetPosition = swapPlayer.position;
+									const swapPlayerName = this.season.batters[swapPlayer.playerId]?.name || swapPlayer.playerId;
+
+									console.warn(`EMERGENCY: Forcing swap of ${playerName} (position ${dupPos}) with ${swapPlayerName} (position ${getPositionName(targetPosition)}) - ignoring eligibility`);
+
+									lineup.players[playerIndex] = {
+										...player,
+										position: targetPosition
+									};
+									lineup.players[swapIdx] = {
+										...swapPlayer,
+										position: dupPos
+									};
+									swapped = true;
+									break;
+								}
+
+								// If even that fails (shouldn't happen), remove the duplicate player
+								if (!swapped) {
+									console.error(`CRITICAL: Could not resolve duplicate ${playerName} at position ${dupPos} - removing from lineup (will create hole)`);
+									lineup.players[playerIndex] = {
+										playerId: null,
+										position: 0
+									};
+								}
+
+								// Skip the normal assignment since we handled the swap here
 								continue;
 							}
 						}
