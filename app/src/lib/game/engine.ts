@@ -710,6 +710,45 @@ export class GameEngine {
 	}
 
 	/**
+	 * Find the best position for a player to fill, given the set of already-filled positions.
+	 * Prioritizes: 1) primary position, 2) position with most eligibility innings, 3) any open position
+	 * CRITICAL: Never assigns position 1 (pitcher) to non-pitchers
+	 */
+	private findBestPositionForPlayer(playerId: string, filledPositions: Set<number>): number {
+		const player = this.season.batters[playerId];
+		if (!player) {
+			return 2; // Default to catcher if player not found (not pitcher!)
+		}
+
+		const isPitcher = player.primaryPosition === 1;
+
+		// Try primary position first
+		if (player.primaryPosition >= 1 && player.primaryPosition <= 9 && !filledPositions.has(player.primaryPosition)) {
+			return player.primaryPosition;
+		}
+
+		// Define available positions based on whether player is a pitcher
+		const availablePositions = isPitcher
+			? [1, 2, 3, 4, 5, 6, 7, 8, 9] // Pitchers can play any position (in emergency)
+			: [2, 3, 4, 5, 6, 7, 8, 9]; // Non-pitchers CANNOT play position 1
+
+		// Try positions with most eligibility innings
+		let bestPosition = isPitcher ? 1 : 2; // Default based on player type
+		let maxInnings = 0;
+		for (const pos of availablePositions) {
+			if (filledPositions.has(pos)) continue;
+
+			const innings = (player.positionEligibility[pos] || 0) / 3;
+			if (innings > maxInnings) {
+				maxInnings = innings;
+				bestPosition = pos;
+			}
+		}
+
+		return bestPosition;
+	}
+
+	/**
 	 * Try to shuffle existing lineup players to accommodate a pinch hitter who can't play
 	 * the position they replaced and no bench is available.
 	 *
@@ -823,6 +862,62 @@ export class GameEngine {
 		// ONLY assign if player can actually play the position - no emergency assignments
 		for (const dupPos of duplicatePositions) {
 			const indices = positionIndices.get(dupPos) || [];
+
+			// SPECIAL HANDLING FOR PITCHER POSITION (1)
+			// Ensure the first player at position 1 is actually a pitcher
+			if (dupPos === 1) {
+				// Find the first actual pitcher at this position
+				let pitcherIndex = -1;
+				for (let i = 0; i < indices.length; i++) {
+					const idx = indices[i];
+				 const player = lineup.players[idx];
+					if (player && player.playerId && this.canPlayPosition(player.playerId, 1)) {
+						pitcherIndex = i;
+						break;
+					}
+				}
+
+				if (pitcherIndex === -1) {
+					// No pitcher found at position 1 - this is a critical error
+					console.error(`[resolveDuplicatePositions] CRITICAL: No pitcher found among ${indices.length} players at position 1`);
+					// Try to find any pitcher on the team to fill this role
+					const teamId = this.state.homeLineup === lineup ? this.state.homeLineup.teamId : this.state.awayLineup.teamId;
+					const allTeamBatters = Object.values(this.season.batters).filter(b => b.teamId === teamId);
+					const teamPitchers = allTeamBatters.filter(b => b.primaryPosition === 1);
+
+					if (teamPitchers.length > 0) {
+						// Find a pitcher who isn't currently in the lineup
+						for (const pitcher of teamPitchers) {
+							const inLineup = lineup.players.some(p => p.playerId === pitcher.id);
+							if (!inLineup) {
+								// Put this pitcher at position 1, replacing the first non-pitcher
+								const replaceIndex = indices[0];
+								const removedPlayer = lineup.players[replaceIndex];
+								console.warn(`[resolveDuplicatePositions] Replacing non-pitcher ${removedPlayer.playerId} with pitcher ${pitcher.name} at position 1`);
+								lineup.players[replaceIndex] = { playerId: pitcher.id, position: 1 };
+								break;
+							}
+						}
+					}
+				} else if (pitcherIndex !== 0) {
+					// The first player at position 1 is not a pitcher, swap with the first pitcher
+					const nonPitcherIndex = indices[0];
+					const actualPitcherIndex = indices[pitcherIndex];
+					const nonPitcher = lineup.players[nonPitcherIndex];
+					const actualPitcher = lineup.players[actualPitcherIndex];
+
+					console.warn(`[resolveDuplicatePositions] Position 1 had non-pitcher first, swapping ${nonPitcher?.playerId} with pitcher ${actualPitcher?.playerId}`);
+					// CRITICAL: Actually swap the players in the lineup, not just the indices
+					// The pitcher stays at their current batting order slot
+					// The non-pitcher keeps their position 1 assignment but will be moved to a different position below
+					// Swap the indices so the loop below moves the non-pitcher to a different position
+					const temp = indices[0];
+					indices[0] = indices[pitcherIndex];
+					indices[pitcherIndex] = temp;
+				}
+				// Now the first player in indices[0] is guaranteed to be a pitcher (or we did our best)
+			}
+
 			// Keep the first player at this position, move the rest
 			for (let i = 1; i < indices.length && missingPositions.length > 0; i++) {
 				const playerIndex = indices[i];
@@ -873,10 +968,41 @@ export class GameEngine {
 							const playerName = this.season.batters[player.playerId]?.name || player.playerId;
 							console.warn(`CRITICAL Emergency: ${playerName} forced to ${getPositionName(anyUnassigned)} (no eligibility, filling lineup hole)`);
 						} else {
-							// No missing positions left - keep original
+							// No missing positions left - need to swap with someone at a different position
+							// Find a player who is at a different position and can swap positions
 							const playerName = this.season.batters[player.playerId]?.name || player.playerId;
-							console.warn(`Emergency mode: ${playerName} kept at ${getPositionName(dupPos)} (no open positions)`);
-							continue;
+							console.warn(`Emergency mode: ${playerName} at position ${getPositionName(dupPos)} but no open positions - attempting player swap`);
+
+							// Try to find a player at a non-duplicate position who can play a different position
+							let swapped = false;
+							for (let swapIdx = 0; swapIdx < lineup.players.length; swapIdx++) {
+								if (swapIdx === playerIndex) continue; // Don't swap with self
+
+								const swapPlayer = lineup.players[swapIdx];
+								if (!swapPlayer || !swapPlayer.playerId) continue;
+								if (swapPlayer.position === dupPos) continue; // Skip other players at same duplicate position
+
+								// Check if current player can play swap player's position
+								if (this.canPlayPosition(player.playerId, swapPlayer.position)) {
+									// Swap positions
+									console.warn(`Emergency mode: Swapping ${playerName} (position ${dupPos}) with ${this.season.batters[swapPlayer.playerId]?.name || swapPlayer.playerId} (position ${getPositionName(swapPlayer.position)})`);
+									lineup.players[playerIndex] = {
+										...player,
+										position: swapPlayer.position
+									};
+									lineup.players[swapIdx] = {
+										...swapPlayer,
+										position: dupPos
+									};
+									swapped = true;
+									break;
+								}
+							}
+
+							if (!swapped) {
+								console.error(`Emergency mode: Could not swap ${playerName} - no compatible swap partners found`);
+								continue;
+							}
 						}
 					}
 				}
@@ -1803,7 +1929,16 @@ export class GameEngine {
 
 							// Find any player who isn't currently at this exact batting order position
 							// AND who can play the target position
+							// CRITICAL FIX: Check that player only appears once in the lineup
+							// If they appear twice (e.g., as PH and as defensive player), swapping will create duplicates
 							for (const player of allTeamBatters) {
+								// Count how many times this player appears in the lineup
+								const occurrences = lineup.players.filter(p => p.playerId === player.id).length;
+								if (occurrences !== 1) {
+									// Skip players who appear 0 times (not in lineup) or multiple times (would create duplicate)
+									continue;
+								}
+
 								const existingIndex = lineup.players.findIndex(p => p.playerId === player.id);
 								if (existingIndex !== -1 && existingIndex !== vacatedSlot.index &&
 									this.canPlayPosition(player.id, vacatedSlot.position)) {  // CRITICAL: Check position eligibility
@@ -2112,6 +2247,70 @@ export class GameEngine {
 			// Final fix: resolve any remaining duplicate positions
 			// This can happen when multiple PHs are assigned positions that conflict
 			this.resolveDuplicatePositions(lineup, suppressPlays);
+
+			// CRITICAL FIX: Remove any duplicate players before validation
+			// This can happen when PH resolution creates duplicate entries
+			const seenPlayerIds = new Map<string, number>(); // playerId -> first index seen
+			const duplicateIndices: number[] = [];
+
+			for (let i = 0; i < lineup.players.length; i++) {
+				const playerId = lineup.players[i].playerId;
+				if (!playerId) continue;
+
+				if (seenPlayerIds.has(playerId)) {
+					// Duplicate found - mark for removal
+					duplicateIndices.push(i);
+					const firstIndex = seenPlayerIds.get(playerId)!;
+					const playerName = this.season.batters[playerId]?.name || playerId;
+					console.warn(`[PH Resolution] Duplicate player ${playerName} found at index ${i} (first occurrence at ${firstIndex}), removing duplicate`);
+				} else {
+					seenPlayerIds.set(playerId, i);
+				}
+			}
+
+			// Remove duplicate entries by setting them to null
+			for (const dupIndex of duplicateIndices) {
+				const removedPlayer = lineup.players[dupIndex];
+				if (removedPlayer.playerId) {
+					console.log(`[PH Resolution] Removing duplicate player ${removedPlayer.playerId} at batting order ${dupIndex + 1}`);
+					lineup.players[dupIndex] = { playerId: null, position: 0 };
+				}
+			}
+
+			// After removing duplicates, we may have holes - try to fill them with bench players
+			if (duplicateIndices.length > 0) {
+				console.log(`[PH Resolution] Removed ${duplicateIndices.length} duplicate(s), attempting to fill resulting lineup holes`);
+				const currentLineupPlayerIds = lineup.players.map(p => p.playerId).filter((id): id is string => id !== null);
+				const allTeamBatters = Object.values(this.season.batters)
+					.filter(b => b.teamId === teamId);
+
+				for (const holeIndex of duplicateIndices) {
+					if (lineup.players[holeIndex].playerId === null) {
+						// Find any bench player who can fill this hole
+						const availableBench = allTeamBatters.filter(b =>
+							!currentLineupPlayerIds.includes(b.id) &&
+							!this.usedPinchHitters.has(b.id) &&
+							!this.removedPlayers.has(b.id) &&
+							!this.season.pitchers[b.id]
+						);
+
+						if (availableBench.length > 0) {
+							const benchPlayer = availableBench[0];
+							// Find a position that needs filling
+							const filledPositions = new Set(lineup.players.filter(p => p.playerId).map(p => p.position));
+							const targetPosition = this.findBestPositionForPlayer(benchPlayer.id, filledPositions);
+
+							lineup.players[holeIndex] = {
+								playerId: benchPlayer.id,
+								position: targetPosition
+							};
+							console.log(`[PH Resolution] Filled hole at batting order ${holeIndex + 1} with ${benchPlayer.name} at position ${targetPosition}`);
+						} else {
+							console.error(`[PH Resolution] Could not fill hole at batting order ${holeIndex + 1} - no bench players available`);
+						}
+					}
+				}
+			}
 
 			// Validate the final lineup to ensure no issues
 			const finalValidation = this.validateCurrentLineup(lineup, {
