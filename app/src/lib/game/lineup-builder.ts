@@ -850,7 +850,9 @@ function buildEraAwareBattingOrder(
 ): Array<{ player: BatterStats; battingOrder: number; position: number }> {
 	// Convert to model package format for strategy function
 	const batters = assignedPlayers.map(ap => ({
-		...ap.player,
+		id: ap.player.id,
+		name: ap.player.name,
+		handedness: ap.player.bats,
 		// Convert vsLHP/vsRHP to vsLeft/vsRight for model package
 		rates: {
 			vsLeft: ap.player.rates.vsLHP,

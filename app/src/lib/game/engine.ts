@@ -1126,7 +1126,7 @@ export class GameEngine {
 			// Debug: log current lineup before pitcher placement
 			if (pitcherReplacedSlots.length > 0) {
 				console.log(`DEBUG: Lineup before pitcher placement: ${lineup.players.map(p => {
-					const player = this.season.batters[p.playerId] || this.season.pitchers[p.playerId];
+					const player = p.playerId ? (this.season.batters[p.playerId] || this.season.pitchers[p.playerId]) : null;
 					return `${player?.name || p.playerId || 'null'} (${getPositionName(p.position)})`;
 				}).join(', ')}`);
 				console.log(`DEBUG: Current pitcher from lineup.pitcher: ${lineup.pitcher}`);
@@ -1737,8 +1737,10 @@ export class GameEngine {
 									const removedPlayerId = lineup.players[occupyingIndex].playerId;
 									console.log(`[PH Resolution] All positions filled - replacing ${removedPlayerId} at position ${replacedPosition} with PH ${ph.playerId}`);
 
-									// Mark the removed player as removed
-									this.removedPlayers.add(removedPlayerId);
+									// Mark the removed player as removed (only if not null)
+									if (removedPlayerId) {
+										this.removedPlayers.add(removedPlayerId);
+									}
 
 									// Assign PH to this position
 									lineup.players[occupyingIndex] = {
@@ -1761,10 +1763,10 @@ export class GameEngine {
 										batterName: '',
 										pitcherId: '',
 										pitcherName: '',
-										description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) replaces ${removedPlayerId} (bench exhausted), batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
+										description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) replaces ${removedPlayerId || 'unknown'} (bench exhausted), batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
 										runsScored: 0,
 										eventType: 'lineupAdjustment',
-										substitutedPlayer: removedPlayerId,
+										substitutedPlayer: removedPlayerId ?? undefined,
 										isSummary: true
 									});
 
@@ -1821,8 +1823,8 @@ export class GameEngine {
 				// This is a serious error - the lineup is invalid
 				// Log the current state for debugging
 				console.error(`Lineup: ${lineup.players.map(p => {
-					const player = this.season.batters[p.playerId];
-					return `${player?.name || p.playerId} (${getPositionName(p.position)})`;
+					const player = p.playerId ? this.season.batters[p.playerId] : null;
+					return `${player?.name || p.playerId || 'null'} (${getPositionName(p.position)})`;
 				}).join(', ')}`);
 			}
 
@@ -2339,13 +2341,17 @@ export class GameEngine {
 
 		// CRITICAL: Filter out pitchers from PH selection pool (except when PHing for reliever)
 		// Pitchers can't play defensive positions, so selecting them as PH creates invalid lineups
-		const availableBench = filteredByUsage.filter(b =>
-			!currentLineupPlayerIds.includes(b.id) &&
-			!currentDefensivePlayers.has(b.id) && // Exclude players already in defensively
-			!this.usedPinchHitters.has(b.id) &&
-			!this.removedPlayers.has(b.id) &&
-			(mustPHForReliever || b.primaryPosition !== 1)  // Only exclude pitchers when NOT PHing for reliever
-		);
+		const availableBench = filteredByUsage.filter(b => {
+			const isPitcher = !!this.season.pitchers[b.id];
+			const notInLineup = !currentLineupPlayerIds.includes(b.id);
+			const notDefensive = !currentDefensivePlayers.has(b.id);
+			const notUsedPH = !this.usedPinchHitters.has(b.id);
+			const notRemoved = !this.removedPlayers.has(b.id);
+			// Only exclude pitchers when NOT PHing for reliever
+			const notPitcherOrPHingForReliever = mustPHForReliever || !isPitcher;
+
+			return notInLineup && notDefensive && notUsedPH && notRemoved && notPitcherOrPHingForReliever;
+		});
 
 		if (currentDefensivePlayers.size > 0) {
 			console.log(`[PH] Excluding ${currentDefensivePlayers.size} players already in defensive positions from PH selection`);
