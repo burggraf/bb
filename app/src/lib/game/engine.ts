@@ -3034,43 +3034,45 @@ export class GameEngine {
 			const weights = new Map<string, number>();
 			const playerUsage = this.managerialOptions.pitcherUsage; // Contains all player usage (batters + pitchers)
 
-			// Calculate usage-aware scores for each player
-			// Lower usage = higher weight (more likely to be selected)
-			const inverseScores = new Map<string, number>();
-			let totalInverseScore = 0;
+			// NEW: Calculate usage-based weights for pinch-hitter selection
+			// The goal is to get all players to 100% usage
+			// Players who are underused get higher weights
+			let totalWeight = 0;
 
 			for (const player of players) {
 				const currentUsage = playerUsage?.get(player.id) ?? 0;
 				const usagePct = currentUsage * 100;
-
-				// Strongly target 75-125% range with aggressive modifiers:
-				//   <75%: 10x weight (strongly prefer underused)
-				//   75-100%: 5x weight (prefer underused)
-				//   100-125%: 1x weight (ideal range)
-				//   125-150%: 0.2x weight (penalize slightly overused)
-				//   >150%: 0.01x weight (almost never use overused)
-				let inverseScore: number;
-				if (usagePct < 75) {
-					inverseScore = 10;
-				} else if (usagePct < 100) {
-					inverseScore = 5;
-				} else if (usagePct <= 125) {
-					inverseScore = 1;
-				} else if (usagePct <= 150) {
-					inverseScore = 0.2;
+				
+				let weight: number;
+				
+				// If player is over 125% usage, they should rarely play (soft cap)
+				if (usagePct > 125) {
+					// Exponential penalty for overuse
+					const overuseFactor = Math.pow(0.5, (usagePct - 125) / 25);
+					weight = Math.max(0.01, overuseFactor * 0.1);
+				} else if (usagePct >= 100) {
+					// Linear reduction from 100% to 125%
+					weight = Math.max(0.1, 1.0 - ((usagePct - 100) / 25) * 0.9);
 				} else {
-					inverseScore = 0.01;
+					// Player is underused - boost based on need
+					const needFactor = 1.0 - currentUsage;
+					if (usagePct < 75) {
+						weight = 2.0 + needFactor * 2.0; // 2x to 4x boost
+					} else {
+						weight = 1.0 + needFactor; // 1x to 2x boost
+					}
 				}
-
-				inverseScores.set(player.id, inverseScore);
-				totalInverseScore += inverseScore;
+				
+				weights.set(player.id, weight);
+				totalWeight += weight;
 			}
 
 			// Normalize to get probabilities that sum to 1
-			for (const player of players) {
-				const score = inverseScores.get(player.id) ?? 1;
-				const weight = score / totalInverseScore;
-				weights.set(player.id, weight);
+			if (totalWeight > 0) {
+				for (const player of players) {
+					const weight = weights.get(player.id) ?? 1;
+					weights.set(player.id, weight / totalWeight);
+				}
 			}
 
 			return weights;
@@ -3129,9 +3131,9 @@ export class GameEngine {
 			return notInLineup && notDefensive && notUsedPH && notRemoved;
 		});
 
-		// Apply a hard cap to prevent extreme overuse (125% = upper end of target range)
-		// Changed from 500% → 150% → 125% to keep usage in 75-125% target range
-		const EXTREME_USAGE_CAP = 1.25; // 125%
+		// Soft cap: Only exclude players at extreme overuse (>300%)
+		// The usage-aware weighting will naturally prefer players in the 75-125% range
+		const EXTREME_USAGE_CAP = 3.0; // 300% - only exclude extreme outliers
 		const eligibleBench = availableBench.filter(b => {
 			const usage = playerUsage?.get(b.id) ?? 0;
 			return usage < EXTREME_USAGE_CAP;

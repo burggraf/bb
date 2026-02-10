@@ -116,10 +116,14 @@ export function usesDH(league: string, year: number): boolean {
 }
 
 /**
- * Select the starting pitcher based on quality score
- * Considers gamesStarted, ERA, WHIP, and complete game rate
+ * Select the starting pitcher weighted by actual games started
+ * This creates realistic usage patterns where pitchers who started more games
+ * in real life are more likely to start in the replay
  */
-export function selectStartingPitcher(pitchers: PitcherStats[]): PitcherStats {
+export function selectStartingPitcher(
+	pitchers: PitcherStats[],
+	usageContext?: UsageContext
+): PitcherStats {
 	if (pitchers.length === 0) {
 		throw new Error('No pitchers available for selection');
 	}
@@ -135,24 +139,38 @@ export function selectStartingPitcher(pitchers: PitcherStats[]): PitcherStats {
 		return pitchers.sort((a, b) => b.gamesStarted - a.gamesStarted)[0]!;
 	}
 
-	// Calculate quality score for each starter
-	// Quality = (gamesStarted weight) + (era inverse) + (whip inverse) + (cg bonus)
-	const scored = starters.map(p => {
-		const eraScore = 5 / p.era; // Lower ERA = higher score
-		const whipScore = 2 / p.whip; // Lower WHIP = higher score
-		const cgRate = p.gamesStarted > 0 ? p.completeGames / p.gamesStarted : 0;
-		const cgBonus = cgRate * 10; // Complete games add value
-
+	// Calculate weights based on gamesStarted MODIFIED by usage multiplier
+	const weightedStarters = starters.map(p => {
+		const usage = usageContext?.playerUsage.get(p.id) ?? 1.0;
+		// Use PA multiplier logic for pitchers as well
+		const usageMultiplier = calculateUsageWeight(usage, p.gamesStarted * 30); // Approx PA
 		return {
 			pitcher: p,
-			score: p.gamesStarted * 2 + eraScore + whipScore + cgBonus
+			weight: p.gamesStarted * usageMultiplier
 		};
 	});
 
-	// Sort by score descending
-	scored.sort((a, b) => b.score - a.score);
+	// Calculate total weight
+	const totalWeight = weightedStarters.reduce((sum, ws) => sum + ws.weight, 0);
 
-	return scored[0]!.pitcher;
+	if (totalWeight === 0) {
+		// Fallback to pitcher with most games started
+		return starters.sort((a, b) => b.gamesStarted - a.gamesStarted)[0]!;
+	}
+
+	// Weighted random selection
+	const random = Math.random() * totalWeight;
+	let cumulative = 0;
+
+	for (const ws of weightedStarters) {
+		cumulative += ws.weight;
+		if (random <= cumulative) {
+			return ws.pitcher;
+		}
+	}
+
+	// Fallback
+	return starters[starters.length - 1]!;
 }
 
 /**
@@ -191,15 +209,62 @@ function calculateOBP(batter: BatterStats): number {
 interface WeightedPlayer {
 	player: BatterStats;
 	weight: number; // Selection probability (0-1)
-	innings: number; // Innings played at this position
+	pa: number; // Actual season plate appearances
 	usage: number; // Current replay usage percentage (1.0 = on pace)
 }
 
 /**
- * Build position pools with innings-based weights adjusted by replay usage
+ * Calculate usage-based weight for player selection
+ * 
+ * NEW APPROACH: Target-based selection
+ * The goal is to get all players to 100% usage (actual season PA prorated to team games played).
+ * We calculate a "need" score: how much more PA does this player need to reach their target?
+ * 
+ * Players are weighted by their remaining PA need, not their total PA.
+ * This ensures underused players get priority regardless of their total season PA.
+ */
+function calculateUsageWeight(usage: number, actualPA: number): number {
+	const usagePct = usage * 100;
+	
+	// If player is over 125% usage, they should rarely play (soft cap)
+	if (usagePct > 125) {
+		// Exponential penalty for overuse - the more overused, the less likely
+		// Every 25% overuse halves the probability
+		const overuseFactor = Math.pow(0.5, (usagePct - 125) / 25);
+		// Reduce weight by factor of 10-100x for overused players
+		return Math.max(0.001, overuseFactor * 0.1);
+	}
+	
+	// If player is at or above target (100%), reduce weight proportionally
+	if (usagePct >= 100) {
+		// Linear reduction from 100% to 125%
+		// At 100%: 1.0 multiplier
+		// At 125%: 0.1 multiplier
+		return Math.max(0.1, 1.0 - ((usagePct - 100) / 25) * 0.9);
+	}
+	
+	// Player is underused - boost based on need
+	const needFactor = 1.0 - usage;
+	
+	// Boost underused players significantly
+	if (usagePct < 75) {
+		// Strong boost for players falling behind
+		// At 0% usage: 5x boost
+		// At 50% usage: 3.5x boost
+		return 3.0 + (needFactor * 2.0); 
+	}
+	
+	// 75-100%: moderate boost based on need
+	// At 75%: 1.25x boost
+	// At 99%: 1.01x boost
+	return 1.0 + (needFactor);
+}
+
+/**
+ * Build position pools with PA-based weights adjusted by replay usage
  * For each position, calculate each player's weight based on:
- * 1. Their innings at that position (historical eligibility)
- * 2. Their current replay usage (inverse weighting - lower usage = higher weight)
+ * 1. Their actual season PA (players with more PA should play more often)
+ * 2. Their current replay usage (soft cap - reduce weight for overused)
  */
 function buildPositionPools(
 	players: BatterStats[],
@@ -217,13 +282,12 @@ function buildPositionPools(
 		// Get current replay usage percentage (1.0 = on pace, <1.0 = underused, >1.0 = overused)
 		const usage = usageContext?.playerUsage.get(player.id) ?? 1.0;
 
-		// Check each position for eligibility
+		// Check each position for eligibility (ANY innings > 0)
 		for (const position of POSITION_PRIORITY) {
 			const outsAtPosition = player.positionEligibility[position] || 0;
-			const innings = outsAtPosition / 3; // Convert outs to innings
 
-			// Only add if player has SOME experience at this position (innings > 0)
-			if (innings <= 0) {
+			// Only add if player has ANY experience at this position (outs > 0)
+			if (outsAtPosition <= 0) {
 				continue;
 			}
 
@@ -232,7 +296,7 @@ function buildPositionPools(
 				pool.push({
 					player,
 					weight: 0, // Will be calculated after all players are added
-					innings,
+					pa: player.pa,
 					usage // Store usage for weight calculation
 				});
 			}
@@ -245,44 +309,12 @@ function buildPositionPools(
 			continue;
 		}
 
-		// Calculate base weights from innings, then adjust by usage
-		// Players with lower usage get higher weights (inverse relationship)
-		const totalInnings = pool.reduce((sum, wp) => sum + wp.innings, 0);
-
-		// First pass: base weight from innings
+		// Calculate weights based on DAMPENED actual PA MODIFIED by usage multiplier
+		// Using sqrt(pa) ensures starters still play more, but bench players
+		// aren't mathematically excluded by 30x weight differences.
 		for (const wp of pool) {
-			const baseWeight = totalInnings > 0 ? wp.innings / totalInnings : 1 / pool.length;
-			wp.weight = baseWeight;
-		}
-
-		// Second pass: adjust by usage (inverse - lower usage = higher weight)
-		// Target range: 75-125% usage. Outside this range, apply strong penalties/rewards.
-		// Usage modifier:
-		//   <75%: 10x weight (strongly prefer underused players)
-		//   75-100%: 5x weight (prefer underused)
-		//   100-125%: 1x weight (ideal range)
-		//   125-150%: 0.2x weight (penalize slightly overused)
-		//   150-175%: 0.05x weight (strongly penalize overused)
-		//   >175%: 0.01x weight (almost never use very overused players)
-		for (const wp of pool) {
-			let usageModifier: number;
-			const usagePct = wp.usage * 100;
-
-			if (usagePct < 75) {
-				usageModifier = 10; // Strongly prefer underused
-			} else if (usagePct < 100) {
-				usageModifier = 5; // Prefer underused
-			} else if (usagePct <= 125) {
-				usageModifier = 1; // Ideal range - no modifier
-			} else if (usagePct <= 150) {
-				usageModifier = 0.2; // Penalize slightly overused
-			} else if (usagePct <= 175) {
-				usageModifier = 0.05; // Strongly penalize overused
-			} else {
-				usageModifier = 0.01; // Almost never use very overused players
-			}
-
-			wp.weight = wp.weight * usageModifier;
+			const usageMultiplier = calculateUsageWeight(wp.usage, wp.pa);
+			wp.weight = Math.sqrt(wp.pa) * usageMultiplier;
 		}
 
 		// Normalize weights so they sum to 1
@@ -293,9 +325,13 @@ function buildPositionPools(
 			}
 		}
 
-		console.log(`[buildPositionPools] ${getPositionName(position)}: ${pool.length} players, ${totalInnings.toFixed(0)} total innings`);
-		for (const wp of pool) {
-			console.log(`  - ${wp.player.name}: ${wp.innings.toFixed(0)} innings, ${(wp.usage * 100).toFixed(0)}% usage, ${(wp.weight * 100).toFixed(1)}% weight`);
+		// Log pool composition
+		const totalPA = pool.reduce((sum, wp) => sum + wp.pa, 0);
+		console.log(`[buildPositionPools] ${getPositionName(position)}: ${pool.length} players, ${totalPA} total PA`);
+		const sortedPool = [...pool].sort((a, b) => b.weight - a.weight);
+		for (let i = 0; i < Math.min(3, sortedPool.length); i++) {
+			const wp = sortedPool[i];
+			console.log(`  - ${wp.player.name}: ${wp.pa} PA, ${(wp.usage * 100).toFixed(0)}% usage, ${(wp.weight * 100).toFixed(1)}% weight`);
 		}
 	}
 
@@ -328,66 +364,59 @@ function getPositionScarcityOrder(
 }
 
 /**
- * Try to assign players to remaining positions using backtracking
- * Returns true if successful, false otherwise
+ * Select a player using weighted random selection
+ * Returns the selected player or null if no valid selection
  */
-function tryAssignRemaining(
-	positionIndex: number,
-	positions: number[],
-	pools: Map<number, Array<WeightedPlayer>>,
-	assigned: Map<string, number>,
+function selectWeightedRandom(
+	pool: Array<WeightedPlayer>,
 	assignedPlayers: Set<string>
-): boolean {
-	// Base case: all positions filled
-	if (positionIndex >= positions.length) {
-		return true;
-	}
-
-	const position = positions[positionIndex];
-	const pool = pools.get(position) || [];
-
+): WeightedPlayer | null {
 	// Filter out already-assigned players
 	const availablePool = pool.filter(wp => !assignedPlayers.has(wp.player.id));
 
-	// Sort by weight (descending) - try highest-weighted players first
-	// This ensures usage-adjusted selection works
-	availablePool.sort((a, b) => b.weight - a.weight);
-
-	// Try each available player (in order of preference based on weight)
-	for (const wp of availablePool) {
-		// Assign this player
-		assigned.set(wp.player.id, position);
-		assignedPlayers.add(wp.player.id);
-
-		// Recurse to next position
-		if (tryAssignRemaining(positionIndex + 1, positions, pools, assigned, assignedPlayers)) {
-			return true;
-		}
-
-		// Backtrack: remove assignment
-		assigned.delete(wp.player.id);
-		assignedPlayers.delete(wp.player.id);
+	if (availablePool.length === 0) {
+		return null;
 	}
 
-	// No valid assignment found
-	return false;
+	// Calculate total weight of available players
+	const totalWeight = availablePool.reduce((sum, wp) => sum + wp.weight, 0);
+
+	if (totalWeight <= 0) {
+		// All weights are 0, pick uniformly
+		return availablePool[Math.floor(Math.random() * availablePool.length)] || null;
+	}
+
+	// Weighted random selection
+	let random = Math.random() * totalWeight;
+	let cumulative = 0;
+
+	for (const wp of availablePool) {
+		cumulative += wp.weight;
+		if (random <= cumulative) {
+			return wp;
+		}
+	}
+
+	// Fallback (shouldn't reach here)
+	return availablePool[availablePool.length - 1] || null;
 }
 
 /**
- * Assign fielding positions using innings-weighted random selection with backtracking
+ * Assign fielding positions using PA-weighted probabilistic selection
  *
  * NEW APPROACH:
- * 1. Build position pools with innings-based weights adjusted by replay usage
- * 2. Use backtracking to ensure all 8 positions can be filled
- * 3. For each position, randomly select from pool based on adjusted weight
+ * 1. Build position pools with PA-based weights adjusted by replay usage
+ * 2. Fill positions in scarcity order (fewest eligible players first)
+ * 3. For each position, use weighted random selection based on PA and usage
  *
- * Players with lower replay usage get higher weights, naturally distributing playing time.
+ * Players with more actual season PA are more likely to be selected,
+ * but current replay usage provides soft capping to prevent overuse.
  */
 function assignPositions(
 	players: BatterStats[],
 	usageContext?: UsageContext
 ): Map<string, number> {
-	console.log(`[assignPositions] Assigning positions for ${players.length} players using innings-weighted selection with usage adjustment`);
+	console.log(`[assignPositions] Assigning positions for ${players.length} players using PA-weighted selection with usage soft cap`);
 
 	// Quick check: if we have fewer than 8 players, we can't fill all positions
 	if (players.length < 8) {
@@ -395,31 +424,39 @@ function assignPositions(
 		throw new Error(`Only ${players.length} players available for position assignment, need at least 8. Check roster data or resting logic.`);
 	}
 
-	// Build position pools with usage-based weighting
+	// Build position pools with PA-based weighting
 	const pools = buildPositionPools(players, usageContext);
 
 	// Get positions ordered by scarcity (fewest players first)
 	const scarcityOrder = getPositionScarcityOrder(pools);
 
-	// Try to assign using backtracking (shuffle for randomness)
-	const maxAttempts = 10;
-	let bestAssignment: Map<string, number> | null = null;
+	// Try to assign positions using weighted random selection
+	const maxAttempts = 20;
 
 	for (let attempt = 0; attempt < maxAttempts; attempt++) {
 		const assigned = new Map<string, number>();
 		const assignedPlayers = new Set<string>();
+		let success = true;
 
-		// Shuffle the positions slightly for randomness (but keep scarcity order)
-		const positions = [...scarcityOrder];
-		if (attempt > 0) {
-			// Small random swap to introduce variety
-			const idx1 = Math.floor(Math.random() * Math.min(4, positions.length));
-			const idx2 = Math.floor(Math.random() * positions.length);
-			[positions[idx1], positions[idx2]] = [positions[idx2], positions[idx1]];
+		// Fill positions in scarcity order
+		for (const position of scarcityOrder) {
+			const pool = pools.get(position) || [];
+
+			// Use weighted random selection
+			const selected = selectWeightedRandom(pool, assignedPlayers);
+
+			if (selected) {
+				assigned.set(selected.player.id, position);
+				assignedPlayers.add(selected.player.id);
+			} else {
+				// No valid player for this position
+				success = false;
+				break;
+			}
 		}
 
-		if (tryAssignRemaining(0, positions, pools, assigned, assignedPlayers)) {
-			// Success! Use this assignment
+		if (success && assigned.size === 8) {
+			// Success! All 8 positions filled
 			console.log(`[assignPositions] SUCCESS: Assigned all 8 positions (attempt ${attempt + 1})`);
 
 			// Log the assignment
@@ -432,71 +469,59 @@ function assignPositions(
 
 			return assigned;
 		}
-
-		// Keep track of best partial assignment
-		if (assigned.size > (bestAssignment?.size || 0)) {
-			bestAssignment = assigned;
-		}
 	}
 
-	// If backtracking failed, use emergency fallback
-	console.error(`[assignPositions] Backtracking failed after ${maxAttempts} attempts, using emergency fallback`);
-	const emergencyAssignment = new Map<string, number>();
+	// If all attempts failed, use emergency fallback
+	console.error(`[assignPositions] Weighted selection failed after ${maxAttempts} attempts, using emergency fallback`);
+	return emergencyPositionAssignment(players, pools, scarcityOrder);
+}
 
-	// First, use successful assignments from best attempt
-	for (const [playerId, position] of (bestAssignment || new Map())) {
-		emergencyAssignment.set(playerId, position);
-	}
+/**
+ * Emergency fallback for position assignment when weighted selection fails
+ */
+function emergencyPositionAssignment(
+	players: BatterStats[],
+	pools: Map<number, Array<WeightedPlayer>>,
+	scarcityOrder: number[]
+): Map<string, number> {
+	const assigned = new Map<string, number>();
+	const assignedPlayers = new Set<string>();
 
-	// Fill remaining positions with any eligible player
-	const usedPositions = new Set(emergencyAssignment.values());
-	const usedPlayers = new Set(emergencyAssignment.keys());
+	// Try to fill positions in scarcity order, picking highest weighted available
+	for (const position of scarcityOrder) {
+		const pool = pools.get(position) || [];
 
-	for (const position of POSITION_PRIORITY) {
-		if (usedPositions.has(position)) continue;
+		// Sort by weight descending and pick first available
+		const sortedPool = [...pool]
+			.filter(wp => !assignedPlayers.has(wp.player.id))
+			.sort((a, b) => b.weight - a.weight);
 
-		// Find any player who can play this position
-		for (const player of players) {
-			if (usedPlayers.has(player.id)) continue;
-			const innings = (player.positionEligibility[position] || 0) / 3;
-			if (innings > 0) {
-				emergencyAssignment.set(player.id, position);
-				usedPlayers.add(player.id);
-				usedPositions.add(position);
-				break;
-			}
-		}
-	}
+		if (sortedPool.length > 0) {
+			const selected = sortedPool[0];
+			assigned.set(selected.player.id, position);
+			assignedPlayers.add(selected.player.id);
+		} else {
+			// No eligible player - find any player with ANY position eligibility
+			for (const player of players) {
+				if (assignedPlayers.has(player.id)) continue;
 
-	// If still can't fill, use player with ANY position eligibility (least bad option)
-	for (const position of POSITION_PRIORITY) {
-		if (usedPositions.has(position)) continue;
+				// Check if player has any position eligibility
+				const hasAnyEligibility = POSITION_PRIORITY.some(
+					pos => (player.positionEligibility[pos] || 0) > 0
+				);
 
-		// Find player with max innings at any position, even if not this one
-		let bestCandidate: { player: BatterStats; bestPos: number } | null = null;
-		for (const player of players) {
-			if (usedPlayers.has(player.id)) continue;
-
-			for (const pos of POSITION_PRIORITY) {
-				const innings = (player.positionEligibility[pos] || 0) / 3;
-				if (innings > 0) {
-					if (!bestCandidate || innings > (player.positionEligibility[bestCandidate.bestPos] || 0) / 3) {
-						bestCandidate = { player, bestPos: pos };
-					}
+				if (hasAnyEligibility) {
+					assigned.set(player.id, position);
+					assignedPlayers.add(player.id);
+					console.warn(`[emergencyPositionAssignment] Emergency: ${player.name} assigned to ${getPositionName(position)}`);
+					break;
 				}
 			}
 		}
-
-		if (bestCandidate) {
-			emergencyAssignment.set(bestCandidate.player.id, position);
-			usedPlayers.add(bestCandidate.player.id);
-			usedPositions.add(position);
-			console.warn(`[assignPositions] Emergency: ${bestCandidate.player.name} assigned to ${getPositionName(position)} (primary: ${getPositionName(bestCandidate.bestPos)})`);
-		}
 	}
 
-	console.warn(`[assignPositions] Emergency fallback completed with ${emergencyAssignment.size} assignments`);
-	return emergencyAssignment;
+	console.warn(`[emergencyPositionAssignment] Completed with ${assigned.size} assignments`);
+	return assigned;
 }
 
 /**
@@ -809,7 +834,7 @@ function buildLineupImpl(
 	}
 
 	// Select starting pitcher
-	const startingPitcher = selectStartingPitcher(teamPitchers);
+	const startingPitcher = selectStartingPitcher(teamPitchers, usageContext);
 
 	// Check if this game uses DH
 	const dhGame = options?.useDH ?? usesDH(league, year);
@@ -907,13 +932,6 @@ function buildLineupImpl(
 
 	if (dhGame) {
 		// With DH: Need 9 position players
-		// If we have more than 8 position players, the best remaining hitter becomes DH
-		const usedIds = new Set(battingOrder.map(b => b.player.id));
-		const remainingHitters = positionPlayers
-			.filter(p => !usedIds.has(p.id))
-			.map(p => ({ player: p, position: POSITIONS.DH, score: calculateHitterScore(p) }))
-			.sort((a, b) => b.score - a.score);
-
 		// Add the 8 position players to lineup
 		for (const slot of battingOrder) {
 			lineupSlots.push({
@@ -921,6 +939,20 @@ function buildLineupImpl(
 				position: slot.position
 			});
 		}
+
+		// If we have more than 8 position players, the best remaining hitter becomes DH
+		// NEW: Make DH selection usage-aware to prevent bench players from starting as DH every game
+		const usedIds = new Set(lineupSlots.map(s => s.playerId));
+		const remainingHitters = positionPlayers
+			.filter(p => !usedIds.has(p.id))
+			.map(p => {
+				const usage = usageContext?.playerUsage.get(p.id) ?? 1.0;
+				const multiplier = calculateUsageWeight(usage, p.pa);
+				// Weight is base hitter score times the usage multiplier
+				const score = calculateHitterScore(p) * multiplier;
+				return { player: p, position: POSITIONS.DH, score };
+			})
+			.sort((a, b) => b.score - a.score);
 
 		// Add DH in 9th spot
 		if (remainingHitters.length > 0) {

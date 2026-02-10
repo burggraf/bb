@@ -150,6 +150,12 @@ export class MatchupModel {
 
     // Normalize to ensure probabilities sum to 1
     const distribution: ProbabilityDistribution = {} as ProbabilityDistribution;
+    
+    // Debug: Log sum periodically
+    if (Math.random() < 0.0001) {
+      console.log(`[MatchupModel] rawProb sum = ${sum.toFixed(4)}`);
+    }
+
     for (const outcome of EVENT_RATE_KEYS) {
       distribution[outcome] = rawProbs[outcome] / sum;
     }
