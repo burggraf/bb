@@ -200,13 +200,11 @@ interface WeightedPlayer {
  * For each position, calculate each player's weight based on:
  * 1. Their innings at that position (historical eligibility)
  * 2. Their current replay usage (inverse weighting - lower usage = higher weight)
- * Minimum 50 outs (innings * 3) to be considered eligible for a position
  */
 function buildPositionPools(
 	players: BatterStats[],
 	usageContext?: UsageContext
 ): Map<number, Array<WeightedPlayer>> {
-	const MIN_OUTS = 50; // Minimum outs to be considered eligible
 	const pools = new Map<number, Array<WeightedPlayer>>();
 
 	// Initialize pools for all 8 fielding positions
@@ -222,9 +220,10 @@ function buildPositionPools(
 		// Check each position for eligibility
 		for (const position of POSITION_PRIORITY) {
 			const outsAtPosition = player.positionEligibility[position] || 0;
+			const innings = outsAtPosition / 3; // Convert outs to innings
 
-			// Skip if insufficient experience (less than MIN_OUTS)
-			if (outsAtPosition < MIN_OUTS) {
+			// Only add if player has SOME experience at this position (innings > 0)
+			if (innings <= 0) {
 				continue;
 			}
 
@@ -233,7 +232,7 @@ function buildPositionPools(
 				pool.push({
 					player,
 					weight: 0, // Will be calculated after all players are added
-					innings: outsAtPosition / 3, // Convert outs to innings
+					innings,
 					usage // Store usage for weight calculation
 				});
 			}
@@ -414,68 +413,11 @@ function assignPositions(
 		}
 	}
 
-	// If backtracking failed, try a simpler fallback approach
-	console.warn(`[assignPositions] Backtracking failed after ${maxAttempts} attempts, trying fallback...`);
-
-	// Fallback: Use a simpler greedy approach
-	const assigned = new Map<string, number>();
-	const assignedPlayers = new Set<string>();
-
-	// First, assign players to their primary positions
-	for (const position of POSITION_PRIORITY) {
-		const primaryPlayers = players.filter(p =>
-			p.primaryPosition === position && !assignedPlayers.has(p.id)
-		);
-
-		if (primaryPlayers.length > 0) {
-			// Sort by PA (prefer higher-quality players)
-			primaryPlayers.sort((a, b) => b.pa - a.pa);
-			const selected = primaryPlayers[0];
-			assigned.set(selected.id, position);
-			assignedPlayers.add(selected.id);
-			console.log(`[assignPositions] Fallback: ${getPositionName(position)}: ${selected.name} (primary)`);
-			continue;
-		}
-
-		// No primary player, look for secondary eligibility
-		const secondaryPlayers: Array<{ player: BatterStats; innings: number }> = [];
-		for (const player of players) {
-			if (assignedPlayers.has(player.id)) continue;
-
-			const inningsAtPosition = (player.positionEligibility[position] || 0) / 3;
-			if (inningsAtPosition > 0) {
-				secondaryPlayers.push({ player, innings: inningsAtPosition });
-			}
-		}
-
-		if (secondaryPlayers.length > 0) {
-			// Sort by innings (most experienced first)
-			secondaryPlayers.sort((a, b) => b.innings - a.innings);
-			const selected = secondaryPlayers[0];
-			assigned.set(selected.player.id, position);
-			assignedPlayers.add(selected.player.id);
-			console.log(`[assignPositions] Fallback: ${getPositionName(position)}: ${selected.player.name} (secondary, ${selected.innings.toFixed(0)} innings)`);
-			continue;
-		}
-
-		// Last resort: any remaining player (even without eligibility)
-		const remainingPlayer = players.find(p => !assignedPlayers.has(p.id));
-		if (remainingPlayer) {
-			assigned.set(remainingPlayer.id, position);
-			assignedPlayers.add(remainingPlayer.id);
-			console.log(`[assignPositions] Fallback: ${getPositionName(position)}: ${remainingPlayer.name} (EMERGENCY - no eligibility)`);
-		}
-	}
-
-	// Validate we filled all 8 positions
-	if (assigned.size < 8) {
-		console.error(`[assignPositions] FAIL: Even fallback only assigned ${assigned.size}/8 positions`);
-		console.error(`[assignPositions] Player count: ${players.length}`);
-		throw new Error(`Only able to assign ${assigned.size} positions, need 8. Team may have incomplete roster data or missing position eligibility data.`);
-	}
-
-	console.log(`[assignPositions] SUCCESS: Fallback assigned all 8 positions`);
-	return assigned;
+	// If backtracking failed, throw error - don't use invalid fallback
+	console.error(`[assignPositions] Backtracking failed after ${maxAttempts} attempts`);
+	console.error(`[assignPositions] Player count: ${players.length}`);
+	console.error(`[assignPositions] Unable to form valid lineup with current roster`);
+	throw new Error(`Unable to assign all 8 positions. Team may have insufficient roster depth or missing position eligibility data.`);
 }
 
 /**
