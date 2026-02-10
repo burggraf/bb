@@ -1459,19 +1459,20 @@ export class GameEngine {
 							isSummary: true
 						});
 					} else {
-						// EMERGENCY: No eligible bench player - try ANY bench player (ignoring position eligibility)
+						// EMERGENCY: No eligible bench player - try ANY bench player who can actually play this position
 						console.warn(`No eligible bench player for position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position} at batting order ${vacatedSlot.index + 1} - trying emergency fallback`);
 
-						// Find ANY bench player (ignoring position eligibility)
+						// Find ANY bench player who CAN PLAY THIS POSITION (critical fix - don't assign pitchers to field positions)
 						const availableBenchAny = allTeamBatters.filter(b =>
 							!currentLineupPlayerIds.includes(b.id) &&
 							!this.usedPinchHitters.has(b.id) &&
 							!this.removedPlayers.has(b.id) &&
-							!assignedBenchPlayerIds.has(b.id)
+							!assignedBenchPlayerIds.has(b.id) &&
+							this.canPlayPosition(b.id, vacatedSlot.position)  // CRITICAL: Even in emergency, must check eligibility
 						);
 
 						if (availableBenchAny.length > 0) {
-							// Use any available bench player - emergency mode will handle position eligibility
+							// Use any available bench player who can play this position
 							const emergencyPlayer = availableBenchAny[0];
 							lineup.players[vacatedSlot.index] = {
 								playerId: emergencyPlayer.id,
@@ -1489,7 +1490,7 @@ export class GameEngine {
 								batterName: '',
 								pitcherId: '',
 								pitcherName: '',
-								description: `Lineup adjustment: ${this.formatName(emergencyPlayer.name)} (${positionName}) fills position at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency - not natural position)`,
+								description: `Lineup adjustment: ${this.formatName(emergencyPlayer.name)} (${positionName}) fills position at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
 								runsScored: 0,
 								eventType: 'lineupAdjustment',
 								substitutedPlayer: emergencyPlayer.id,
@@ -1497,13 +1498,16 @@ export class GameEngine {
 							});
 						} else {
 							// ULTIMATE EMERGENCY: Try to find any player on the team (even if in lineup)
-							// This requires shuffling
+							// CRITICAL: Only shuffle players who CAN PLAY the target position
+							// This prevents pitchers from being assigned to field positions they're not eligible for
 							console.warn(`No bench players at all - trying roster shuffle for position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position}`);
 
 							// Find any player who isn't currently at this exact batting order position
+							// AND who can play the target position
 							for (const player of allTeamBatters) {
 								const existingIndex = lineup.players.findIndex(p => p.playerId === player.id);
-								if (existingIndex !== -1 && existingIndex !== vacatedSlot.index) {
+								if (existingIndex !== -1 && existingIndex !== vacatedSlot.index &&
+									this.canPlayPosition(player.id, vacatedSlot.position)) {  // CRITICAL: Check position eligibility
 									// Swap: move this player to the vacated slot, move null to their slot
 									lineup.players[existingIndex] = { playerId: null, position: lineup.players[existingIndex].position };
 									lineup.players[vacatedSlot.index] = { playerId: player.id, position: vacatedSlot.position };
@@ -1532,7 +1536,7 @@ export class GameEngine {
 
 							// After shuffle attempt, check if slot is still null
 							if (!lineup.players[vacatedSlot.index].playerId) {
-								console.error(`CRITICAL: Failed to fill vacated field position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position} at batting order ${vacatedSlot.index + 1}`);
+								console.error(`CRITICAL: Failed to fill vacated field position ${POSITION_NAMES[vacatedSlot.position] ?? vacatedSlot.position} at batting order ${vacatedSlot.index + 1} - no eligible player available`);
 							}
 						}
 						benchSearchFailed = true; // Enable emergency mode for position eligibility
