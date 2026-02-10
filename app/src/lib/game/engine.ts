@@ -2538,23 +2538,39 @@ export class GameEngine {
 
 		// Check for pinch hit opportunity
 		// Helper: Calculate usage-aware weights for player selection
-		// Players who have appeared in fewer games relative to their actual season totals get higher weights
+		// Target range: 75-125% usage. Strongly penalize players outside this range.
 		const calculateUsageAwareWeights = (players: ModelBatterStats[]): Map<string, number> => {
 			const weights = new Map<string, number>();
 			const playerUsage = this.managerialOptions.pitcherUsage; // Contains all player usage (batters + pitchers)
 
-			// Calculate inverse usage scores for each player
+			// Calculate usage-aware scores for each player
 			// Lower usage = higher weight (more likely to be selected)
 			const inverseScores = new Map<string, number>();
 			let totalInverseScore = 0;
 
 			for (const player of players) {
 				const currentUsage = playerUsage?.get(player.id) ?? 0;
-				// Use inverse of usage as the score (with minimum to avoid division by zero)
-				// Players at 100% usage get score 1.0
-				// Players at 200% usage get score 0.5 (less likely to be selected)
-				// Players at 50% usage get score 2.0 (more likely to be selected)
-				const inverseScore = currentUsage > 0 ? 1 / Math.max(currentUsage, 0.5) : 2.0;
+				const usagePct = currentUsage * 100;
+
+				// Strongly target 75-125% range with aggressive modifiers:
+				//   <75%: 10x weight (strongly prefer underused)
+				//   75-100%: 5x weight (prefer underused)
+				//   100-125%: 1x weight (ideal range)
+				//   125-150%: 0.2x weight (penalize slightly overused)
+				//   >150%: 0.01x weight (almost never use overused)
+				let inverseScore: number;
+				if (usagePct < 75) {
+					inverseScore = 10;
+				} else if (usagePct < 100) {
+					inverseScore = 5;
+				} else if (usagePct <= 125) {
+					inverseScore = 1;
+				} else if (usagePct <= 150) {
+					inverseScore = 0.2;
+				} else {
+					inverseScore = 0.01;
+				}
+
 				inverseScores.set(player.id, inverseScore);
 				totalInverseScore += inverseScore;
 			}
@@ -2622,9 +2638,9 @@ export class GameEngine {
 			return notInLineup && notDefensive && notUsedPH && notRemoved;
 		});
 
-		// Apply a hard cap to prevent extreme overuse (150% = 1.5x expected usage)
-		// Changed from 500% to 150% to better control player usage during season replay
-		const EXTREME_USAGE_CAP = 1.5; // 150%
+		// Apply a hard cap to prevent extreme overuse (125% = upper end of target range)
+		// Changed from 500% → 150% → 125% to keep usage in 75-125% target range
+		const EXTREME_USAGE_CAP = 1.25; // 125%
 		const eligibleBench = availableBench.filter(b => {
 			const usage = playerUsage?.get(b.id) ?? 0;
 			return usage < EXTREME_USAGE_CAP;

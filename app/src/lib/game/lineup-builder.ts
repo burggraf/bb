@@ -256,10 +256,32 @@ function buildPositionPools(
 		}
 
 		// Second pass: adjust by usage (inverse - lower usage = higher weight)
-		// Usage modifier: at 50% usage = 2x weight, at 100% = 1x, at 200% = 0.5x, at 400% = 0.25x
-		// Cap the modifier to prevent extreme values (min 0.1x, max 5x)
+		// Target range: 75-125% usage. Outside this range, apply strong penalties/rewards.
+		// Usage modifier:
+		//   <75%: 10x weight (strongly prefer underused players)
+		//   75-100%: 5x weight (prefer underused)
+		//   100-125%: 1x weight (ideal range)
+		//   125-150%: 0.2x weight (penalize slightly overused)
+		//   150-175%: 0.05x weight (strongly penalize overused)
+		//   >175%: 0.01x weight (almost never use very overused players)
 		for (const wp of pool) {
-			const usageModifier = Math.max(0.1, Math.min(5, 1 / Math.max(0.2, wp.usage)));
+			let usageModifier: number;
+			const usagePct = wp.usage * 100;
+
+			if (usagePct < 75) {
+				usageModifier = 10; // Strongly prefer underused
+			} else if (usagePct < 100) {
+				usageModifier = 5; // Prefer underused
+			} else if (usagePct <= 125) {
+				usageModifier = 1; // Ideal range - no modifier
+			} else if (usagePct <= 150) {
+				usageModifier = 0.2; // Penalize slightly overused
+			} else if (usagePct <= 175) {
+				usageModifier = 0.05; // Strongly penalize overused
+			} else {
+				usageModifier = 0.01; // Almost never use very overused players
+			}
+
 			wp.weight = wp.weight * usageModifier;
 		}
 
@@ -327,7 +349,11 @@ function tryAssignRemaining(
 	// Filter out already-assigned players
 	const availablePool = pool.filter(wp => !assignedPlayers.has(wp.player.id));
 
-	// Try each available player
+	// Sort by weight (descending) - try highest-weighted players first
+	// This ensures usage-adjusted selection works
+	availablePool.sort((a, b) => b.weight - a.weight);
+
+	// Try each available player (in order of preference based on weight)
 	for (const wp of availablePool) {
 		// Assign this player
 		assigned.set(wp.player.id, position);
