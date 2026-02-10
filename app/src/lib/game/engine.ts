@@ -849,31 +849,28 @@ export class GameEngine {
 				}
 
 				// Assign the player to the eligible position
-				const oldPosName = getPositionName(dupPos);
-				const newPosName = getPositionName(assignedPosition);
 				lineup.players[playerIndex] = {
 					...player,
 					position: assignedPosition
 				};
-					// Remove the assigned position from missingPositions
-					missingPositions.splice(assignmentIndex, 1);
+				// Remove the assigned position from missingPositions
+				missingPositions.splice(assignmentIndex, 1);
 
-					if (!suppressPlays) {
-						this.state.plays.unshift({
-							inning: this.state.inning,
-							isTopInning: this.state.isTopInning,
-							outcome: 'groundOut' as Outcome,
-							batterId: '',
-							batterName: '',
-							pitcherId: '',
-							pitcherName: '',
-							description: `Lineup adjustment: ${this.formatName(this.season.batters[player.playerId]?.name || player.playerId)} moved to ${newPosName} (emergency duplicate resolution)`,
-							runsScored: 0,
-							eventType: 'lineupAdjustment',
-							substitutedPlayer: player.playerId ?? undefined,
-							isSummary: true
-						});
-					}
+				if (!suppressPlays) {
+					this.state.plays.unshift({
+						inning: this.state.inning,
+						isTopInning: this.state.isTopInning,
+						outcome: 'groundOut' as Outcome,
+						batterId: '',
+						batterName: '',
+						pitcherId: '',
+						pitcherName: '',
+						description: `Lineup adjustment: ${this.formatName(this.season.batters[player.playerId]?.name || player.playerId)} moved to ${getPositionName(assignedPosition)} (emergency duplicate resolution)`,
+						runsScored: 0,
+						eventType: 'lineupAdjustment',
+						substitutedPlayer: player.playerId ?? undefined,
+						isSummary: true
+					});
 				}
 			}
 		}
