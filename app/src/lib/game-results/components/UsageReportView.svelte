@@ -446,7 +446,7 @@
 							{@const seasonLength = getSeasonLength()}
 							{@const prorationPct = getProrationPercentage(record)}
 							{@const expectedTotal = getExpectedTotal(record)}
-							{@const displayPercentage = expectedTotal > 0 ? (record.replayCurrentTotal / expectedTotal) : 0}
+							{@const displayPercentage = Math.min(record.percentageOfActual, 2.0)}
 							<tr class="border-b border-zinc-800/50 hover:bg-zinc-900/30">
 								<td class="py-3 px-4 text-white font-medium">{record.playerId}</td>
 								<td class="py-3 px-4 text-zinc-400">{getTeamName(record.teamId)}</td>

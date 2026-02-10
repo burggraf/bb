@@ -206,16 +206,34 @@ export class UsageTracker {
     // For batters, expected = actual * (teamGamesPlayed / seasonLength)
     // This tracks whether players are on pace based on TEAM season progress, not player games
     // All players are compared against the same timeline regardless of their actual games played
+
+    // Helper to calculate batter expected value with dampening and cap
+    const calculateBatterExpected = (actualTotal: number, teamGames: number): number => {
+      // Base expected value: actual * (teamGames / seasonLength)
+      let expected = actualTotal * teamGames / seasonLength;
+
+      // Apply dampening for early season to prevent extreme percentages
+      // At game 14, 60 PA would show as 1363% without dampening
+      // With dampening, we gradually reduce extrapolation effect
+      if (teamGames < 20) {
+        const dampeningFactor = teamGames / 20; // 0.35 at game 7, 0.7 at game 14, 1.0 at game 20+
+        const extrapolated = expected;
+        // When dampening is applied, we blend between actual usage and extrapolated
+        // This prevents extreme percentages while still identifying overuse
+        expected = actualTotal + (extrapolated - actualTotal) * dampeningFactor;
+      }
+
+      return expected;
+    };
+
     const updateBatter = db.prepare(`
       UPDATE player_usage
       SET replay_current_total = replay_current_total + ?,
           replay_games_played = replay_games_played + 1,
-          percentage_of_actual =
-            CAST(replay_current_total + ? AS REAL) /
-            NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0),
+          percentage_of_actual = MIN(?, 2.0),
           status = CASE
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) < 0.75 THEN 'under'
-            WHEN CAST(replay_current_total + ? AS REAL) / NULLIF(actual_season_total * CAST(? AS REAL) / ?, 0) > 1.25 THEN 'over'
+            WHEN ? < 0.75 THEN 'under'
+            WHEN ? > 1.25 THEN 'over'
             ELSE 'inRange'
           END
       WHERE series_id = ? AND player_id = ?
@@ -223,23 +241,40 @@ export class UsageTracker {
 
     gameStats.batterPa.forEach((pa, playerId) => {
       const teamGames = getTeamGamesPlayed(playerId);
-      // Parameters: pa, pa, teamGames, seasonLength (for formula: actual * teamGames / seasonLength)
-      updateBatter.run([pa, pa, teamGames, seasonLength, pa, teamGames, seasonLength, pa, teamGames, seasonLength, this.seriesId, playerId]);
 
-      // Debug: log first few players to verify calculation
+      // Get actual season total to calculate expected
       const stmt = db.prepare('SELECT actual_season_total, replay_current_total FROM player_usage WHERE series_id = ? AND player_id = ?');
       stmt.bind([this.seriesId, playerId]);
+      let actualTotal = 0;
+      let currentReplay = 0;
       if (stmt.step()) {
         const row = stmt.getAsObject() as Record<string, any>;
-        const actual = row.actual_season_total;
-        const replay = row.replay_current_total;
-        const expected = actual * teamGames / seasonLength;
-        const pct = expected > 0 ? replay / expected : 0;
-
-        // Log all for now to debug
-        console.log(`[UsageTracker] ${playerId.slice(0, 15)}: PA=${pa}, actual=${actual}, replay=${replay}, teamGames=${teamGames}, expected=${expected.toFixed(1)}, pct=${(pct * 100).toFixed(0)}%`);
+        actualTotal = row.actual_season_total;
+        currentReplay = row.replay_current_total;
       }
       stmt.free();
+
+      const expected = calculateBatterExpected(actualTotal, teamGames);
+      const newReplay = currentReplay + pa;
+
+      // Calculate percentage, then apply hard cap at 200%
+      let percentage = expected > 0 ? newReplay / expected : 0;
+      const uncappedPercentage = percentage; // DEBUG: Store for logging
+      percentage = Math.min(percentage, 2.0); // Hard cap at 200%
+
+      // DEBUG: Log all usage calculations to understand what's happening
+      const pctDisplay = (percentage * 100).toFixed(0);
+      if (pctDisplay !== '100%' && pctDisplay !== '99%' && pctDisplay !== '101%') {
+        console.log(`[UsageTracker] ${playerId.slice(0, 15)}: actual=${actualTotal}, replay=${newReplay}, expected=${expected.toFixed(1)}, teamGames=${teamGames}, pct=${pctDisplay}%`);
+      }
+
+      // Parameters: pa, percentage, percentage (status1), percentage (status2), seriesId, playerId
+      updateBatter.run([pa, percentage, percentage, percentage, this.seriesId, playerId]);
+
+      // Debug: log extreme usage for investigation
+      if (percentage > 2.0) {
+        console.error(`[UsageTracker] EXTREME USAGE: ${playerId.slice(0, 15)}: PA=${pa}, actual=${actualTotal}, replay=${newReplay}, teamGames=${teamGames}, expected=${expected.toFixed(1)}, pct=${(percentage * 100).toFixed(0)}%`);
+      }
     });
 
     const updatePitcher = db.prepare(`

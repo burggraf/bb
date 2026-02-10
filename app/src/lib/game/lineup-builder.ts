@@ -413,11 +413,64 @@ function assignPositions(
 		}
 	}
 
-	// If backtracking failed, throw error - don't use invalid fallback
-	console.error(`[assignPositions] Backtracking failed after ${maxAttempts} attempts`);
-	console.error(`[assignPositions] Player count: ${players.length}`);
-	console.error(`[assignPositions] Unable to form valid lineup with current roster`);
-	throw new Error(`Unable to assign all 8 positions. Team may have insufficient roster depth or missing position eligibility data.`);
+	// If backtracking failed, use emergency fallback
+	console.error(`[assignPositions] Backtracking failed after ${maxAttempts} attempts, using emergency fallback`);
+	const emergencyAssignment = new Map<string, number>();
+
+	// First, use successful assignments from best attempt
+	for (const [playerId, position] of (bestAssignment || new Map())) {
+		emergencyAssignment.set(playerId, position);
+	}
+
+	// Fill remaining positions with any eligible player
+	const usedPositions = new Set(emergencyAssignment.values());
+	const usedPlayers = new Set(emergencyAssignment.keys());
+
+	for (const position of POSITION_PRIORITY) {
+		if (usedPositions.has(position)) continue;
+
+		// Find any player who can play this position
+		for (const player of players) {
+			if (usedPlayers.has(player.id)) continue;
+			const innings = (player.positionEligibility[position] || 0) / 3;
+			if (innings > 0) {
+				emergencyAssignment.set(player.id, position);
+				usedPlayers.add(player.id);
+				usedPositions.add(position);
+				break;
+			}
+		}
+	}
+
+	// If still can't fill, use player with ANY position eligibility (least bad option)
+	for (const position of POSITION_PRIORITY) {
+		if (usedPositions.has(position)) continue;
+
+		// Find player with max innings at any position, even if not this one
+		let bestCandidate: { player: BatterStats; bestPos: number } | null = null;
+		for (const player of players) {
+			if (usedPlayers.has(player.id)) continue;
+
+			for (const pos of POSITION_PRIORITY) {
+				const innings = (player.positionEligibility[pos] || 0) / 3;
+				if (innings > 0) {
+					if (!bestCandidate || innings > (player.positionEligibility[bestCandidate.bestPos] || 0) / 3) {
+						bestCandidate = { player, bestPos: pos };
+					}
+				}
+			}
+		}
+
+		if (bestCandidate) {
+			emergencyAssignment.set(bestCandidate.player.id, position);
+			usedPlayers.add(bestCandidate.player.id);
+			usedPositions.add(position);
+			console.warn(`[assignPositions] Emergency: ${bestCandidate.player.name} assigned to ${getPositionName(position)} (primary: ${getPositionName(bestCandidate.bestPos)})`);
+		}
+	}
+
+	console.warn(`[assignPositions] Emergency fallback completed with ${emergencyAssignment.size} assignments`);
+	return emergencyAssignment;
 }
 
 /**
@@ -869,6 +922,20 @@ function buildLineupImpl(
 			playerId: startingPitcher.id,
 			position: POSITIONS.PITCHER
 		});
+	}
+
+	// Check for players exceeding hard usage cap before creating lineup
+	// This is a safety check - usage-based weighting should have prevented this
+	const USAGE_HARD_CAP = 1.5; // 150%
+	for (const slot of lineupSlots) {
+		if (slot.playerId && slot.playerId !== startingPitcher.id) {
+			const usage = usageContext?.playerUsage.get(slot.playerId) ?? 0;
+			if (usage > USAGE_HARD_CAP) {
+				const playerName = batters[slot.playerId]?.name || slot.playerId;
+				warnings.push(`Player ${playerName} at ${(usage * 100).toFixed(0)}% usage exceeds ${USAGE_HARD_CAP * 100}% cap - may cause overuse`);
+				console.warn(`[buildLineup] Player ${playerName} at ${(usage * 100).toFixed(0)}% usage exceeds ${USAGE_HARD_CAP * 100}% cap`);
+			}
+		}
 	}
 
 	// Create LineupState
