@@ -311,13 +311,6 @@ function selectPlayersToRest(
 	// Rest ALL overused players that can be rested while still forming a valid lineup
 	// No hard limit - if a team has 10 overused players and enough depth, rest all 10
 	for (const { player, usage } of overusedPlayers) {
-		// TEMPORARY FIX: Force rest any player over 200% usage to prevent extreme outliers
-		if (usage > 2.0) {
-			restedPlayers.add(player.id);
-			console.log(`[selectPlayersToRest] ⚠️ FORCE RESTING ${player.name} (${player.id.slice(0, 12)}...) at ${(usage * 100).toFixed(0)}% usage (over 200% threshold)`);
-			continue;
-		}
-
 		// Check if we can form a valid lineup without this player (and without already-rested players)
 		const availableWithoutThis = positionPlayers.filter(p =>
 			p.id !== player.id && !restedPlayers.has(p.id)
