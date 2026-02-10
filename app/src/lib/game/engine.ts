@@ -2287,12 +2287,24 @@ export class GameEngine {
 				for (const holeIndex of duplicateIndices) {
 					if (lineup.players[holeIndex].playerId === null) {
 						// Find any bench player who can fill this hole
-						const availableBench = allTeamBatters.filter(b =>
+						let availableBench = allTeamBatters.filter(b =>
 							!currentLineupPlayerIds.includes(b.id) &&
 							!this.usedPinchHitters.has(b.id) &&
 							!this.removedPlayers.has(b.id) &&
 							!this.season.pitchers[b.id]
 						);
+
+						// FALLBACK 1: Include pitchers if no non-pitchers available
+						if (availableBench.length === 0) {
+							availableBench = allTeamBatters.filter(b =>
+								!currentLineupPlayerIds.includes(b.id) &&
+								!this.usedPinchHitters.has(b.id) &&
+								!this.removedPlayers.has(b.id)
+							);
+							if (availableBench.length > 0) {
+								console.log(`[PH Resolution] No non-pitcher bench available, using pitcher to fill hole at batting order ${holeIndex + 1}`);
+							}
+						}
 
 						if (availableBench.length > 0) {
 							const benchPlayer = availableBench[0];
@@ -2306,7 +2318,80 @@ export class GameEngine {
 							};
 							console.log(`[PH Resolution] Filled hole at batting order ${holeIndex + 1} with ${benchPlayer.name} at position ${targetPosition}`);
 						} else {
-							console.error(`[PH Resolution] Could not fill hole at batting order ${holeIndex + 1} - no bench players available`);
+							// FALLBACK 2: No bench players at all - try to find a player already in the lineup
+							// who appears multiple times and remove one instance to fill the hole
+							console.warn(`[PH Resolution] No bench players available for hole at batting order ${holeIndex + 1}, trying emergency shuffle`);
+
+							// Count player occurrences in lineup
+							const playerOccurrences = new Map<string, number[]>();
+							for (let i = 0; i < lineup.players.length; i++) {
+								const playerId = lineup.players[i].playerId;
+								if (playerId && i !== holeIndex) {
+									if (!playerOccurrences.has(playerId)) {
+										playerOccurrences.set(playerId, []);
+									}
+									playerOccurrences.get(playerId)!.push(i);
+								}
+							}
+
+							// Find a player who appears multiple times
+							let duplicateFound = false;
+							for (const [playerId, indices] of playerOccurrences) {
+								if (indices.length > 1) {
+									// Found a duplicate - use one instance to fill the hole
+									const sourceIndex = indices[0];
+									const player = this.season.batters[playerId];
+									const position = lineup.players[sourceIndex].position;
+
+									lineup.players[holeIndex] = {
+										playerId: playerId,
+										position: position
+									};
+									lineup.players[sourceIndex] = {
+										playerId: null,
+										position: position
+									};
+
+									console.log(`[PH Resolution] Emergency shuffle: moved ${player?.name || playerId} from batting order ${sourceIndex + 1} to fill hole at batting order ${holeIndex + 1}`);
+									duplicateFound = true;
+									break;
+								}
+							}
+
+							if (!duplicateFound) {
+								// FALLBACK 3: Ultimate emergency - find any player not currently at this batting order
+								// and move them here, creating a new hole elsewhere (preferably at a less critical position)
+								const allLineupPlayers = lineup.players.map(p => p.playerId).filter((id): id is string => id !== null);
+								for (const batter of allTeamBatters) {
+									if (allLineupPlayers.includes(batter.id)) {
+										// This player is in the lineup, find them
+										const sourceIndex = lineup.players.findIndex(p => p.playerId === batter.id);
+										if (sourceIndex !== -1 && sourceIndex !== holeIndex) {
+											const position = lineup.players[sourceIndex].position;
+
+											lineup.players[holeIndex] = {
+												playerId: batter.id,
+												position: position
+											};
+											lineup.players[sourceIndex] = {
+												playerId: null,
+												position: position
+											};
+
+											console.log(`[PH Resolution] Ultimate emergency: moved ${batter.name} from batting order ${sourceIndex + 1} to fill hole at batting order ${holeIndex + 1} (created new hole at ${sourceIndex + 1})`);
+											duplicateFound = true;
+											break;
+										}
+									}
+								}
+							}
+
+							if (!duplicateFound) {
+								// ABSOLUTE LAST RESORT: Keep the hole and mark as emergency mode
+								// The validation will catch this, but at least we won't crash
+								console.error(`[PH Resolution] Could not fill hole at batting order ${holeIndex + 1} - no options available, leaving hole (will cause validation error)`);
+								this.emergencyRosterMode.set(teamId, true);
+							}
 						}
 					}
 				}
@@ -2533,58 +2618,145 @@ export class GameEngine {
 					}
 
 					if (!replacementFound) {
-						// No bench player can fit in any eligible position
-						// As a last resort, just assign the first bench player to any position they can play
-						// even if it means swapping with the current occupant
-						const firstBench = availableBench[0];
-						if (firstBench && replacedPosition !== undefined && this.canPlayPosition(firstBench.id, replacedPosition)) {
-							// Find who is currently at the replaced position and swap them
-							const occupantIndex = lineup.players.findIndex(p => p.position === replacedPosition);
-							if (occupantIndex !== -1) {
-								const occupant = lineup.players[occupantIndex];
-								const battingOrder = phSlot.index + 1;
-								const positionName = POSITION_NAMES[replacedPosition] ?? `Pos${replacedPosition}`;
+						// EMERGENCY SWAP: Try to swap a bench player with someone at a position they can play
+						// This happens when no empty positions exist and bench players can't play the replaced position
+						for (const benchPlayer of availableBench) {
+							// Try to find any position this bench player can play
+							const player = this.season.batters[benchPlayer.id];
+							if (!player) continue;
 
-								// Swap: put bench player at replaced position, move occupant to bench
-								lineup.players[phSlot.index] = {
-									playerId: firstBench.id,
-									position: replacedPosition
-								};
-								lineup.players[occupantIndex] = {
-									playerId: null,
-									position: occupant.position
-								};
+							// Get all positions this player is eligible for
+							const eligiblePositions = Object.entries(player.positionEligibility)
+								.filter(([_, outs]) => outs > 0)
+								.map(([pos, _]) => parseInt(pos));
 
-								maybeAddPlay({
-									inning: this.state.inning,
-									isTopInning: this.state.isTopInning,
-									outcome: 'out' as Outcome,
-									batterId: '',
-									batterName: '',
-									pitcherId: '',
-									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(firstBench.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)} at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency swap)`,
-									runsScored: 0,
-									eventType: 'lineupAdjustment',
-									substitutedPlayer: phPlayerId,
-									isSummary: true
-								});
-								replacementFound = true;
+							if (eligiblePositions.length === 0) {
+								eligiblePositions.push(player.primaryPosition);
 							}
+
+							// For each eligible position, check if someone is there and can be swapped
+							for (const pos of eligiblePositions) {
+								const occupantIndex = lineup.players.findIndex(p => p.position === pos && p.index !== phSlot.index);
+								if (occupantIndex !== -1 && occupantIndex !== phSlot.index) {
+									const occupantId = lineup.players[occupantIndex].playerId;
+									if (!occupantId) continue;
+
+									const battingOrder = phSlot.index + 1;
+									const positionName = POSITION_NAMES[pos] ?? `Pos${pos}`;
+
+									// Perform the swap
+									lineup.players[phSlot.index] = {
+										playerId: benchPlayer.id,
+										position: pos
+									};
+									// Move the occupant out of the lineup (to bench)
+									lineup.players[occupantIndex] = {
+										playerId: null,
+										position: pos
+									};
+
+									maybeAddPlay({
+										inning: this.state.inning,
+										isTopInning: this.state.isTopInning,
+										outcome: 'out' as Outcome,
+										batterId: '',
+										batterName: '',
+										pitcherId: '',
+										pitcherName: '',
+										description: `Lineup adjustment: ${this.formatName(benchPlayer.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)} at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency swap - occupant removed)`,
+										runsScored: 0,
+										eventType: 'lineupAdjustment',
+										substitutedPlayer: phPlayerId,
+										isSummary: true
+									});
+									replacementFound = true;
+									break;
+								}
+							}
+							if (replacementFound) break;
 						}
 					}
 
 					if (!replacementFound) {
-						// Still no replacement found - this is a critical error
-						// Revert the PH by removing them from the lineup
-						console.error(`No valid defensive position found for any bench player to replace PH ${phPlayer.name} at batting order ${phSlot.index + 1}`);
-						console.error(`This PH should not have been allowed - removing PH from lineup (will cause validation error)`);
-						// Remove the PH from the lineup (will be caught by validation)
-						lineup.players[phSlot.index] = {
-							playerId: null,
-							position: 0
-						};
-						benchSearchFailed = true;
+						// ULTIMATE EMERGENCY: Assign first bench player to replaced position regardless of eligibility
+						// This is better than having a hole in the lineup
+						const firstBench = availableBench[0];
+						if (firstBench) {
+							// Use replacedPosition if available, otherwise use player's primary position
+							const targetPosition = replacedPosition ?? this.season.batters[firstBench.id]?.primaryPosition ?? 2;
+							const battingOrder = phSlot.index + 1;
+							const positionName = POSITION_NAMES[targetPosition] ?? `Pos${targetPosition}`;
+
+							// Find who is currently at that position and remove them
+							const occupantIndex = lineup.players.findIndex(p => p.position === targetPosition && p.index !== phSlot.index);
+							if (occupantIndex !== -1 && occupantIndex !== phSlot.index) {
+								lineup.players[occupantIndex] = {
+									playerId: null,
+									position: targetPosition
+								};
+							}
+
+							lineup.players[phSlot.index] = {
+								playerId: firstBench.id,
+								position: targetPosition
+							};
+
+							maybeAddPlay({
+								inning: this.state.inning,
+								isTopInning: this.state.isTopInning,
+								outcome: 'out' as Outcome,
+								batterId: '',
+								batterName: '',
+								pitcherId: '',
+								pitcherName: '',
+								description: `Lineup adjustment: ${this.formatName(firstBench.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)} at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency - position ineligible)`,
+								runsScored: 0,
+								eventType: 'lineupAdjustment',
+								substitutedPlayer: phPlayerId,
+								isSummary: true
+							});
+							replacementFound = true;
+							benchSearchFailed = true; // Enable emergency mode
+						}
+					}
+
+					if (!replacementFound) {
+						// ABSOLUTE LAST RESORT: Keep the PH in the game at any position they can play (or DH)
+						// This is better than having a hole
+						const phPlayer = this.season.batters[phPlayerId];
+						if (phPlayer) {
+							// Try DH first (position 10), then primary position
+							const targetPosition = 10; // DH
+							const battingOrder = phSlot.index + 1;
+							const positionName = POSITION_NAMES[targetPosition] ?? `Pos${targetPosition}`;
+
+							lineup.players[phSlot.index] = {
+								playerId: phPlayerId,
+								position: targetPosition
+							};
+
+							maybeAddPlay({
+								inning: this.state.inning,
+								isTopInning: this.state.isTopInning,
+								outcome: 'out' as Outcome,
+								batterId: '',
+								batterName: '',
+								pitcherId: '',
+								pitcherName: '',
+								description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game (absolute last resort)`,
+								runsScored: 0,
+								eventType: 'lineupAdjustment',
+								substitutedPlayer: phPlayerId,
+								isSummary: true
+							});
+							replacementFound = true;
+							benchSearchFailed = true;
+						}
+					}
+
+					if (!replacementFound) {
+						// This should never happen now - but if it does, log it
+						console.error(`CRITICAL: Unable to resolve PH replacement for ${phPlayer.name} at batting order ${phSlot.index + 1} - all fallbacks failed`);
 					}
 				}
 			}
