@@ -1770,34 +1770,30 @@ export class GameEngine {
 									// Shouldn't happen - positionOccupied was true but we couldn't find the occupier
 									console.error(`[PH Resolution] Position ${replacedPosition} marked occupied but no occupier found - falling back to emergency mode`);
 								}
-							}
-
-							let finalPosition = replacedPosition;
-							let emergencyMessage = `(emergency mode)`;
-
-							if (positionOccupied === false) {
+							} else if (positionOccupied === false) {
 								// Original emergency mode logic for when position is available
 								console.warn(`Pinch hitter ${phPlayer.name} cannot play position ${POSITION_NAMES[replacedPosition] ?? replacedPosition} defensively, no bench available, and shuffle failed - using emergency mode to assign to ${POSITION_NAMES[finalPosition] ?? finalPosition}`);
 								lineup.players[ph.index] = {
 									playerId: ph.playerId,
 									position: finalPosition
 								};
-							const positionName = POSITION_NAMES[finalPosition] ?? `Pos${finalPosition}`;
-							maybeAddPlay({
-								inning: this.state.inning,
-								isTopInning: this.state.isTopInning,
-								outcome: 'out' as Outcome,
-								batterId: '',
-								batterName: '',
-								pitcherId: '',
-								pitcherName: '',
-								description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game at ${positionName} ${emergencyMessage}, batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
-								runsScored: 0,
-								eventType: 'lineupAdjustment',
-								substitutedPlayer: ph.playerId,
-								isSummary: true
-							});
-							benchSearchFailed = true;
+								const positionName = POSITION_NAMES[finalPosition] ?? `Pos${finalPosition}`;
+								maybeAddPlay({
+									inning: this.state.inning,
+									isTopInning: this.state.isTopInning,
+									outcome: 'out' as Outcome,
+									batterId: '',
+									batterName: '',
+									pitcherId: '',
+									pitcherName: '',
+									description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game at ${positionName} ${emergencyMessage}, batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
+									runsScored: 0,
+									eventType: 'lineupAdjustment',
+									substitutedPlayer: ph.playerId,
+									isSummary: true
+								});
+								benchSearchFailed = true;
+							}
 						}
 					}
 				}
