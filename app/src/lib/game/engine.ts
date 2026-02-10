@@ -2451,10 +2451,48 @@ export class GameEngine {
 				}
 
 				if (availableBench.length > 0) {
-					// Find a bench player and position that doesn't create conflicts
+					// Find a bench player to replace the PH
+					// The bench player should take the position that the PH replaced (if known)
+					// Otherwise, find any position the bench player can play
 					let replacementFound = false;
 
-					for (const replacement of availableBench) {
+					// Get the position that the PH replaced (if tracked)
+					const replacedPosition = this.phReplacedPositions.get(phPlayerId);
+
+					// First, try to find a bench player who can play the replaced position
+					if (replacedPosition !== undefined) {
+						for (const replacement of availableBench) {
+							// Check if this bench player can play the replaced position
+							if (this.canPlayPosition(replacement.id, replacedPosition)) {
+								const battingOrder = phSlot.index + 1;
+								const positionName = POSITION_NAMES[replacedPosition] ?? `Pos${replacedPosition}`;
+								lineup.players[phSlot.index] = {
+									playerId: replacement.id,
+									position: replacedPosition
+								};
+
+								maybeAddPlay({
+									inning: this.state.inning,
+									isTopInning: this.state.isTopInning,
+									outcome: 'out' as Outcome,
+									batterId: '',
+									batterName: '',
+									pitcherId: '',
+									pitcherName: '',
+									description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+									runsScored: 0,
+									eventType: 'lineupAdjustment',
+									substitutedPlayer: phPlayerId,
+									isSummary: true
+								});
+								replacementFound = true;
+								break;
+							}
+						}
+					}
+
+					// If we didn't find a replacement for the replaced position, try any eligible position
+					if (!replacementFound) {
 						// Build set of positions currently occupied (excluding PH slot at position 11)
 						const occupiedPositions = new Set(
 							lineup.players
@@ -2462,39 +2500,82 @@ export class GameEngine {
 								.map(p => p.position)
 						);
 
-						// Find a valid position for this replacement player
-						const validPosition = this.findValidSubstitution(replacement.id, lineup, occupiedPositions);
+						for (const replacement of availableBench) {
+							// Find a valid position for this replacement player
+							const validPosition = this.findValidSubstitution(replacement.id, lineup, occupiedPositions);
 
-						if (validPosition !== null) {
-							const battingOrder = phSlot.index + 1;
-							const positionName = POSITION_NAMES[validPosition] ?? `Pos${validPosition}`;
-							lineup.players[phSlot.index] = {
-								playerId: replacement.id,
-								position: validPosition
-							};
+							if (validPosition !== null) {
+								const battingOrder = phSlot.index + 1;
+								const positionName = POSITION_NAMES[validPosition] ?? `Pos${validPosition}`;
+								lineup.players[phSlot.index] = {
+									playerId: replacement.id,
+									position: validPosition
+								};
 
-							maybeAddPlay({
-								inning: this.state.inning,
-								isTopInning: this.state.isTopInning,
-								outcome: 'out' as Outcome,
-								batterId: '',
-								batterName: '',
-								pitcherId: '',
-								pitcherName: '',
-								description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
-								runsScored: 0,
-								eventType: 'lineupAdjustment',
-								substitutedPlayer: phPlayerId,
-								isSummary: true
-							});
-							replacementFound = true;
-							break;
+								maybeAddPlay({
+									inning: this.state.inning,
+									isTopInning: this.state.isTopInning,
+									outcome: 'out' as Outcome,
+									batterId: '',
+									batterName: '',
+									pitcherId: '',
+									pitcherName: '',
+									description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+									runsScored: 0,
+									eventType: 'lineupAdjustment',
+									substitutedPlayer: phPlayerId,
+									isSummary: true
+								});
+								replacementFound = true;
+								break;
+							}
 						}
 					}
 
 					if (!replacementFound) {
 						// No bench player can fit in any eligible position
-						// This is a critical error - the PH should not have been allowed in the first place
+						// As a last resort, just assign the first bench player to any position they can play
+						// even if it means swapping with the current occupant
+						const firstBench = availableBench[0];
+						if (firstBench && replacedPosition !== undefined && this.canPlayPosition(firstBench.id, replacedPosition)) {
+							// Find who is currently at the replaced position and swap them
+							const occupantIndex = lineup.players.findIndex(p => p.position === replacedPosition);
+							if (occupantIndex !== -1) {
+								const occupant = lineup.players[occupantIndex];
+								const battingOrder = phSlot.index + 1;
+								const positionName = POSITION_NAMES[replacedPosition] ?? `Pos${replacedPosition}`;
+
+								// Swap: put bench player at replaced position, move occupant to bench
+								lineup.players[phSlot.index] = {
+									playerId: firstBench.id,
+									position: replacedPosition
+								};
+								lineup.players[occupantIndex] = {
+									playerId: null,
+									position: occupant.position
+								};
+
+								maybeAddPlay({
+									inning: this.state.inning,
+									isTopInning: this.state.isTopInning,
+									outcome: 'out' as Outcome,
+									batterId: '',
+									batterName: '',
+									pitcherId: '',
+									pitcherName: '',
+									description: `Lineup adjustment: ${this.formatName(firstBench.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)} at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency swap)`,
+									runsScored: 0,
+									eventType: 'lineupAdjustment',
+									substitutedPlayer: phPlayerId,
+									isSummary: true
+								});
+								replacementFound = true;
+							}
+						}
+					}
+
+					if (!replacementFound) {
+						// Still no replacement found - this is a critical error
 						// Revert the PH by removing them from the lineup
 						console.error(`No valid defensive position found for any bench player to replace PH ${phPlayer.name} at batting order ${phSlot.index + 1}`);
 						console.error(`This PH should not have been allowed - removing PH from lineup (will cause validation error)`);
