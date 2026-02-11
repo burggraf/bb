@@ -77,7 +77,7 @@
 				// NOTE: Don't set shouldContinuePlaying = false here, as that breaks the auto-play loop
 				// The auto-play loop should continue unless the user explicitly pauses
 				const isAnimated = engine.getOptions().animated;
-				if (isAnimated && data.currentGameIndex > previousGameIndex && previousGameIndex > 0) {
+				if (isAnimated && data.currentGameIndex > previousGameIndex) {
 					gameComplete = true;
 					// In animated mode, we show a "Game Complete!" message but don't break auto-play
 					// The user can continue manually by clicking "Continue to Next Game" or toggle animated mode off
