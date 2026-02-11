@@ -24,8 +24,8 @@ describe('calculateLeagueNorms', () => {
 
 		const norms = calculateLeagueNorms(pitchers, 1976, 2);
 
-		expect(norms.avgERA).toBeCloseTo(2.75); // (3.50 + 2.00) / 2
-		expect(norms.avgWHIP).toBeCloseTo(1.10); // (1.20 + 1.00) / 2
+		expect(norms.avgERA).toBeCloseTo(3.0714, 4); // Weighted: (3.5*200 + 2.0*80)/280 = 860/280
+		expect(norms.avgWHIP).toBeCloseTo(1.142857, 4); // Weighted: (1.2*200 + 1.0*80)/280 = 320/280
 		expect(norms.avgSavesPerTeam).toBeCloseTo(10); // 20 saves / 2 teams
 		expect(norms.avgCGRate).toBeCloseTo(0.167); // 5/30 for p1
 		expect(norms.year).toBe(1976);

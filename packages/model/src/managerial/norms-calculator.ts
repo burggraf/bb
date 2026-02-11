@@ -20,9 +20,14 @@ export function calculateLeagueNorms(
 		};
 	}
 
-	const totalERA = pitchers.reduce((sum, p) => sum + p.era, 0);
-	const totalWHIP = pitchers.reduce((sum, p) => sum + p.whip, 0);
+	const totalIP = pitchers.reduce((sum, p) => sum + p.inningsPitched, 0);
+	const totalER = pitchers.reduce((sum, p) => sum + (p.era * p.inningsPitched) / 9, 0);
+	const totalWH = pitchers.reduce((sum, p) => sum + (p.whip * p.inningsPitched), 0);
 	const totalSaves = pitchers.reduce((sum, p) => sum + p.saves, 0);
+
+	// Calculate weighted average ERA and WHIP
+	const avgERA = totalIP > 0 ? totalER * 9 / totalIP : 4.00;
+	const avgWHIP = totalIP > 0 ? totalWH / totalIP : 1.35;
 
 	// Calculate CG rate only for pitchers with starts
 	const starters = pitchers.filter(p => p.gamesStarted > 0);
@@ -31,8 +36,8 @@ export function calculateLeagueNorms(
 		: 0;
 
 	return {
-		avgERA: totalERA / pitchers.length,
-		avgWHIP: totalWHIP / pitchers.length,
+		avgERA,
+		avgWHIP,
 		avgSavesPerTeam: totalSaves / numTeams,
 		avgCGRate: totalCGRate,
 		year

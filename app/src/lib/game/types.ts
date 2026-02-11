@@ -16,6 +16,7 @@ export type Outcome =
   | 'homeRun'
   // Walks
   | 'walk'
+  | 'intentionalWalk'
   | 'hitByPitch'
   // Strikeout
   | 'strikeout'
@@ -41,6 +42,7 @@ export interface EventRates {
   triple: number;
   homeRun: number;
   walk: number;
+  intentionalWalk: number;
   hitByPitch: number;
   strikeout: number;
   groundOut: number;

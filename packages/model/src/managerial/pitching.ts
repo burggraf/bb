@@ -201,7 +201,6 @@ export function shouldPullPitcher(
 		: pitcher.avgBfpAsReliever;
 
 	let typicalBfp: number;
-	let variance: number;
 
 	if (pitcher.role === 'starter') {
 		// === STARTER LOGIC: Era-specific complete game considerations ===
@@ -337,44 +336,44 @@ export function shouldPullPitcher(
 		const variance = typicalBfp > 15 ? 0.20 : 0.35;
 
 		const lowerThreshold = typicalBfp * (1 - variance);
-	const upperThreshold = typicalBfp * (1 + variance);
+		const upperThreshold = typicalBfp * (1 + variance);
 
-	// Hard limit: exceeded upper threshold
-	if (pitcher.battersFace >= upperThreshold) {
-		return { shouldChange: true, reason: `Exceeded limit (${pitcher.battersFace} BFP)` };
-	}
-
-	// Start considering pull when at lower threshold
-	if (pitcher.battersFace >= lowerThreshold) {
-		let pullChance = 0.3; // Base 30% chance at lower threshold
-
-		// Increase chance as we approach upper threshold
-		const bfpProgress = (pitcher.battersFace - lowerThreshold) / (upperThreshold - lowerThreshold);
-		pullChance += bfpProgress * 0.4; // Up to 70% at upper threshold
-
-		// Later innings = more aggressive pulling
-		if (inning >= 9) {
-			pullChance += 0.15;
-		} else if (inning >= 7) {
-			pullChance += 0.1;
+		// Hard limit: exceeded upper threshold
+		if (pitcher.battersFace >= upperThreshold) {
+			return { shouldChange: true, reason: `Exceeded limit (${pitcher.battersFace} BFP)` };
 		}
 
+		// Start considering pull when at lower threshold
+		if (pitcher.battersFace >= lowerThreshold) {
+			let pullChance = 0.3; // Base 30% chance at lower threshold
 
-		// Add randomness
-		pullChance += randomness;
-		pullChance = Math.min(pullChance, 1.0);
+			// Increase chance as we approach upper threshold
+			const bfpProgress = (pitcher.battersFace - lowerThreshold) / (upperThreshold - lowerThreshold);
+			pullChance += bfpProgress * 0.4; // Up to 70% at upper threshold
 
-		if (Math.random() < pullChance) {
-			const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
-			if (newPitcher) {
-				return {
-					shouldChange: true,
-					newPitcher: newPitcher.pitcherId,
-					reason: `BFP count (${pitcher.battersFace}/${typicalBfp.toFixed(0)} avg)`
-				};
+			// Later innings = more aggressive pulling
+			if (inning >= 9) {
+				pullChance += 0.15;
+			} else if (inning >= 7) {
+				pullChance += 0.1;
+			}
+
+
+			// Add randomness
+			pullChance += randomness;
+			pullChance = Math.min(pullChance, 1.0);
+
+			if (Math.random() < pullChance) {
+				const newPitcher = selectReliever(gameState, bullpen, pitcher.pitcherId);
+				if (newPitcher) {
+					return {
+						shouldChange: true,
+						newPitcher: newPitcher.pitcherId,
+						reason: `BFP count (${pitcher.battersFace}/${typicalBfp.toFixed(0)} avg)`
+					};
+				}
 			}
 		}
-	}
 
 		// Situation-based: high leverage, consider pull even earlier
 		const leverage = calculateLeverageIndex(gameState);
@@ -420,11 +419,12 @@ export function selectReliever(
 
 	const { inning, scoreDiff } = gameState;
 
-	// Determine if this is the home or away pitching
-	const isHomePitching = !gameState.isTopInning;
+	// In baseball, home team pitches in the top of the inning
+	// and away team pitches in the bottom of the inning.
+	const isHomePitching = gameState.isTopInning;
 
-	// Adjust score diff to be from pitching team's perspective
-	const pitchingScoreDiff = isHomePitching ? scoreDiff : -scoreDiff;
+	// scoreDiff in GameState is already from the pitching team's perspective
+	const pitchingScoreDiff = scoreDiff;
 
 	// Helper to check if pitcher is available
 	const isAvailable = (p: PitcherRole): boolean => p.pitcherId !== excludePitcherId;

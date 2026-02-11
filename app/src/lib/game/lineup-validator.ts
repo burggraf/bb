@@ -86,26 +86,6 @@ function isPlayerEligibleAtPosition(
 		return true;
 	}
 
-	// LENIENT: If no explicit eligibility data for this specific position, allow similar positions
-	// Outfielders can play other outfield positions (7-9)
-	// Infielders can play other infield positions (2-6)
-	const hasAnyEligibility = Object.keys(player.positionEligibility).length > 0;
-	if (hasAnyEligibility) {
-		// Only use this lenient rule if they have SOME eligibility data but not for this specific position
-		const isOutfield = (pos: number) => pos >= 7 && pos <= 9;
-		const isInfield = (pos: number) => pos >= 2 && pos <= 6;
-
-		const playerIsOutfield = isOutfield(player.primaryPosition);
-		const playerIsInfield = isInfield(player.primaryPosition);
-		const targetIsOutfield = isOutfield(position);
-		const targetIsInfield = isInfield(position);
-
-		// Allow outfielders to play any OF position, infielders any IF position
-		if ((playerIsOutfield && targetIsOutfield) || (playerIsInfield && targetIsInfield)) {
-			return true;
-		}
-	}
-
 	return false;
 }
 
@@ -177,7 +157,7 @@ export function validateLineup(
 		if (!allowAnyPosition && !isPlayerEligibleAtPosition(player, slot.position)) {
 			const primaryName = getPositionName(player.primaryPosition);
 			errors.push(
-				`Player ${player.name} at ${getPositionName(slot.position)} but only eligible at ${primaryName} (and others per positionEligibility)`
+				`Player ${slot.playerId} (${player.name}) at ${getPositionName(slot.position)} but only eligible at ${primaryName} (and others per positionEligibility)`
 			);
 		}
 
@@ -187,9 +167,9 @@ export function validateLineup(
 			const primaryName = getPositionName(player.primaryPosition);
 			if (isEarlyEra && player.primaryPosition === 1 && slot.position >= 2 && slot.position <= 6) {
 				// Pitcher playing infield in early era is a warning but acceptable
-				warnings.push(`Player ${player.name} (pitcher) at ${getPositionName(slot.position)} (early era flexibility)`);
+				warnings.push(`Player ${slot.playerId} (${player.name}) (pitcher) at ${getPositionName(slot.position)} (early era flexibility)`);
 			} else if (!isEarlyEra) {
-				warnings.push(`Player ${player.name} at ${getPositionName(slot.position)} (primary: ${primaryName})`);
+				warnings.push(`Player ${slot.playerId} (${player.name}) at ${getPositionName(slot.position)} (primary: ${primaryName})`);
 			}
 		}
 

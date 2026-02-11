@@ -272,12 +272,39 @@ export function blendLineups(
 	if (!secondary || blendFactor >= 1) return primary;
 	if (blendFactor <= 0) return secondary;
 
-	// For each slot, randomly choose primary or secondary based on blendFactor
-	// This creates variety while respecting era proportions
-	return primary.map((primarySlot, i) => {
-		if (Math.random() < blendFactor) {
-			return primarySlot;
+	const result: LineupSlot[] = [];
+	const usedPlayerIds = new Set<string>();
+
+	for (let i = 0; i < primary.length; i++) {
+		const primarySlot = primary[i];
+		const secondarySlot = secondary[i];
+
+		if (!secondarySlot) {
+			// Fallback to primary if secondary slot is missing
+			if (!usedPlayerIds.has(primarySlot.playerId)) {
+				result.push(primarySlot);
+				usedPlayerIds.add(primarySlot.playerId);
+			}
+			continue;
 		}
-		return secondary[i] || primarySlot;
-	});
+
+		const usePrimary = Math.random() < blendFactor;
+		const firstChoice = usePrimary ? primarySlot : secondarySlot;
+		const secondChoice = usePrimary ? secondarySlot : primarySlot;
+
+		if (!usedPlayerIds.has(firstChoice.playerId)) {
+			result.push(firstChoice);
+			usedPlayerIds.add(firstChoice.playerId);
+		} else if (!usedPlayerIds.has(secondChoice.playerId)) {
+			result.push(secondChoice);
+			usedPlayerIds.add(secondChoice.playerId);
+		} else {
+			// Both choices are already used. This happens if the strategies
+			// use the same players but in different orders.
+			// To avoid duplicate players, we MUST pick one whole lineup as a fallback.
+			return Math.random() < blendFactor ? primary : secondary;
+		}
+	}
+
+	return result;
 }

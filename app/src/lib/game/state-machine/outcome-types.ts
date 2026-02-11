@@ -8,7 +8,7 @@
 import type { Outcome } from '../types.js';
 
 export const HIT_OUTCOMES: Outcome[] = ['single', 'double', 'triple', 'homeRun'];
-export const REACH_BASE_OUTCOMES: Outcome[] = ['walk', 'hitByPitch', 'fieldersChoice', 'reachedOnError', 'catcherInterference'];
+export const REACH_BASE_OUTCOMES: Outcome[] = ['walk', 'intentionalWalk', 'hitByPitch', 'fieldersChoice', 'reachedOnError', 'catcherInterference'];
 export const OUT_OUTCOMES: Outcome[] = ['strikeout', 'groundOut', 'flyOut', 'lineOut', 'popOut', 'sacrificeFly', 'sacrificeBunt'];
 export const BALL_IN_PLAY_OUTS: Outcome[] = ['groundOut', 'flyOut', 'lineOut', 'popOut'];
 export const SACRIFICE_OUTCOMES: Outcome[] = ['sacrificeFly', 'sacrificeBunt'];
