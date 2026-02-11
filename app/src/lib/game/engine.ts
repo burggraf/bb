@@ -498,15 +498,6 @@ export class GameEngine {
 	}
 
 	/**
-	 * Format name from "Last, First" to "First Last"
-	 */
-	private formatName(name: string): string {
-		const commaIndex = name.indexOf(',');
-		if (commaIndex === -1) return name;
-		return `${name.slice(commaIndex + 1).trim()} ${name.slice(0, commaIndex).trim()}`;
-	}
-
-	/**
 	 * Record starting lineups for both teams
 	 */
 	private recordStartingLineups(): void {
@@ -526,7 +517,7 @@ export class GameEngine {
 				const player = season.batters[slot.playerId];
 				awayLineupPlayers.push({
 					playerId: slot.playerId,
-					playerName: this.formatName(player?.name ?? 'Unknown'),
+					playerName: formatName(player?.name ?? 'Unknown'),
 					battingOrder: i + 1,
 					fieldingPosition: slot.position
 				});
@@ -543,8 +534,8 @@ export class GameEngine {
 			batterId: '',
 			batterName: '',
 			pitcherId: awayPitcherId ?? '',
-			pitcherName: this.formatName(awayPitcher?.name ?? 'Unknown'),
-			description: `${awayName} starting lineup: ${awayLineupPlayers.map((p) => `${p.playerName} (${this.getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${this.formatName(awayPitcher?.name ?? 'Unknown')}`,
+			pitcherName: formatName(awayPitcher?.name ?? 'Unknown'),
+			description: `${awayName} starting lineup: ${awayLineupPlayers.map((p) => `${p.playerName} (${getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${formatName(awayPitcher?.name ?? 'Unknown')}`,
 			runsScored: 0,
 			eventType: 'startingLineup',
 			lineup: awayLineupPlayers,
@@ -559,7 +550,7 @@ export class GameEngine {
 				const player = season.batters[slot.playerId];
 				homeLineupPlayers.push({
 					playerId: slot.playerId,
-					playerName: this.formatName(player?.name ?? 'Unknown'),
+					playerName: formatName(player?.name ?? 'Unknown'),
 					battingOrder: i + 1,
 					fieldingPosition: slot.position
 				});
@@ -576,23 +567,13 @@ export class GameEngine {
 			batterId: '',
 			batterName: '',
 			pitcherId: homePitcherId ?? '',
-			pitcherName: this.formatName(homePitcher?.name ?? 'Unknown'),
-			description: `${homeName} starting lineup: ${homeLineupPlayers.map((p) => `${p.playerName} (${this.getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${this.formatName(homePitcher?.name ?? 'Unknown')}`,
+			pitcherName: formatName(homePitcher?.name ?? 'Unknown'),
+			description: `${homeName} starting lineup: ${homeLineupPlayers.map((p) => `${p.playerName} (${getPositionName(p.fieldingPosition)})`).join(', ')}; SP: ${formatName(homePitcher?.name ?? 'Unknown')}`,
 			runsScored: 0,
 			eventType: 'startingLineup',
 			lineup: homeLineupPlayers,
 			isSummary: true
 		});
-	}
-
-	/**
-	 * Get position name from position number
-	 */
-	private getPositionName(position: number): string {
-		const positionNames = [
-			'', 'P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'PH', 'PR'
-		];
-		return positionNames[position] ?? `Pos${position}`;
 	}
 
 	/**
@@ -1045,7 +1026,7 @@ export class GameEngine {
 						batterName: '',
 						pitcherId: '',
 						pitcherName: '',
-						description: `Lineup adjustment: ${this.formatName(this.season.batters[player.playerId]?.name || player.playerId)} moved to ${getPositionName(assignedPosition)} (emergency duplicate resolution)`,
+						description: `Lineup adjustment: ${formatName(this.season.batters[player.playerId]?.name || player.playerId)} moved to ${getPositionName(assignedPosition)} (emergency duplicate resolution)`,
 						runsScored: 0,
 						eventType: 'lineupAdjustment',
 						substitutedPlayer: player.playerId ?? undefined,
@@ -1135,7 +1116,7 @@ export class GameEngine {
 							batterName: '',
 							pitcherId: '',
 							pitcherName: '',
-							description: `Lineup adjustment: ${this.formatName(this.season.batters[assignedPlayer]?.name || assignedPlayer)} assigned to ${getPositionName(targetPos)} (filling lineup hole)`,
+							description: `Lineup adjustment: ${formatName(this.season.batters[assignedPlayer]?.name || assignedPlayer)} assigned to ${getPositionName(targetPos)} (filling lineup hole)`,
 							runsScored: 0,
 							eventType: 'lineupAdjustment',
 							substitutedPlayer: assignedPlayer,
@@ -1246,7 +1227,7 @@ export class GameEngine {
 							batterName: '',
 							pitcherId: '',
 							pitcherName: '',
-							description: `Lineup adjustment: ${this.formatName(this.season.pitchers[assignedPlayer]?.name || assignedPlayer)} assigned to P (filling null slot)`,
+							description: `Lineup adjustment: ${formatName(this.season.pitchers[assignedPlayer]?.name || assignedPlayer)} assigned to P (filling null slot)`,
 							runsScored: 0,
 							eventType: 'lineupAdjustment',
 							substitutedPlayer: assignedPlayer,
@@ -1309,7 +1290,7 @@ export class GameEngine {
 						batterName: '',
 						pitcherId: '',
 						pitcherName: '',
-						description: `Lineup adjustment: ${this.formatName(this.season.batters[assignedPlayer]?.name || assignedPlayer)} assigned to ${getPositionName(targetPosition)} (filling null slot)`,
+						description: `Lineup adjustment: ${formatName(this.season.batters[assignedPlayer]?.name || assignedPlayer)} assigned to ${getPositionName(targetPosition)} (filling null slot)`,
 						runsScored: 0,
 						eventType: 'lineupAdjustment',
 						substitutedPlayer: assignedPlayer,
@@ -1713,7 +1694,7 @@ export class GameEngine {
 					batterName: '',
 					pitcherId: '',
 					pitcherName: '',
-					description: `Lineup adjustment: ${this.formatName(pitcher?.name || pitcherId)} (P) batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+					description: `Lineup adjustment: ${formatName(pitcher?.name || pitcherId)} (P) batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 					runsScored: 0,
 					eventType: 'lineupAdjustment',
 					substitutedPlayer: pitcherId,
@@ -1761,7 +1742,7 @@ export class GameEngine {
 							batterName: '',
 							pitcherId: '',
 							pitcherName: '',
-							description: `Lineup adjustment: ${this.formatName(benchPlayer.name)} (P) replaces pitcher, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+							description: `Lineup adjustment: ${formatName(benchPlayer.name)} (P) replaces pitcher, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 							runsScored: 0,
 							eventType: 'lineupAdjustment',
 							substitutedPlayer: benchPlayer.id,
@@ -1798,7 +1779,7 @@ export class GameEngine {
 									batterName: '',
 									pitcherId: '',
 									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(emergencyPitcher.name)} (P) moves to fill pitcher slot at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
+									description: `Lineup adjustment: ${formatName(emergencyPitcher.name)} (P) moves to fill pitcher slot at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
 									runsScored: 0,
 										eventType: 'lineupAdjustment',
 									substitutedPlayer: emergencyPitcher.id,
@@ -1818,7 +1799,7 @@ export class GameEngine {
 									batterName: '',
 									pitcherId: '',
 									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(emergencyPitcher.name)} (P) fills pitcher slot at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
+									description: `Lineup adjustment: ${formatName(emergencyPitcher.name)} (P) fills pitcher slot at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
 								runsScored: 0,
 									eventType: 'lineupAdjustment',
 									substitutedPlayer: emergencyPitcher.id,
@@ -1845,7 +1826,7 @@ export class GameEngine {
 									batterName: '',
 									pitcherId: '',
 									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(anyPlayer.name)} forced to pitch at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency)`,
+									description: `Lineup adjustment: ${formatName(anyPlayer.name)} forced to pitch at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency)`,
 								runsScored: 0,
 									eventType: 'lineupAdjustment',
 									substitutedPlayer: anyPlayer.id,
@@ -1897,7 +1878,7 @@ export class GameEngine {
 							batterName: '',
 							pitcherId: '',
 							pitcherName: '',
-							description: `Lineup adjustment: ${this.formatName(benchPlayer.name)} (${positionName}) replaces pitcher at field position, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+							description: `Lineup adjustment: ${formatName(benchPlayer.name)} (${positionName}) replaces pitcher at field position, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 							runsScored: 0,
 							eventType: 'lineupAdjustment',
 							substitutedPlayer: benchPlayer.id,
@@ -1936,7 +1917,7 @@ export class GameEngine {
 								batterName: '',
 								pitcherId: '',
 								pitcherName: '',
-								description: `Lineup adjustment: ${this.formatName(emergencyPlayer.name)} (${positionName}) fills position at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
+								description: `Lineup adjustment: ${formatName(emergencyPlayer.name)} (${positionName}) fills position at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency)`,
 								runsScored: 0,
 								eventType: 'lineupAdjustment',
 								substitutedPlayer: emergencyPlayer.id,
@@ -1977,7 +1958,7 @@ export class GameEngine {
 										batterName: '',
 										pitcherId: '',
 										pitcherName: '',
-										description: `Lineup adjustment: ${this.formatName(player.name)} (${positionName}) moves to fill position at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency shuffle)`,
+										description: `Lineup adjustment: ${formatName(player.name)} (${positionName}) moves to fill position at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency shuffle)`,
 										runsScored: 0,
 										eventType: 'lineupAdjustment',
 										substitutedPlayer: player.id,
@@ -2024,7 +2005,7 @@ export class GameEngine {
 					batterName: '',
 					pitcherId: '',
 					pitcherName: '',
-					description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+					description: `Lineup adjustment: ${formatName(phPlayer.name)} (${positionName}) remains in game, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 					runsScored: 0,
 					eventType: 'lineupAdjustment',
 					substitutedPlayer: phId,
@@ -2059,7 +2040,7 @@ export class GameEngine {
 					batterName: '',
 					pitcherId: '',
 					pitcherName: '',
-					description: `Lineup adjustment: ${this.formatName(benchPlayer.name)} (${positionName}) replaces pinch hitter, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+					description: `Lineup adjustment: ${formatName(benchPlayer.name)} (${positionName}) replaces pinch hitter, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 					runsScored: 0,
 					eventType: 'lineupAdjustment',
 					substitutedPlayer: originalPhId,
@@ -2131,7 +2112,7 @@ export class GameEngine {
 							batterName: '',
 							pitcherId: '',
 							pitcherName: '',
-							description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game defensively, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+							description: `Lineup adjustment: ${formatName(phPlayer.name)} (${positionName}) remains in game defensively, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 							runsScored: 0,
 							eventType: 'lineupAdjustment',
 							substitutedPlayer: ph.playerId,
@@ -2161,7 +2142,7 @@ export class GameEngine {
 								batterName: '',
 								pitcherId: '',
 								pitcherName: '',
-								description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game at ${POSITION_NAMES[shuffleResult.phPosition] ?? shuffleResult.phPosition} after shuffle, batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
+								description: `Lineup adjustment: ${formatName(phPlayer.name)} (${positionName}) remains in game at ${POSITION_NAMES[shuffleResult.phPosition] ?? shuffleResult.phPosition} after shuffle, batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
 								runsScored: 0,
 								eventType: 'lineupAdjustment',
 								substitutedPlayer: ph.playerId,
@@ -2218,7 +2199,7 @@ export class GameEngine {
 										batterName: '',
 										pitcherId: '',
 										pitcherName: '',
-										description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) replaces ${removedPlayerId || 'unknown'} (bench exhausted), batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
+										description: `Lineup adjustment: ${formatName(phPlayer.name)} (${positionName}) replaces ${removedPlayerId || 'unknown'} (bench exhausted), batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
 										runsScored: 0,
 										eventType: 'lineupAdjustment',
 										substitutedPlayer: removedPlayerId ?? undefined,
@@ -2231,7 +2212,7 @@ export class GameEngine {
 									// Shouldn't happen - positionOccupied was true but we couldn't find the occupier
 									console.error(`[PH Resolution] Position ${replacedPosition} marked occupied but no occupier found - falling back to emergency mode`);
 								}
-							} else if (positionOccupied === false) {
+							} else if (positionOccupied === undefined) {
 								// Original emergency mode logic for when position is available
 								console.warn(`Pinch hitter ${phPlayer.name} cannot play position ${POSITION_NAMES[replacedPosition] ?? replacedPosition} defensively, no bench available, and shuffle failed - using emergency mode to assign to ${POSITION_NAMES[finalPosition] ?? finalPosition}`);
 								lineup.players[ph.index] = {
@@ -2247,7 +2228,7 @@ export class GameEngine {
 									batterName: '',
 									pitcherId: '',
 									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game at ${positionName} ${emergencyMessage}, batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
+									description: `Lineup adjustment: ${formatName(phPlayer.name)} (${positionName}) remains in game at ${positionName} ${emergencyMessage}, batting ${ph.index + 1}${getInningSuffix(ph.index + 1)}`,
 									runsScored: 0,
 									eventType: 'lineupAdjustment',
 									substitutedPlayer: ph.playerId,
@@ -2489,7 +2470,7 @@ export class GameEngine {
 								batterName: '',
 								pitcherId: '',
 								pitcherName: '',
-								description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (DH) remains in game as DH, batting ${phSlot.index + 1}${getInningSuffix(phSlot.index + 1)}`,
+								description: `Lineup adjustment: ${formatName(phPlayer.name)} (DH) remains in game as DH, batting ${phSlot.index + 1}${getInningSuffix(phSlot.index + 1)}`,
 								runsScored: 0,
 								eventType: 'lineupAdjustment',
 								substitutedPlayer: phPlayerId,
@@ -2515,7 +2496,7 @@ export class GameEngine {
 									batterName: '',
 									pitcherId: '',
 									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game at ${POSITION_NAMES[shuffleResult.phPosition] ?? shuffleResult.phPosition} after shuffle, batting ${phSlot.index + 1}${getInningSuffix(phSlot.index + 1)}`,
+									description: `Lineup adjustment: ${formatName(phPlayer.name)} (${positionName}) remains in game at ${POSITION_NAMES[shuffleResult.phPosition] ?? shuffleResult.phPosition} after shuffle, batting ${phSlot.index + 1}${getInningSuffix(phSlot.index + 1)}`,
 									runsScored: 0,
 									eventType: 'lineupAdjustment',
 									substitutedPlayer: phPlayerId,
@@ -2536,7 +2517,7 @@ export class GameEngine {
 									batterName: '',
 									pitcherId: '',
 									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (DH) remains in game as DH (emergency mode), batting ${phSlot.index + 1}${getInningSuffix(phSlot.index + 1)}`,
+									description: `Lineup adjustment: ${formatName(phPlayer.name)} (DH) remains in game as DH (emergency mode), batting ${phSlot.index + 1}${getInningSuffix(phSlot.index + 1)}`,
 									runsScored: 0,
 									eventType: 'lineupAdjustment',
 									substitutedPlayer: phPlayerId,
@@ -2585,7 +2566,7 @@ export class GameEngine {
 									batterName: '',
 									pitcherId: '',
 									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+									description: `Lineup adjustment: ${formatName(replacement.name)} (${positionName}) replaces ${formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 									runsScored: 0,
 									eventType: 'lineupAdjustment',
 									substitutedPlayer: phPlayerId,
@@ -2626,7 +2607,7 @@ export class GameEngine {
 									batterName: '',
 									pitcherId: '',
 									pitcherName: '',
-									description: `Lineup adjustment: ${this.formatName(replacement.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
+									description: `Lineup adjustment: ${formatName(replacement.name)} (${positionName}) replaces ${formatName(phPlayer.name)}, batting ${battingOrder}${getInningSuffix(battingOrder)}`,
 									runsScored: 0,
 									eventType: 'lineupAdjustment',
 									substitutedPlayer: phPlayerId,
@@ -2684,7 +2665,7 @@ export class GameEngine {
 										batterName: '',
 										pitcherId: '',
 										pitcherName: '',
-										description: `Lineup adjustment: ${this.formatName(benchPlayer.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)} at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency swap - occupant removed)`,
+										description: `Lineup adjustment: ${formatName(benchPlayer.name)} (${positionName}) replaces ${formatName(phPlayer.name)} at batting ${battingOrder}${getInningSuffix(battingOrder)} (emergency swap - occupant removed)`,
 										runsScored: 0,
 										eventType: 'lineupAdjustment',
 										substitutedPlayer: phPlayerId,
@@ -2730,7 +2711,7 @@ export class GameEngine {
 								batterName: '',
 								pitcherId: '',
 								pitcherName: '',
-								description: `Lineup adjustment: ${this.formatName(firstBench.name)} (${positionName}) replaces ${this.formatName(phPlayer.name)} at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency - position ineligible)`,
+								description: `Lineup adjustment: ${formatName(firstBench.name)} (${positionName}) replaces ${formatName(phPlayer.name)} at batting ${battingOrder}${getInningSuffix(battingOrder)} (ultimate emergency - position ineligible)`,
 								runsScored: 0,
 								eventType: 'lineupAdjustment',
 								substitutedPlayer: phPlayerId,
@@ -2764,7 +2745,7 @@ export class GameEngine {
 								batterName: '',
 								pitcherId: '',
 								pitcherName: '',
-								description: `Lineup adjustment: ${this.formatName(phPlayer.name)} (${positionName}) remains in game (absolute last resort)`,
+								description: `Lineup adjustment: ${formatName(phPlayer.name)} (${positionName}) remains in game (absolute last resort)`,
 								runsScored: 0,
 								eventType: 'lineupAdjustment',
 								substitutedPlayer: phPlayerId,
@@ -2882,7 +2863,7 @@ export class GameEngine {
 		};
 
 		const filteredBullpen: EnhancedBullpenState = {
-			starter: bullpen.starter,
+			starter: bullpen.starter && isPitcherAvailable(bullpen.starter.pitcherId) ? bullpen.starter : undefined,
 			closer: bullpen.closer && isPitcherAvailable(bullpen.closer.pitcherId) ? bullpen.closer : undefined,
 			// Sort setup and relievers by usage to prefer less-used pitchers
 			setup: bullpen.setup?.filter(r => isPitcherAvailable(r.pitcherId)).sort(sortByUsage),
@@ -2998,8 +2979,8 @@ export class GameEngine {
 				batterId: '',
 				batterName: '',
 				pitcherId: pitchingDecision.newPitcher,
-				pitcherName: this.formatName(newPitcher ? newPitcher.name : 'Unknown'),
-				description: `Pitching change: ${this.formatName(newPitcher?.name ?? 'Unknown')} replaces ${this.formatName(pitcher.name)}`,
+				pitcherName: formatName(newPitcher ? newPitcher.name : 'Unknown'),
+				description: `Pitching change: ${formatName(newPitcher?.name ?? 'Unknown')} replaces ${formatName(pitcher.name)}`,
 				runsScored: 0,
 				eventType: 'pitchingChange',
 				substitutedPlayer: pitcherId,
@@ -3373,7 +3354,7 @@ export class GameEngine {
 						const oldRemovedPlayers = new Set(this.removedPlayers);
 						const oldPhReplacedPositions = new Map(this.phReplacedPositions);
 
-						let description = `Pinch hit: ${this.formatName(pinchHitter?.name ?? 'Unknown')} pinch hits for ${this.formatName(currentBatter.name)}`;
+						let description = `Pinch hit: ${formatName(pinchHitter?.name ?? 'Unknown')} pinch hits for ${formatName(currentBatter.name)}`;
 
 						// Track which position this PH replaced (for double-switch resolution at inning end)
 						this.phReplacedPositions.set(phDecision.pinchHitterId, replacedPosition);
@@ -3497,7 +3478,7 @@ export class GameEngine {
 							isTopInning: this.state.isTopInning,
 							outcome: 'out' as Outcome,
 							batterId: phDecision.pinchHitterId,
-							batterName: this.formatName(pinchHitter?.name ?? 'Unknown'),
+							batterName: formatName(pinchHitter?.name ?? 'Unknown'),
 							pitcherId: '',
 							pitcherName: '',
 							description,
