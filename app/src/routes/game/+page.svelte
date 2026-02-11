@@ -10,6 +10,8 @@
 	import { tick } from 'svelte';
 	import type { Series } from '$lib/game-results/index.js';
 
+	import { formatNameFirstLast } from '$lib/utils/name-format.js';
+
 	// Dynamic imports for browser-only game-results database
 	let createSeries: typeof import('$lib/game-results/index.js').createSeries;
 	let listSeries: typeof import('$lib/game-results/index.js').listSeries;
@@ -335,13 +337,13 @@
 
 		// Update lineup displays
 		awayLineupDisplay = state.awayLineup.players.map((slot, i) => ({
-			name: slot.playerId ? formatName(getPlayerName(slot.playerId)) : 'Unknown',
+			name: slot.playerId ? formatNameFirstLast(getPlayerName(slot.playerId)) : 'Unknown',
 			position: slot.playerId ? getPlayerPosition(slot.playerId, slot.position) : '?',
 			isCurrent: i === state.awayLineup.currentBatterIndex
 		}));
 
 		homeLineupDisplay = state.homeLineup.players.map((slot, i) => ({
-			name: slot.playerId ? formatName(getPlayerName(slot.playerId)) : 'Unknown',
+			name: slot.playerId ? formatNameFirstLast(getPlayerName(slot.playerId)) : 'Unknown',
 			position: slot.playerId ? getPlayerPosition(slot.playerId, slot.position) : '?',
 			isCurrent: i === state.homeLineup.currentBatterIndex
 		}));
@@ -350,12 +352,12 @@
 		// Show each team's own pitcher (away pitcher on left, home pitcher on right)
 		const awayPitcherId = state.awayLineup.pitcher;
 		const awayPitcher = awayPitcherId && season?.pitchers[awayPitcherId]
-			? formatName(season.pitchers[awayPitcherId].name)
+			? formatNameFirstLast(season.pitchers[awayPitcherId].name)
 			: 'Unknown';
 
 		const homePitcherId = state.homeLineup.pitcher;
 		const homePitcher = homePitcherId && season?.pitchers[homePitcherId]
-			? formatName(season.pitchers[homePitcherId].name)
+			? formatNameFirstLast(season.pitchers[homePitcherId].name)
 			: 'Unknown';
 
 		// Update display with pitcher info
@@ -598,7 +600,7 @@
 			const scorerNames = play.scorerIds
 				.map((id) => season?.batters[id]?.name)
 				.filter(Boolean)
-				.map((name) => formatName(name!));
+				.map((name) => formatNameFirstLast(name!));
 
 			if (scorerNames.length === 1) {
 				parts.push(`${scorerNames[0]} scores`);
@@ -631,7 +633,7 @@
 			}
 			if (season?.batters[runnerId]) {
 				const name = season.batters[runnerId].name;
-				const formattedName = formatName(name);
+				const formattedName = formatNameFirstLast(name);
 
 				// Find where this runner was before (if at all)
 				let fromIndex = -1;
@@ -701,7 +703,7 @@
 	// Calculate running score at a specific play index
 	// If isReversed=true: assumes plays are in reverse order (newest first), calculates score from playIndex to end
 	// If isReversed=false: assumes plays are in chronological order (oldest first), calculates score from start to playIndex
-	function getScoreAtPlay(playIndex: number, totalPlays: PlayEvent[], isReversed = true): { away: number; home: number } {
+	function getScoreAtPlay(playIndex: number, totalPlays: PlayEvent[], isReversed = false): { away: number; home: number } {
 		let away = 0;
 		let home = 0;
 		if (isReversed) {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatNameInitialLast } from '$lib/utils/name-format.js';
 	import type { PlayEvent } from '$lib/game/types.js';
 
 	interface Props {
@@ -101,9 +102,12 @@
 		// Mark current inning as in-progress if not complete
 		const currentIdx = inning - 1;
 		if (currentIdx >= 0 && currentIdx < innings.length) {
+			// In modern baseball, both teams get at least 0 if they've started the inning
+			// Top of inning: away team is active, home team hasn't batted yet
 			if (isTopInning) {
 				if (innings[currentIdx].away === null) innings[currentIdx].away = 0;
 			} else {
+				// Bottom of inning: both teams should have at least 0
 				if (innings[currentIdx].away === null) innings[currentIdx].away = 0;
 				if (innings[currentIdx].home === null) innings[currentIdx].home = 0;
 			}
@@ -111,6 +115,18 @@
 
 		return { innings, awayHits, homeHits, awayErrors, homeErrors, maxInning };
 	}
+
+	// Format runners row
+	const runnersText = $derived.by(() => {
+		if (runners[0] || runners[1] || runners[2]) {
+			const parts = [];
+			if (runners[2]) parts.push(`3B: ${formatNameInitialLast(runnerNames[2])}`);
+			if (runners[1]) parts.push(`2B: ${formatNameInitialLast(runnerNames[1])}`);
+			if (runners[0]) parts.push(`1B: ${formatNameInitialLast(runnerNames[0])}`);
+			return parts.join(' • ');
+		}
+		return 'Bases empty';
+	});
 
 	// Determine which innings to show (sliding window for extras)
 	function getVisibleInnings(totalInnings: number, currentInning: number): { start: number; end: number } {
@@ -121,16 +137,6 @@
 		const end = Math.max(currentInning, 9);
 		const start = Math.max(1, end - 8);
 		return { start, end };
-	}
-
-	// Format name: "Last, First" -> "F. Last"
-	function formatName(name: string | null): string {
-		if (!name || name === 'Loading...') return name || '';
-		const commaIndex = name.indexOf(',');
-		if (commaIndex === -1) return name;
-		const lastName = name.slice(0, commaIndex).trim();
-		const firstName = name.slice(commaIndex + 1).trim();
-		return `${firstName.charAt(0)}. ${lastName}`;
 	}
 
 	// Reactive computations
@@ -199,13 +205,9 @@
 
 			<!-- Runners text at bottom of score bug -->
 			<div class="runners-row">
-				{#if runners[0] || runners[1] || runners[2]}
-					{#if runners[2]}<span class="runner-text">3B: {formatName(runnerNames[2])}</span>{/if}
-					{#if runners[1]}<span class="runner-text">2B: {formatName(runnerNames[1])}</span>{/if}
-					{#if runners[0]}<span class="runner-text">1B: {formatName(runnerNames[0])}</span>{/if}
-				{:else}
-					<span class="runner-text empty">Bases empty</span>
-				{/if}
+				<span class="runner-text" class:empty={!runners[0] && !runners[1] && !runners[2]}>
+					{runnersText}
+				</span>
 			</div>
 		</div>
 
@@ -255,12 +257,12 @@
 	<div class="matchup-info">
 		<div class="matchup-row">
 			<span class="matchup-label">P</span>
-			<span class="matchup-name">{formatName(currentPitcher)}</span>
+			<span class="matchup-name">{formatNameInitialLast(currentPitcher)}</span>
 		</div>
 		<span class="matchup-vs">vs</span>
 		<div class="matchup-row">
 			<span class="matchup-label">AB</span>
-			<span class="matchup-name">{formatName(currentBatter)}</span>
+			<span class="matchup-name">{formatNameInitialLast(currentBatter)}</span>
 		</div>
 	</div>
 
