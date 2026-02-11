@@ -93,15 +93,15 @@ function isPlayerEligibleAtPosition(
 	if (hasAnyEligibility) {
 		// Only use this lenient rule if they have SOME eligibility data but not for this specific position
 		const isOutfield = (pos: number) => pos >= 7 && pos <= 9;
-		const isInfield = (pos: number) => pos >= 2 && pos <= 6;
+		const isSkillInfield = (pos: number) => pos === 4 || pos === 5 || pos === 6; // 2B, 3B, SS are somewhat interchangeable
 
 		const playerIsOutfield = isOutfield(player.primaryPosition);
-		const playerIsInfield = isInfield(player.primaryPosition);
+		const playerIsSkillInfield = isSkillInfield(player.primaryPosition);
 		const targetIsOutfield = isOutfield(position);
-		const targetIsInfield = isInfield(position);
+		const targetIsSkillInfield = isSkillInfield(position);
 
-		// Allow outfielders to play any OF position, infielders any IF position
-		if ((playerIsOutfield && targetIsOutfield) || (playerIsInfield && targetIsInfield)) {
+		// Allow outfielders to play any OF position, skill infielders any skill IF position
+		if ((playerIsOutfield && targetIsOutfield) || (playerIsSkillInfield && targetIsSkillInfield)) {
 			return true;
 		}
 	}

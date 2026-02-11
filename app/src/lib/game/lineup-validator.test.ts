@@ -219,7 +219,7 @@ describe('validateLineup', () => {
 		const result = validateLineup(lineup, batters);
 
 		// Should have warnings about players away from primary position
-		expect(result.warnings.some(w => w.includes('catcher1') && w.includes('1B'))).toBe(true);
+		expect(result.warnings.some(w => w.includes('Joe Catcher') && w.includes('1B'))).toBe(true);
 	});
 
 	it('should use primary position as fallback when no explicit eligibility', () => {
@@ -266,6 +266,6 @@ describe('validateLineup', () => {
 		const result = validateLineup(lineup, battersWithUnknown);
 
 		expect(result.isValid).toBe(false);
-		expect(result.errors.some(e => e.includes('unknown1') && e.includes('only eligible'))).toBe(true);
+		expect(result.errors.some(e => e.includes('Unknown') && e.includes('only eligible'))).toBe(true);
 	});
 });

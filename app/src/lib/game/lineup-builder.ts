@@ -910,21 +910,22 @@ function buildLineupImpl(
 
 	// Apply randomness if specified
 	if (options?.randomness && options.randomness > 0) {
-		battingOrder = battingOrder.map((slot, i) => ({
-			...slot,
-			battingOrder: i + 1
-		}));
-		// Apply randomness by shuffling
-		const numSwaps = Math.floor(options.randomness * 3);
+		// Apply randomness by shuffling elements in the array
+		const numSwaps = Math.floor(options.randomness * 3) + 1;
 		for (let i = 0; i < numSwaps; i++) {
 			const idx1 = Math.floor(Math.random() * battingOrder.length);
 			const idx2 = Math.floor(Math.random() * battingOrder.length);
 			if (idx1 !== idx2) {
-				const temp = battingOrder[idx1]!.battingOrder;
-				battingOrder[idx1]!.battingOrder = battingOrder[idx2]!.battingOrder;
-				battingOrder[idx2]!.battingOrder = temp;
+				const temp = battingOrder[idx1]!;
+				battingOrder[idx1] = battingOrder[idx2]!;
+				battingOrder[idx2] = temp;
 			}
 		}
+		// Update battingOrder property to match new array order
+		battingOrder = battingOrder.map((slot, i) => ({
+			...slot,
+			battingOrder: i + 1
+		}));
 	}
 
 	// Build final lineup slots
