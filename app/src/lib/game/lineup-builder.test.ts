@@ -1,6 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { selectStartingPitcher, buildLineup, usesDH, getEraStrategy } from './lineup-builder.js';
 import type { PitcherStats, BatterStats } from './types.js';
+
+// Mock Math.random to be deterministic for tests
+// 0.0 will always pick the first/highest weighted item in our selection logic
+beforeEach(() => {
+	vi.spyOn(Math, 'random').mockReturnValue(0);
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 // Helper to create a minimal roster
 function createMinimalRoster(teamId: string = 'TEST'): Record<string, BatterStats> {
