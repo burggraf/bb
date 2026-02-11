@@ -62,6 +62,7 @@ export function transition(
 
 		// Walks and HBP
 		case 'walk':
+		case 'intentionalWalk':
 		case 'hitByPitch':
 			result = handleWalkOrHBP(currentState, outcome, batterId, advancement);
 			break;

@@ -14,6 +14,7 @@ export type Outcome =
   | 'homeRun'
   // Walks
   | 'walk'
+  | 'intentionalWalk'
   | 'hitByPitch'
   // Strikeout
   | 'strikeout'
@@ -42,6 +43,7 @@ export interface EventRates {
   homeRun: number;
   // Walks
   walk: number;
+  intentionalWalk: number;
   hitByPitch: number;
   // Strikeout
   strikeout: number;
@@ -134,6 +136,7 @@ export interface ProbabilityDistribution {
   homeRun: number;
   // Walks
   walk: number;
+  intentionalWalk: number;
   hitByPitch: number;
   // Strikeout
   strikeout: number;
@@ -162,6 +165,7 @@ export const EVENT_RATE_KEYS: (keyof EventRates)[] = [
   'strikeout',      // 14.4%
   'flyOut',         // 7.8%
   'walk',           // 7.9%
+  'intentionalWalk', // 0.2%
   'popOut',         // 3.4%
   'lineOut',        // 3.3%
   'double',         // 4.1%

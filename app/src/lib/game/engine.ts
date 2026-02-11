@@ -107,8 +107,8 @@ function toManagerialGameState(state: GameState) {
 		}
 	}
 
-	// Score diff from batting team's perspective
-	const scoreDiff = state.isTopInning ? awayScore - homeScore : homeScore - awayScore;
+	// Score diff from pitching team's perspective
+	const scoreDiff = state.isTopInning ? homeScore - awayScore : awayScore - homeScore;
 
 	return {
 		inning: state.inning,
@@ -174,6 +174,8 @@ function describePlay(
 		// Walks
 		case 'walk':
 			return `${batter} walks${runsText}`;
+		case 'intentionalWalk':
+			return `${batter} is intentionally walked${runsText}`;
 		case 'hitByPitch':
 			return `${batter} hit by pitch from ${pitcher}${runsText}`;
 
@@ -684,26 +686,6 @@ export class GameEngine {
 		// Check if it's their primary position
 		if (player.primaryPosition === position) {
 			return true;
-		}
-
-		// LENIENT: If no explicit eligibility data for this specific position, allow similar positions
-		// Outfielders can play other outfield positions (7-9)
-		// Infielders can play other infield positions (2-6)
-		const hasAnyEligibility = Object.keys(player.positionEligibility).length > 0;
-		if (hasAnyEligibility) {
-			// Only use this lenient rule if they have SOME eligibility data but not for this specific position
-			const isOutfield = (pos: number) => pos >= 7 && pos <= 9;
-			const isInfield = (pos: number) => pos >= 2 && pos <= 6;
-
-			const playerIsOutfield = isOutfield(player.primaryPosition);
-			const playerIsInfield = isInfield(player.primaryPosition);
-			const targetIsOutfield = isOutfield(position);
-			const targetIsInfield = isInfield(position);
-
-			// Allow outfielders to play any OF position, infielders any IF position
-			if ((playerIsOutfield && targetIsOutfield) || (playerIsInfield && targetIsInfield)) {
-				return true;
-			}
 		}
 
 		return false;

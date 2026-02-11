@@ -152,8 +152,17 @@ export class MatchupModel {
     const distribution: ProbabilityDistribution = {} as ProbabilityDistribution;
     
     // Debug: Log sum periodically
-    if (Math.random() < 0.0001) {
+    if (Math.random() < 0.0001 && sum > 0) {
       console.log(`[MatchupModel] rawProb sum = ${sum.toFixed(4)}`);
+    }
+
+    if (sum <= 0) {
+      // Should not happen due to eps clamping in generalizedLog5
+      // but if it does, fallback to uniform distribution or groundOut
+      for (const outcome of EVENT_RATE_KEYS) {
+        distribution[outcome] = outcome === 'groundOut' ? 1.0 : 0;
+      }
+      return distribution;
     }
 
     for (const outcome of EVENT_RATE_KEYS) {

@@ -70,8 +70,8 @@ export function calculatePitcherQuality(
 	if (role === 'starter') {
 		// Starter quality: mix of workload and rate stats
 		const gamesStartedRate = pitcher.gamesStarted / SEASON_GAMES;
-		const eraRatio = norms.avgERA / pitcher.era; // Lower ERA = higher score
-		const whipRatio = norms.avgWHIP / pitcher.whip; // Lower WHIP = higher score
+		const eraRatio = pitcher.era > 0 ? norms.avgERA / pitcher.era : norms.avgERA / 0.5; // Lower ERA = higher score
+		const whipRatio = pitcher.whip > 0 ? norms.avgWHIP / pitcher.whip : norms.avgWHIP / 0.2; // Lower WHIP = higher score
 		const cgBonus = cgRate * CG_MULTIPLIER;
 
 		qualityScore =
@@ -82,8 +82,8 @@ export function calculatePitcherQuality(
 	} else {
 		// Reliever quality: saves, low ERA/WHIP, short outings
 		const savesRate = pitcher.saves / SAVES_NORMALIZATION;
-		const eraRatio = norms.avgERA / pitcher.era;
-		const whipRatio = norms.avgWHIP / pitcher.whip;
+		const eraRatio = pitcher.era > 0 ? norms.avgERA / pitcher.era : norms.avgERA / 0.5;
+		const whipRatio = pitcher.whip > 0 ? norms.avgWHIP / pitcher.whip : norms.avgWHIP / 0.2;
 		const shortOutingBonus = inningsPerGame < 2 ? CLOSER_SHORT_OUTING_BONUS : 0;
 		const lowStartBonus = pitcher.gamesStarted === 0 ? PURE_RELIEVER_BONUS : 0;
 

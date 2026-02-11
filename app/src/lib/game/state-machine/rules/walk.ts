@@ -21,7 +21,7 @@ interface WalkResult {
 
 export function handleWalkOrHBP(
 	currentState: BaserunningState,
-	outcome: 'walk' | 'hitByPitch',
+	outcome: 'walk' | 'intentionalWalk' | 'hitByPitch',
 	batterId: string,
 	advancement: BaserunningEvent[]
 ): WalkResult {
