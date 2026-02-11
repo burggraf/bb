@@ -116,8 +116,8 @@ export function usesDH(league: string, year: number): boolean {
 }
 
 /**
- * Select the starting pitcher weighted by actual games started
- * This creates realistic usage patterns where pitchers who started more games
+ * Select the starting pitcher based on quality score and actual games started
+ * This creates realistic usage patterns where pitchers who were better and started more games
  * in real life are more likely to start in the replay
  */
 export function selectStartingPitcher(
@@ -139,16 +139,23 @@ export function selectStartingPitcher(
 		return pitchers.sort((a, b) => b.gamesStarted - a.gamesStarted)[0]!;
 	}
 
-	// Calculate weights based on gamesStarted MODIFIED by usage multiplier
+	// Calculate weights based on quality score MODIFIED by usage multiplier
+	// Quality formula: gamesStarted * 2 + (5/era) + (2/whip) + (cgRate * 10)
 	const weightedStarters = starters.map(p => {
 		const usage = usageContext?.playerUsage.get(p.id) ?? 1.0;
-		// Use PA multiplier logic for pitchers as well
 		const usageMultiplier = calculateUsageWeight(usage, p.gamesStarted * 30); // Approx PA
+		
+		const cgRate = p.completeGames / p.gamesStarted;
+		const qualityScore = (p.gamesStarted * 2) + (5 / p.era) + (2 / p.whip) + (cgRate * 10);
+		
 		return {
 			pitcher: p,
-			weight: p.gamesStarted * usageMultiplier
+			weight: qualityScore * usageMultiplier
 		};
 	});
+
+	// Sort by weight descending so that random=0 always picks the BEST
+	weightedStarters.sort((a, b) => b.weight - a.weight);
 
 	// Calculate total weight
 	const totalWeight = weightedStarters.reduce((sum, ws) => sum + ws.weight, 0);
@@ -170,7 +177,7 @@ export function selectStartingPitcher(
 	}
 
 	// Fallback
-	return starters[starters.length - 1]!;
+	return weightedStarters[0].pitcher;
 }
 
 /**
@@ -314,7 +321,14 @@ function buildPositionPools(
 		// aren't mathematically excluded by 30x weight differences.
 		for (const wp of pool) {
 			const usageMultiplier = calculateUsageWeight(wp.usage, wp.pa);
-			wp.weight = Math.sqrt(wp.pa) * usageMultiplier;
+			let weight = Math.sqrt(wp.pa) * usageMultiplier;
+			
+			// Boost weight if this is the player's primary position
+			if (wp.player.primaryPosition === position) {
+				weight *= 1.5; // 50% boost for primary position
+			}
+			
+			wp.weight = weight;
 		}
 
 		// Normalize weights so they sum to 1
@@ -377,6 +391,9 @@ function selectWeightedRandom(
 	if (availablePool.length === 0) {
 		return null;
 	}
+
+	// Sort by weight descending so that random=0 always picks the BEST
+	availablePool.sort((a, b) => b.weight - a.weight);
 
 	// Calculate total weight of available players
 	const totalWeight = availablePool.reduce((sum, wp) => sum + wp.weight, 0);
@@ -631,96 +648,8 @@ function buildBattingOrder(
 	return lineup;
 }
 
-/**
- * Apply randomness to a lineup by swapping adjacent players
- * @param lineup - The lineup slots to randomize
- * @param randomness - Randomness factor (0-1)
- * @returns Lineup with random swaps applied
- */
-function applyRandomness(lineup: LineupSlot[], randomness: number): LineupSlot[] {
-	if (randomness <= 0) return lineup;
 
-	const result = [...lineup];
-	const numSwaps = Math.floor(randomness * 3) + 1; // 1-3 swaps based on randomness
 
-	for (let i = 0; i < numSwaps; i++) {
-		if (Math.random() < randomness) {
-			const idx = Math.floor(Math.random() * (result.length - 1)); // 0 to length-2
-			const temp = result[idx];
-			result[idx] = result[idx + 1]!;
-			result[idx + 1] = temp!;
-		}
-	}
-
-	return result;
-}
-
-/**
- * Insert pitcher into batting order
- * @param lineup - Current lineup slots
- * @param pitcherId - Starting pitcher ID
- * @param usesDH - Whether this game uses DH
- * @returns Lineup with pitcher added
- */
-function insertPitcher(lineup: LineupSlot[], pitcherId: string, usesDH: boolean): LineupSlot[] {
-	if (usesDH) {
-		// With DH, pitcher is not in batting order
-		return lineup;
-	}
-	// Without DH, pitcher bats 9th
-	return [...lineup, { playerId: pitcherId, position: POSITIONS.PITCHER }];
-}
-
-/**
- * Handle position scarcity by using rested players or emergency assignments
- * @param lineup - Current lineup
- * @param rested - Players who were rested (can be used in emergency)
- * @param allBatters - All available batters
- * @param allowEmergency - Whether to allow emergency starts from rested players
- * @param warnings - Array to collect warnings
- * @returns Lineup with positions filled
- */
-function handlePositionScarcity(
-	lineup: LineupSlot[],
-	rested: BatterStats[],
-	allBatters: BatterStats[],
-	allowEmergency: boolean,
-	warnings: string[]
-): LineupSlot[] {
-	const positionCounts = new Map<number, number>();
-	for (const slot of lineup) {
-		positionCounts.set(slot.position, (positionCounts.get(slot.position) ?? 0) + 1);
-	}
-
-	// Check if all positions are filled (8 positions for non-DH, 9 for DH)
-	const positionsNeeded = new Set(POSITION_PRIORITY);
-	const filledPositions = new Set(lineup.map(s => s.position).filter(p => positionsNeeded.has(p)));
-
-	if (filledPositions.size >= 8) {
-		return lineup; // All positions filled
-	}
-
-	// Try to fill missing positions with rested players
-	if (allowEmergency && rested.length > 0) {
-		for (const position of POSITION_PRIORITY) {
-			if (filledPositions.has(position)) continue;
-
-			// Find rested player who can play this position
-			const emergency = rested.find(b =>
-				b.primaryPosition === position ||
-				(b.positionEligibility[position] ?? 0) > 0
-			);
-
-			if (emergency) {
-				lineup.push({ playerId: emergency.id, position });
-				filledPositions.add(position);
-				warnings.push(`Emergency start: ${emergency.name} at ${getPositionName(position)} (was rested)`);
-			}
-		}
-	}
-
-	return lineup;
-}
 
 /**
  * Convert strategy output slots to app LineupSlot format
