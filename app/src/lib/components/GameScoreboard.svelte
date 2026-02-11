@@ -101,10 +101,11 @@
 		// Mark current inning as in-progress if not complete
 		const currentIdx = inning - 1;
 		if (currentIdx >= 0 && currentIdx < innings.length) {
-			if (isTopInning && innings[currentIdx].away === null) {
-				innings[currentIdx].away = 0;
-			} else if (!isTopInning && innings[currentIdx].home === null) {
-				innings[currentIdx].home = 0;
+			if (isTopInning) {
+				if (innings[currentIdx].away === null) innings[currentIdx].away = 0;
+			} else {
+				if (innings[currentIdx].away === null) innings[currentIdx].away = 0;
+				if (innings[currentIdx].home === null) innings[currentIdx].home = 0;
 			}
 		}
 
