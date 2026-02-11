@@ -122,14 +122,14 @@ export function transition(
 	}
 
 	// Handle inning end: 3 outs resets to 0 and clears bases
-	// Runs scored on the 3rd out don't count
+	// Runs scored on the 3rd out don't count in simplified model
+	// (Force outs and fly outs never allow runs to score on 3rd out)
 	if (result.nextState.outs === 3) {
 		result.nextState = {
 			outs: 0,
 			bases: 0,
 			runners: { first: null, second: null, third: null },
 		};
-		// Clear runs scored - runs can't score on the 3rd out
 		result.runsScored = 0;
 		result.scorerIds = [];
 	}

@@ -74,6 +74,9 @@
 	// Play-by-play modal state
 	let showPlayByPlay = $state(false);
 
+	// Derived plays in reverse order (newest first)
+	const reversedPlays = $derived([...plays].reverse());
+
 	// Save to database state
 	let showSeriesModal = $state(false);
 	let availableSeries = $state<Series[]>([]);
@@ -332,13 +335,13 @@
 
 		// Update lineup displays
 		awayLineupDisplay = state.awayLineup.players.map((slot, i) => ({
-			name: slot.playerId ? getPlayerName(slot.playerId) : 'Unknown',
+			name: slot.playerId ? formatName(getPlayerName(slot.playerId)) : 'Unknown',
 			position: slot.playerId ? getPlayerPosition(slot.playerId, slot.position) : '?',
 			isCurrent: i === state.awayLineup.currentBatterIndex
 		}));
 
 		homeLineupDisplay = state.homeLineup.players.map((slot, i) => ({
-			name: slot.playerId ? getPlayerName(slot.playerId) : 'Unknown',
+			name: slot.playerId ? formatName(getPlayerName(slot.playerId)) : 'Unknown',
 			position: slot.playerId ? getPlayerPosition(slot.playerId, slot.position) : '?',
 			isCurrent: i === state.homeLineup.currentBatterIndex
 		}));
@@ -347,12 +350,12 @@
 		// Show each team's own pitcher (away pitcher on left, home pitcher on right)
 		const awayPitcherId = state.awayLineup.pitcher;
 		const awayPitcher = awayPitcherId && season?.pitchers[awayPitcherId]
-			? season.pitchers[awayPitcherId].name
+			? formatName(season.pitchers[awayPitcherId].name)
 			: 'Unknown';
 
 		const homePitcherId = state.homeLineup.pitcher;
 		const homePitcher = homePitcherId && season?.pitchers[homePitcherId]
-			? season.pitchers[homePitcherId].name
+			? formatName(season.pitchers[homePitcherId].name)
 			: 'Unknown';
 
 		// Update display with pitcher info
@@ -404,8 +407,8 @@
 		if (!engine) return;
 		while (!engine.isComplete()) {
 			engine.simulatePlateAppearance();
-			updateFromEngine();
 		}
+		updateFromEngine();
 		gameComplete = true;
 	}
 
@@ -581,7 +584,7 @@
 	// Format runner info for play-by-play display
 	// Shows runners who advanced or just reached base, plus scorers
 	// Order: scorers first, then highest base first (3rd, 2nd, 1st)
-	function formatRunnerInfo(play: PlayEvent, nextPlay?: PlayEvent): string | null {
+	function formatRunnerInfo(play: PlayEvent, playIndex: number, allReversedPlays: PlayEvent[]): string | null {
 		// Only show runner info if there are scorers OR runners who moved/reached
 		if (!play.runnersAfter) {
 			return null;
@@ -604,11 +607,13 @@
 			}
 		}
 
-		// Check if this play ends the inning (next play is a summary for the same inning)
-		// If so, don't show runner advancement (except for scorers, which are walk-off situation)
-		const isThirdOut = nextPlay?.isSummary &&
-			nextPlay.inning === play.inning &&
-			nextPlay.isTopInning === play.isTopInning;
+		// Check if this play ends the inning (a summary play for the same inning exists earlier in reversed list)
+		// Summary plays are added AFTER the final out of an inning
+		const nextChronologicalPlay = playIndex > 0 ? allReversedPlays[playIndex - 1] : null;
+
+		const isThirdOut = nextChronologicalPlay?.isSummary &&
+			nextChronologicalPlay.inning === play.inning &&
+			nextChronologicalPlay.isTopInning === play.isTopInning;
 
 		// If this was the last out and there are no scorers, don't show runner advancement
 		// (the exception is walk-offs, which are handled above by showing scorers)
@@ -771,7 +776,7 @@
 				<div class="bg-slate-950/50 rounded-xl p-3 sm:p-4 backdrop-blur-sm border border-slate-700/30">
 					<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3">Away Lineup</div>
 					<div class="space-y-1">
-						{#each awayLineupDisplay as player, i}
+						{#each awayLineupDisplay as player, i (i)}
 							<div class="flex items-center gap-2 py-1 px-2 rounded {player.isCurrent
 								? 'bg-blue-600/30 border border-blue-500/50'
 								: ''}">
@@ -798,7 +803,7 @@
 				<div class="bg-slate-950/50 rounded-xl p-3 sm:p-4 backdrop-blur-sm border border-slate-700/30">
 					<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3">Home Lineup</div>
 					<div class="space-y-1">
-						{#each homeLineupDisplay as player, i}
+						{#each homeLineupDisplay as player, i (i)}
 							<div class="flex items-center gap-2 py-1 px-2 rounded {player.isCurrent
 								? 'bg-blue-600/30 border border-blue-500/50'
 								: ''}">
@@ -828,14 +833,12 @@
 			<!-- Play-by-Play Feed -->
 			<div class="flex-1 flex flex-col min-h-0">
 				<div class="text-[10px] sm:text-xs text-slate-400 uppercase tracking-wider mb-2 sm:mb-3 flex-shrink-0">Play-by-Play</div>
-				{#if plays.length > 0}
+				{#if reversedPlays.length > 0}
 					<div class="flex-1 overflow-y-auto space-y-1.5 sm:space-y-2 pr-1 sm:pr-2 min-h-0" id="play-by-play-container">
-						{#each plays.slice().reverse() as play, index}
-							{@const playNumber = index + 1}
-							{@const reversedPlays = plays.slice().reverse()}
-							{@const nextPlay = reversedPlays[index + 1]}
-							{@const runnerInfo = formatRunnerInfo(play, nextPlay)}
-							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, false)}
+						{#each reversedPlays as play, index (play.id || index)}
+							{@const playNumber = reversedPlays.length - index}
+							{@const runnerInfo = formatRunnerInfo(play, index, reversedPlays)}
+							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, true)}
 							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border {play.isSummary
 								? 'bg-amber-900/30 border-amber-700/40'
@@ -1056,14 +1059,12 @@
 					</button>
 				</div>
 
-				{#if plays.length > 0}
+				{#if reversedPlays.length > 0}
 					<div class="flex-1 overflow-y-auto space-y-2 pr-2">
-						{#each plays.slice().reverse() as play, index}
-							{@const playNumber = index + 1}
-							{@const reversedPlays = plays.slice().reverse()}
-							{@const nextPlay = reversedPlays[index + 1]}
-							{@const runnerInfo = formatRunnerInfo(play, nextPlay)}
-							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, false)}
+						{#each reversedPlays as play, index (play.id || index)}
+							{@const playNumber = reversedPlays.length - index}
+							{@const runnerInfo = formatRunnerInfo(play, index, reversedPlays)}
+							{@const scoreAtPlay = getScoreAtPlay(index, reversedPlays, true)}
 							{@const scoreInfo = formatScoreLine(play, scoreAtPlay.away, scoreAtPlay.home)}
 							<div class="rounded-lg px-3 sm:px-4 py-2 sm:py-3 border {play.isSummary
 								? 'bg-amber-900/30 border-amber-700/40'

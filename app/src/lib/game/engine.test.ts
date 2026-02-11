@@ -497,58 +497,50 @@ describe('Pitcher Re-Entry Bug', () => {
 	// to re-enter. The selectReliever function was not filtering out removed
 	// pitchers, causing the same pitcher to be selected multiple times.
 	it('prevents removed pitchers from re-entering the game', () => {
-		// Track all pitching changes to detect re-entries
-		const pitchingChanges: { old: string; new: string; inning: number }[] = [];
-		const pitcherHistory: string[] = [];
+		// Track pitching history per team
+		const awayPitcherHistory: string[] = [];
+		const homePitcherHistory: string[] = [];
+
+		const initialState = engine.getState();
+		awayPitcherHistory.push(initialState.awayLineup.pitcher!);
+		homePitcherHistory.push(initialState.homeLineup.pitcher!);
 
 		// Simulate many PAs to trigger multiple pitching changes
-		// With low BFP limits, we should see several relievers enter the game
-		for (let i = 0; i < 100; i++) {
+		for (let i = 0; i < 200; i++) {
 			const stateBefore = engine.getState();
-			const currentPitcher = stateBefore.isTopInning
-				? stateBefore.homeLineup.pitcher
-				: stateBefore.awayLineup.pitcher;
+			const awayPitcherBefore = stateBefore.awayLineup.pitcher;
+			const homePitcherBefore = stateBefore.homeLineup.pitcher;
 
 			// Simulate one PA
 			engine.simulatePlateAppearance();
 
 			const stateAfter = engine.getState();
-			const newPitcher = stateAfter.isTopInning
-				? stateAfter.homeLineup.pitcher
-				: stateAfter.awayLineup.pitcher;
+			const awayPitcherAfter = stateAfter.awayLineup.pitcher;
+			const homePitcherAfter = stateAfter.homeLineup.pitcher;
 
-			// Track pitcher changes
-			if (currentPitcher !== newPitcher) {
-				pitchingChanges.push({
-					old: currentPitcher!,
-					new: newPitcher!,
-					inning: stateBefore.inning
-				});
-				pitcherHistory.push(newPitcher!);
+			// Track pitcher changes for away team
+			if (awayPitcherBefore !== awayPitcherAfter) {
+				awayPitcherHistory.push(awayPitcherAfter!);
+			}
+			// Track pitcher changes for home team
+			if (homePitcherBefore !== homePitcherAfter) {
+				homePitcherHistory.push(homePitcherAfter!);
 			}
 
 			// Stop if game is complete
 			if (engine.isComplete()) break;
 		}
 
-		// Verify: No pitcher should appear more than once in the history
-		// (except the starting pitcher who begins in the history)
-		const uniquePitchers = new Set(pitcherHistory);
-		const duplicates = pitcherHistory.filter((p, idx) => pitcherHistory.indexOf(p) !== idx);
+		// Verify: No pitcher should appear more than once in each team's history
+		const uniqueAwayPitchers = new Set(awayPitcherHistory);
+		const awayDuplicates = awayPitcherHistory.filter((p, idx) => awayPitcherHistory.indexOf(p) !== idx);
+		expect(awayDuplicates, `Away team re-entered pitcher(s): ${awayDuplicates.join(', ')}`).toHaveLength(0);
+		expect(uniqueAwayPitchers.size).toBe(awayPitcherHistory.length);
 
-		expect(duplicates).toHaveLength(0);
-		expect(uniquePitchers.size).toBe(pitcherHistory.length);
-
-		// Also verify that no pitcher in pitchingChanges appears as both "old" and "new"
-		// (i.e., a pitcher leaves and later comes back)
-		const allOldPitchers = new Set(pitchingChanges.map(c => c.old));
-		const allNewPitchers = new Set(pitchingChanges.map(c => c.new));
-
-		// Find pitchers who were removed (appear as "old") and later re-entered (appear as "new" after being "old")
-		const removedPitchers = [...allOldPitchers];
-		const reEntries = removedPitchers.filter(p => allNewPitchers.has(p));
-
-		expect(reEntries).toHaveLength(0);
+		const uniqueHomePitchers = new Set(homePitcherHistory);
+		const homeDuplicates = homePitcherHistory.filter((p, idx) => homePitcherHistory.indexOf(p) !== idx);
+		expect(homeDuplicates, `Home team re-entered pitcher(s): ${homeDuplicates.join(', ')}`).toHaveLength(0);
+		expect(uniqueHomePitchers.size).toBe(homePitcherHistory.length);
 	});
 });
 
@@ -591,7 +583,8 @@ describe('Home Team Batting 9th Inning Bug', () => {
 
 		// If away team won in 9 innings, home team MUST have batted in bottom of 9th
 		// The flag should be set to true, and there should be at least 3 plays (3 outs)
-		if (awayScore > homeScore && finalState.inning === 9) {
+		// finalState.inning will be 10 if the game ended after 9
+		if (awayScore > homeScore && (finalState.inning === 9 || finalState.inning === 10)) {
 			// Home team had their chance - they completed their at-bat
 			expect(finalState.homeTeamHasBattedInInning).toBe(true);
 			// Should have at least 3 plate appearances (3 outs)
@@ -623,9 +616,9 @@ describe('Home Team Batting 9th Inning Bug', () => {
 			// Home team had their chance in the bottom of the final inning
 			expect(finalState.homeTeamHasBattedInInning).toBe(true);
 
-			// Count plays in bottom of final inning
+			// Count plays in bottom of final inning (which is finalState.inning - 1)
 			const playsInBottomOfFinal = finalState.plays.filter(
-				p => p.inning === finalState.inning && !p.isTopInning && !p.isSummary
+				p => p.inning === finalState.inning - 1 && !p.isTopInning && !p.isSummary
 			).length;
 
 			// Should have at least 3 plate appearances (3 outs)

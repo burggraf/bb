@@ -86,6 +86,26 @@ function isPlayerEligibleAtPosition(
 		return true;
 	}
 
+	// LENIENT: If no explicit eligibility data for this specific position, allow similar positions
+	// Outfielders can play other outfield positions (7-9)
+	// Infielders can play other infield positions (2-6)
+	const hasAnyEligibility = Object.keys(player.positionEligibility).length > 0;
+	if (hasAnyEligibility) {
+		// Only use this lenient rule if they have SOME eligibility data but not for this specific position
+		const isOutfield = (pos: number) => pos >= 7 && pos <= 9;
+		const isSkillInfield = (pos: number) => pos === 4 || pos === 5 || pos === 6; // 2B, 3B, SS are somewhat interchangeable
+
+		const playerIsOutfield = isOutfield(player.primaryPosition);
+		const playerIsSkillInfield = isSkillInfield(player.primaryPosition);
+		const targetIsOutfield = isOutfield(position);
+		const targetIsSkillInfield = isSkillInfield(position);
+
+		// Allow outfielders to play any OF position, skill infielders any skill IF position
+		if ((playerIsOutfield && targetIsOutfield) || (playerIsSkillInfield && targetIsSkillInfield)) {
+			return true;
+		}
+	}
+
 	return false;
 }
 
