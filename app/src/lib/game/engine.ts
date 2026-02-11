@@ -216,7 +216,7 @@ function describePlay(
 	}
 }
 
-// Add half-inning summary to plays (uses current state values - may be wrong after inning change)
+// Add half-inning summary to plays
 function addHalfInningSummary(state: GameState, season: SeasonPackage): void {
 	const isTop = state.isTopInning;
 	const inning = state.inning;
@@ -2212,7 +2212,7 @@ export class GameEngine {
 									// Shouldn't happen - positionOccupied was true but we couldn't find the occupier
 									console.error(`[PH Resolution] Position ${replacedPosition} marked occupied but no occupier found - falling back to emergency mode`);
 								}
-							} else if (positionOccupied === undefined) {
+							} else if (positionOccupied === undefined || positionOccupied === null) {
 								// Original emergency mode logic for when position is available
 								console.warn(`Pinch hitter ${phPlayer.name} cannot play position ${POSITION_NAMES[replacedPosition] ?? replacedPosition} defensively, no bench available, and shuffle failed - using emergency mode to assign to ${POSITION_NAMES[finalPosition] ?? finalPosition}`);
 								lineup.players[ph.index] = {

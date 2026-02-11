@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { formatNameInitialLast } from '$lib/utils/name-format.js';
+
 	interface Props {
 		awayScore: number;
 		homeScore: number;
@@ -25,15 +27,6 @@
 		homeTeam = 'HOME'
 	}: Props = $props();
 
-	// Format names: "Last, First" -> "F. Last"
-	function formatName(name: string): string {
-		if (!name || name === 'Loading...') return name;
-		const commaIndex = name.indexOf(',');
-		if (commaIndex === -1) return name;
-		const lastName = name.slice(0, commaIndex).trim();
-		const firstName = name.slice(commaIndex + 1).trim();
-		return `${firstName.charAt(0)}. ${lastName}`;
-	}
 </script>
 
 <div class="ballpark-wrapper">
@@ -222,12 +215,12 @@
 	<div class="matchup-info">
 		<div class="matchup-row">
 			<span class="matchup-label">P</span>
-			<span class="matchup-name">{formatName(currentPitcher)}</span>
+			<span class="matchup-name">{formatNameInitialLast(currentPitcher)}</span>
 		</div>
 		<span class="matchup-vs">vs</span>
 		<div class="matchup-row">
 			<span class="matchup-label">AB</span>
-			<span class="matchup-name">{formatName(currentBatter)}</span>
+			<span class="matchup-name">{formatNameInitialLast(currentBatter)}</span>
 		</div>
 	</div>
 </div>

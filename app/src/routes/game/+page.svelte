@@ -703,7 +703,7 @@
 	// Calculate running score at a specific play index
 	// If isReversed=true: assumes plays are in reverse order (newest first), calculates score from playIndex to end
 	// If isReversed=false: assumes plays are in chronological order (oldest first), calculates score from start to playIndex
-	function getScoreAtPlay(playIndex: number, totalPlays: PlayEvent[], isReversed = false): { away: number; home: number } {
+	function getScoreAtPlay(playIndex: number, totalPlays: PlayEvent[], isReversed = true): { away: number; home: number } {
 		let away = 0;
 		let home = 0;
 		if (isReversed) {

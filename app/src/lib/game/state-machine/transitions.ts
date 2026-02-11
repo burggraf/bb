@@ -122,16 +122,26 @@ export function transition(
 	}
 
 	// Handle inning end: 3 outs resets to 0 and clears bases
-	// Runs scored on the 3rd out don't count in simplified model
-	// (Force outs and fly outs never allow runs to score on 3rd out)
 	if (result.nextState.outs === 3) {
+		// IN BASEBALL, runs can score on the 3rd out IF it's not a force out
+		// or the batter-runner being put out before reaching first base.
+		// For Phase 1, we use a simplified rule: runs score if it's NOT a force/fly out.
+		// However, current rules handle this within their respective functions.
+		// We only wipe runs if the rule explicitly says so, or if it's 3 outs.
+		
+		// Determine if this is a "no-run" 3rd out (force out, strikeout, fly out)
+		const isNoRunOut = ['strikeout', 'flyOut', 'popOut', 'lineOut', 'groundOut', 'sacrificeFly', 'sacrificeBunt'].includes(outcome);
+		
+		if (isNoRunOut) {
+			result.runsScored = 0;
+			result.scorerIds = [];
+		}
+
 		result.nextState = {
 			outs: 0,
 			bases: 0,
 			runners: { first: null, second: null, third: null },
 		};
-		result.runsScored = 0;
-		result.scorerIds = [];
 	}
 
 	return result;
